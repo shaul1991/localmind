@@ -34,6 +34,7 @@ npm install && npm run build
 docker compose --profile gateway --profile memory up -d --build
 #   chat :8787 · 게이트웨이 :4000 · 메모리 :8767  (최초 빌드/모델 pull은 수 분)
 ```
+> 운영은 **`make`** 로 간편하게: `make up`(기동) · `make health`(점검) · `make logs` · `make down`. 전체 목록은 `make help`.
 
 ### 2) API로 쓰기 (base_url만 교체)
 ```bash
