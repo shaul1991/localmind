@@ -8,7 +8,11 @@
 - **second-brain** — 내 마크다운 노트에 대한 RAG
 - **MCP 도구** — Cursor/Claude Desktop/Cline에서 위 기능을 도구로 사용
 
-> 지금은 **개인용 MVP**. 진화 방향(개인 + 회사/팀 shared 하이브리드)은 [ROADMAP.md](ROADMAP.md) 참고.
+> **독립 실행 원칙**: 각 인스턴스는 **완전히 자립적**입니다. 그 머신의 로컬 스택
+> (gateway·임베딩·메모리·brain) + **그 머신 자신의 `claude`/`codex` 로그인** + localhost로만
+> 동작하며, **중앙 homeserver나 공유 계정에 의존하지 않습니다**(단일 장애점·ToS 회피).
+> 여러 명/여러 서버는 **각자 독립 인스턴스**로 돌리고, 필요하면 원격 MCP(URL+토큰)로
+> *접속*만 합니다 — 추론은 항상 각 인스턴스의 자기 계정으로. 진화 방향은 [ROADMAP.md](ROADMAP.md).
 
 ```
   HTTP API ┬─ /v1/chat/completions · /v1/messages   → claude/codex CLI
@@ -338,6 +342,7 @@ claude mcp add --transport http my-server https://<host>:8788/mcp --header "Auth
 db-server   : MCP_INSTANCE=db-server   → db-server의 메모리/노트  (http://db-server:8788/mcp)
 app-server-1: MCP_INSTANCE=app-server-1 → app-server-1의 메모리/노트
 ```
+- **각 인스턴스는 독립**: 그 서버의 cli-gateway + 그 서버의 CLI 로그인을 쓰므로, 한 서버가 다른 서버의 계정/스택에 의존하지 않습니다(중앙 의존 0).
 - 메모리 격리: `OPENMEMORY_USER`를 안 주면 `MCP_INSTANCE`가 곧 메모리 owner가 됩니다.
 - `whoami` 도구로 "지금 어느 서버의 두뇌인지" 즉시 확인.
 - 각 서버에서 `capture_note`로 그 서버의 자원/장애를 기록 → `ask_brain`으로 그 서버 한정 RAG.
