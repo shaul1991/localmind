@@ -9,7 +9,7 @@ function main(): void {
 
   const app = createServer(config);
   const server = app.listen(config.port, config.host, () => {
-    log.info(`cli-gateway listening on http://${config.host}:${config.port}`);
+    log.info(`localmind listening on http://${config.host}:${config.port}`);
     log.info(`  default backend: ${config.defaultBackend}`);
     log.info(`  auth: ${config.apiKey ? "enabled (Bearer)" : "disabled (open)"}`);
     log.info(`  endpoints: POST /v1/chat/completions, GET /v1/models, GET /health`);

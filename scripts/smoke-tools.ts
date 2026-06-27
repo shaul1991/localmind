@@ -10,7 +10,7 @@ import OpenAI from "openai";
 import type { ChatCompletionTool } from "openai/resources/chat/completions";
 
 const baseURL = (process.env.BASE_URL ?? "http://127.0.0.1:8787") + "/v1";
-const apiKey = process.env.CLI_GATEWAY_API_KEY ?? "not-needed";
+const apiKey = process.env.LOCALMIND_API_KEY ?? "not-needed";
 const model = process.env.MODEL ?? "sonnet";
 const client = new OpenAI({ baseURL, apiKey });
 
@@ -122,7 +122,7 @@ async function testStreamingToolCall(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  console.log(`cli-gateway 함수 호출 스모크 테스트 → ${baseURL} (model=${model})\n`);
+  console.log(`localmind 함수 호출 스모크 테스트 → ${baseURL} (model=${model})\n`);
   await testToolRoundTrip();
   await testNoToolNeeded();
   await testStreamingToolCall();

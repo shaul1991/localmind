@@ -1,13 +1,13 @@
 {
-  "name": "cli-gateway",
+  "name": "localmind",
   "version": "0.2.0",
   "description": "메터드 API 0원의 완결형 로컬 AI 스택 — Claude/Codex CLI 구독으로 OpenAI·Anthropic 호환 API + 임베딩 + mem0 메모리 + second-brain RAG + MCP",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "cli-gateway": "dist/index.js",
-    "cli-gateway-mcp": "dist/mcp.js",
-    "cli-gateway-mcp-http": "dist/mcp-http.js"
+    "localmind": "dist/index.js",
+    "localmind-mcp": "dist/mcp.js",
+    "localmind-mcp-http": "dist/mcp-http.js"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",

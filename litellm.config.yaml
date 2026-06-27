@@ -1,6 +1,6 @@
 # LiteLLM 게이트웨이 라우팅
 # - 임베딩(/v1/embeddings) → ollama의 bge-m3
-# - 그 외 채팅(/v1/chat/completions) → cli-gateway(claude/codex CLI)
+# - 그 외 채팅(/v1/chat/completions) → localmind(claude/codex CLI)
 #
 # supermemory 등 소비자는 이 게이트웨이(base URL) 하나만 바라보면 된다.
 
@@ -28,12 +28,12 @@ model_list:
       api_base: http://ollama:11434/v1
       api_key: ollama
 
-  # ── 채팅(그 외 전부) → cli-gateway ─────────────────────────────
-  # 요청 모델명을 그대로 cli-gateway로 전달 → cli-gateway가 claude/codex로 라우팅.
+  # ── 채팅(그 외 전부) → localmind ─────────────────────────────
+  # 요청 모델명을 그대로 localmind로 전달 → localmind가 claude/codex로 라우팅.
   - model_name: "*"
     litellm_params:
       model: openai/*
-      api_base: http://cli-gateway:8787/v1
+      api_base: http://localmind:8787/v1
       api_key: dummy
 
 litellm_settings:

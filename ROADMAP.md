@@ -1,6 +1,6 @@
 # ROADMAP
 
-cli-gateway의 진화 방향을 기록한다. 핵심 비전:
+localmind의 진화 방향을 기록한다. 핵심 비전:
 
 > **지금은 개인용 MVP. 목표는 "개인 + 회사/팀 shared" 하이브리드** — 한 시스템을
 > 개인 공간으로도, 팀 공유 공간으로도 쓸 수 있게 한다. 팀 전환은 *재작성이 아니라
@@ -67,7 +67,7 @@ app-server : 그 서버 로그인        + 서버 메모리/노트
 
 ### Phase 2 — 팀 인증 (LiteLLM 가상 키)
 - LiteLLM 프록시 **DB 모드** 활성화 → 멤버별 키, 예산, per-user rate limit, 사용량 추적.
-- cli-gateway/openmemory 인증을 게이트웨이 키로 통일.
+- localmind/openmemory 인증을 게이트웨이 키로 통일.
 
 ### Phase 3 — (탈중앙이므로 계정 풀링 불필요)
 - 권장 모델은 **멤버/서버가 각자 자기 CLI 로그인으로 독립 인스턴스** → 중앙 한도 공유·ToS 문제 자체가 없음.

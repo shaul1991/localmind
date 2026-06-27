@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * cli-gateway MCP 서버 (원격 HTTP/SSE).
+ * localmind MCP 서버 (원격 HTTP/SSE).
  *
  * URL 하나로 팀/원격 클라이언트가 접속한다:
  *   - POST /mcp        Streamable HTTP (현대 표준 — Claude Code/Cursor/ChatGPT 원격 connector)
@@ -23,7 +23,7 @@ const TOKEN = process.env.MCP_HTTP_TOKEN?.trim();
 
 if (!TOKEN && process.env.MCP_HTTP_ALLOW_NOAUTH !== "1") {
   process.stderr.write(
-    "[cli-gateway-mcp-http] MCP_HTTP_TOKEN 미설정 — 네트워크 노출 시 누구나 당신 CLI 구독/메모리를 쓸 수 있습니다.\n" +
+    "[localmind-mcp-http] MCP_HTTP_TOKEN 미설정 — 네트워크 노출 시 누구나 당신 CLI 구독/메모리를 쓸 수 있습니다.\n" +
       "  토큰을 설정하거나, localhost 테스트면 MCP_HTTP_ALLOW_NOAUTH=1 을 명시하세요.\n",
   );
   process.exit(1);
@@ -91,7 +91,7 @@ app.post("/messages", requireAuth, async (req: Request, res: Response) => {
 
 app.listen(PORT, HOST, () => {
   process.stderr.write(
-    `[cli-gateway-mcp-http] listening on ${HOST}:${PORT}  auth=${TOKEN ? "on" : "OFF"}  (${configSummary()})\n` +
+    `[localmind-mcp-http] listening on ${HOST}:${PORT}  auth=${TOKEN ? "on" : "OFF"}  (${configSummary()})\n` +
       `  Streamable HTTP: http://<host>:${PORT}/mcp   SSE: http://<host>:${PORT}/sse\n`,
   );
 });

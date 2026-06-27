@@ -10,7 +10,7 @@
 import fs from "node:fs";
 
 const OM = (process.env.OPENMEMORY_URL ?? "http://localhost:8767").replace(/\/$/, "");
-const USER = process.env.OPENMEMORY_USER ?? "cli-gateway";
+const USER = process.env.OPENMEMORY_USER ?? "localmind";
 const IN = process.argv[2] ?? process.env.MEMORY_BACKUP_FILE ?? "memory-backup.md";
 
 async function existingContents(): Promise<Set<string>> {

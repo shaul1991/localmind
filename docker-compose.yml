@@ -1,15 +1,15 @@
 services:
-  cli-gateway:
+  localmind:
     build: .
-    image: cli-gateway
-    container_name: cli-gateway
+    image: localmind
+    container_name: localmind
     ports:
       - "8787:8787"
     environment:
       - HOST=0.0.0.0
       - PORT=8787
       # 필요 시 주석 해제
-      # - CLI_GATEWAY_API_KEY=change-me
+      # - LOCALMIND_API_KEY=change-me
       # - DEFAULT_BACKEND=claude
       # - SESSION_MODE=auto
       # - LOG_LEVEL=info
@@ -28,8 +28,8 @@ services:
   mcp-http:
     profiles: ["mcp"]
     build: .
-    image: cli-gateway
-    container_name: cli-gateway-mcp-http
+    image: localmind
+    container_name: localmind-mcp-http
     command: ["node", "dist/mcp-http.js"]
     ports:
       - "8788:8788"
@@ -37,19 +37,19 @@ services:
       - MCP_HTTP_HOST=0.0.0.0
       - MCP_HTTP_PORT=8788
       - MCP_HTTP_TOKEN=${MCP_HTTP_TOKEN:?MCP_HTTP_TOKEN을 .env에 설정하세요(네트워크 노출)}
-      - MCP_INSTANCE=${MCP_INSTANCE:-cli-gateway}
+      - MCP_INSTANCE=${MCP_INSTANCE:-localmind}
       - MCP_DEFAULT_MODEL=${MCP_DEFAULT_MODEL:-sonnet}
-      - CLI_GATEWAY_URL=http://cli-gateway:8787
+      - LOCALMIND_URL=http://localmind:8787
       - OPENMEMORY_URL=http://openmemory:8767
       - EMBEDDINGS_URL=http://litellm:4000/v1
       - EMBEDDINGS_KEY=${LITELLM_MASTER_KEY:-sk-local}
       - NOTES_DIR=/notes
       - BRAIN_INDEX=/data/brain-index.json
     volumes:
-      - ${NOTES_DIR:-${HOME}/cli-gateway-brain}:/notes
+      - ${NOTES_DIR:-${HOME}/localmind-brain}:/notes
       - mcp-brain:/data
     depends_on:
-      - cli-gateway
+      - localmind
     restart: unless-stopped
 
   # ── opt: 임베딩 백엔드 (profile: gateway) ─────────────────────
@@ -57,7 +57,7 @@ services:
   ollama:
     profiles: ["gateway"]
     image: ollama/ollama:latest
-    container_name: cli-gateway-ollama
+    container_name: localmind-ollama
     environment:
       # CPU에선 임베딩 1건이 이미 전 코어를 쓰므로 병렬(>1)은 경합으로 더 느려진다.
       # 기본 1, GPU 등 여유가 있을 때만 올린다.
@@ -77,12 +77,12 @@ services:
   # ── opt: 통합 게이트웨이 (profile: gateway) ───────────────────
   # supermemory 등 소비자는 이 엔드포인트(4000) 하나만 바라본다.
   #   /v1/embeddings        → ollama(bge-m3)
-  #   /v1/chat/completions  → cli-gateway(claude/codex CLI)
+  #   /v1/chat/completions  → localmind(claude/codex CLI)
   litellm:
     profiles: ["gateway"]
     image: ghcr.io/berriai/litellm:main-latest
-    container_name: cli-gateway-litellm
-    depends_on: [cli-gateway, ollama]
+    container_name: localmind-litellm
+    depends_on: [localmind, ollama]
     ports:
       - "4000:4000"
     volumes:
@@ -95,12 +95,12 @@ services:
 
   # ── opt: 메모리 서비스 (profile: memory) — OpenMemory(mem0) ──
   # 저장소는 Postgres+pgvector 단일 DB(앱 메타데이터 + 벡터). OpenMemory는
-  # 최신 소스 + cli-gateway 패치로 빌드(게시 이미지는 pgvector 미지원 + 읽기 버그).
+  # 최신 소스 + localmind 패치로 빌드(게시 이미지는 pgvector 미지원 + 읽기 버그).
   # LLM·임베더는 게이트웨이로 → claude(추출) + bge-m3(임베딩), 메터드 API 0원.
   mem0_pg:
     profiles: ["memory"]
     image: pgvector/pgvector:pg16
-    container_name: cli-gateway-pg
+    container_name: localmind-pg
     environment:
       - POSTGRES_USER=mem0
       - POSTGRES_PASSWORD=mem0
@@ -117,8 +117,8 @@ services:
   openmemory:
     profiles: ["memory"]
     build: ./openmemory
-    image: cli-gateway-openmemory
-    container_name: cli-gateway-openmemory
+    image: localmind-openmemory
+    container_name: localmind-openmemory
     depends_on:
       mem0_pg:
         condition: service_healthy
@@ -133,7 +133,7 @@ services:
       - OPENAI_API_KEY=${LITELLM_MASTER_KEY:-sk-local}
       # openai SDK가 직접 읽는 base URL → LLM·임베더 모두 게이트웨이로.
       - OPENAI_BASE_URL=http://litellm:4000/v1
-      - USER=${OPENMEMORY_USER:-cli-gateway}
+      - USER=${OPENMEMORY_USER:-localmind}
       # 앱 메타데이터 DB → Postgres (목록/검색 버그 해소)
       - DATABASE_URL=postgresql://mem0:mem0@mem0_pg:5432/openmemory
       # 벡터스토어 → pgvector (PG_HOST/PORT 감지 시 mem0가 pgvector 사용)
@@ -157,8 +157,8 @@ services:
   # 하고 LLM/임베더 모델명을 게이트웨이 라우팅에 맞게 설정한다.
   openmemory-init:
     profiles: ["memory"]
-    image: cli-gateway-openmemory
-    container_name: cli-gateway-openmemory-init
+    image: localmind-openmemory
+    container_name: localmind-openmemory-init
     depends_on:
       mem0_pg:
         condition: service_healthy

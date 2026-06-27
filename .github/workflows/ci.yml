@@ -37,6 +37,6 @@ jobs:
         with:
           context: .
           push: false
-          tags: cli-gateway:ci
+          tags: localmind:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -1,5 +1,5 @@
 """
-최신 OpenMemory 소스에 cli-gateway 패치를 적용한다.
+최신 OpenMemory 소스에 localmind 패치를 적용한다.
 
 (1) 목록/검색 읽기 버그:
     list_memories / filter_memories가 categories를 메인 쿼리에 조인하면서
@@ -103,11 +103,11 @@ s = patch(
     "filter eager",
 )
 
-# (1d) 의미 기반 검색 라우트 추가 (cli-gateway MCP recall용):
+# (1d) 의미 기반 검색 라우트 추가 (localmind MCP recall용):
 #      REST /filter는 키워드(ilike)라, mem0.search로 임베딩 의미검색을 노출한다.
 s += '''
 
-# ── cli-gateway: 의미 기반 검색(mem0.search) 엔드포인트 ──
+# ── localmind: 의미 기반 검색(mem0.search) 엔드포인트 ──
 from pydantic import BaseModel as _CGBase
 
 
@@ -161,7 +161,7 @@ assert cat_old in ct, "categorization 함수 형태 변경됨"
 ct = ct.replace(
     cat_old,
     """def get_categories_for_memory(memory: str) -> List[str]:
-    # cli-gateway: 구조화 출력이 필요한 카테고리화는 CLI 경로에서 항상 실패하고
+    # localmind: 구조화 출력이 필요한 카테고리화는 CLI 경로에서 항상 실패하고
     # tenacity 재시도가 워커를 막으므로 비활성화(빈 카테고리 반환).
     return []
     try:""",

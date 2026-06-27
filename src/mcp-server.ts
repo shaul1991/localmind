@@ -1,5 +1,5 @@
 /**
- * cli-gateway MCP 서버 정의(도구 등록). stdio·HTTP 두 transport가 공유한다.
+ * localmind MCP 서버 정의(도구 등록). stdio·HTTP 두 transport가 공유한다.
  *
  * 도구: ask · remember · recall · capture_note · search_notes · ask_brain · whoami
  *
@@ -15,8 +15,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { askBrain, capture, notesDir, searchNotes } from "./brain.js";
 
-export const GATEWAY_URL = (process.env.CLI_GATEWAY_URL ?? "http://localhost:8787").replace(/\/$/, "");
-export const GATEWAY_KEY = process.env.CLI_GATEWAY_API_KEY?.trim();
+export const GATEWAY_URL = (process.env.LOCALMIND_URL ?? "http://localhost:8787").replace(/\/$/, "");
+export const GATEWAY_KEY = process.env.LOCALMIND_API_KEY?.trim();
 export const OPENMEMORY_URL = (process.env.OPENMEMORY_URL ?? "http://localhost:8767").replace(/\/$/, "");
 // 디바이스/서버 식별자. 메모리 사용자 기본값으로도 쓰여 서버별 메모리가 자연히 분리된다.
 export const INSTANCE = (process.env.MCP_INSTANCE ?? process.env.OPENMEMORY_USER ?? os.hostname()).trim();
@@ -49,15 +49,15 @@ export function configSummary(): string {
 
 /** 도구가 모두 등록된 새 McpServer를 만든다(HTTP stateless는 요청마다 새로 생성). */
 export function buildServer(): McpServer {
-  const server = new McpServer({ name: `cli-gateway:${INSTANCE}`, version: "0.2.0" });
+  const server = new McpServer({ name: `localmind:${INSTANCE}`, version: "0.2.0" });
 
   // ── whoami: 이 인스턴스가 어느 디바이스/서버인지 ──────────────────
   server.registerTool(
     "whoami",
     {
-      title: "Which cli-gateway instance",
+      title: "Which localmind instance",
       description:
-        "Report this cli-gateway instance identity (device/server). Use to know whose brain/memory " +
+        "Report this localmind instance identity (device/server). Use to know whose brain/memory " +
         "you are talking to before remember/recall/notes.",
       inputSchema: {},
     },
@@ -74,7 +74,7 @@ export function buildServer(): McpServer {
     {
       title: "Ask claude/codex",
       description:
-        "Ask a Claude or Codex CLI model (via cli-gateway) and get its text answer. " +
+        "Ask a Claude or Codex CLI model (via localmind) and get its text answer. " +
         "Use for cross-model consultation. model: 'sonnet'/'opus'/'claude-*' → Claude, " +
         "'gpt-5.5'/'codex:*' → Codex.",
       inputSchema: {

@@ -47,7 +47,7 @@ export function loadConfig(): Config {
   return {
     port: num("PORT", 8787),
     host: str("HOST", "127.0.0.1"),
-    apiKey: process.env.CLI_GATEWAY_API_KEY?.trim() || null,
+    apiKey: process.env.LOCALMIND_API_KEY?.trim() || null,
     defaultBackend: defaultBackend === "codex" ? "codex" : "claude",
     claudeDefaultModel: str("CLAUDE_DEFAULT_MODEL", "sonnet"),
     codexDefaultModel: str("CODEX_DEFAULT_MODEL", "gpt-5.5"),

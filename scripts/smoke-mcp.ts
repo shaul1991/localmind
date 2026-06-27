@@ -1,5 +1,5 @@
 /**
- * cli-gateway MCP 서버를 공식 MCP 클라이언트 SDK로 검증한다.
+ * localmind MCP 서버를 공식 MCP 클라이언트 SDK로 검증한다.
  *   npm run smoke:mcp
  * 전제: 게이트웨이+메모리 스택이 떠 있어야 한다(ask=8787, memory=8767).
  */

@@ -3,7 +3,7 @@
  *
  *  - 노트는 NOTES_DIR의 마크다운 파일이 정본.
  *  - 임베딩 인덱스는 파생물( NOTES_DIR/.brain-index.json ). 파일 해시로 증분 갱신.
- *  - 임베딩은 게이트웨이(bge-m3), 종합은 cli-gateway 채팅(claude/codex)을 쓴다.
+ *  - 임베딩은 게이트웨이(bge-m3), 종합은 localmind 채팅(claude/codex)을 쓴다.
  *
  * pgvector/포트 노출이 필요 없도록 인덱스는 로컬 파일 + 인메모리 코사인으로 처리한다
  * (개인 지식 규모엔 충분). stdout은 MCP 전용이므로 이 모듈은 어떤 것도 stdout에 쓰지 않는다.
@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 
-const NOTES_DIR = process.env.NOTES_DIR ?? path.join(process.env.HOME ?? ".", "cli-gateway-brain");
+const NOTES_DIR = process.env.NOTES_DIR ?? path.join(process.env.HOME ?? ".", "localmind-brain");
 // 인덱스는 기본적으로 노트 폴더 안에 두되, git/싱크 볼트를 더럽히지 않도록
 // BRAIN_INDEX로 위치를 바꿀 수 있다.
 const INDEX_PATH = process.env.BRAIN_INDEX ?? path.join(NOTES_DIR, ".brain-index.json");
@@ -21,8 +21,8 @@ const EMB_URL = (process.env.EMBEDDINGS_URL ?? "http://localhost:4000/v1").repla
 const EMB_KEY = process.env.EMBEDDINGS_KEY ?? process.env.LITELLM_MASTER_KEY ?? "sk-local";
 const EMB_MODEL = process.env.EMBEDDINGS_MODEL ?? "text-embedding-3-small";
 
-const GATEWAY_URL = (process.env.CLI_GATEWAY_URL ?? "http://localhost:8787").replace(/\/$/, "");
-const GATEWAY_KEY = process.env.CLI_GATEWAY_API_KEY?.trim();
+const GATEWAY_URL = (process.env.LOCALMIND_URL ?? "http://localhost:8787").replace(/\/$/, "");
+const GATEWAY_KEY = process.env.LOCALMIND_API_KEY?.trim();
 const ANSWER_MODEL = process.env.MCP_DEFAULT_MODEL ?? "sonnet";
 
 const MAX_CHUNK = Math.max(400, Number(process.env.BRAIN_CHUNK_SIZE ?? 2000));

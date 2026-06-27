@@ -1,4 +1,4 @@
-# cli-gateway 운영 커맨드. `make` 또는 `make help`로 목록 확인.
+# localmind 운영 커맨드. `make` 또는 `make help`로 목록 확인.
 # 설정값(MCP_HTTP_TOKEN, MCP_INSTANCE, NOTES_DIR 등)은 .env 에서 읽힌다(.env.example 참고).
 
 COMPOSE := docker compose

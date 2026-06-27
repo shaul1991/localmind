@@ -1,6 +1,6 @@
 # OpenMemory를 최신 소스에서 빌드한다.
 # 게시 이미지(mem0/openmemory-mcp:latest)는 구버전이라 pgvector 미지원 +
-# 목록/검색 읽기 버그가 있어, 최신 소스 + cli-gateway 패치로 직접 빌드한다.
+# 목록/검색 읽기 버그가 있어, 최신 소스 + localmind 패치로 직접 빌드한다.
 FROM python:3.12-slim
 
 WORKDIR /usr/src/openmemory
@@ -17,7 +17,7 @@ RUN apt-get update \
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-# cli-gateway 패치: (1) 목록/검색 DISTINCT ON 버그, (2) Postgres 앱 DB 지원.
+# localmind 패치: (1) 목록/검색 DISTINCT ON 버그, (2) Postgres 앱 DB 지원.
 COPY patch.py /tmp/patch.py
 RUN python /tmp/patch.py
 

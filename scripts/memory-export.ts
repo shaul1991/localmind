@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const OM = (process.env.OPENMEMORY_URL ?? "http://localhost:8767").replace(/\/$/, "");
-const USER = process.env.OPENMEMORY_USER ?? "cli-gateway";
+const USER = process.env.OPENMEMORY_USER ?? "localmind";
 const OUT = process.argv[2] ?? process.env.MEMORY_BACKUP_FILE ?? "memory-backup.md";
 
 async function fetchAll(): Promise<any[]> {
@@ -36,7 +36,7 @@ async function main(): Promise<void> {
   items.sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")));
   const date = new Date().toISOString().slice(0, 10);
   const body = [
-    "# cli-gateway memory backup",
+    "# localmind memory backup",
     "",
     `> user_id: \`${USER}\` · exported: ${date} · count: ${items.length}`,
     "",

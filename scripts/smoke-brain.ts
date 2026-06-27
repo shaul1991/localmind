@@ -22,7 +22,7 @@ async function main() {
   fs.mkdirSync(NOTES_DIR, { recursive: true });
   fs.writeFileSync(
     path.join(NOTES_DIR, "project.md"),
-    "# cli-gateway\n\ncli-gateway는 로컬 claude/codex CLI 구독을 OpenAI·Anthropic 호환 API로 노출한다. 임베딩은 bge-m3 모델을 쓰고, 장기 기억은 mem0를 사용한다.",
+    "# localmind\n\nlocalmind는 로컬 claude/codex CLI 구독을 OpenAI·Anthropic 호환 API로 노출한다. 임베딩은 bge-m3 모델을 쓰고, 장기 기억은 mem0를 사용한다.",
   );
   fs.writeFileSync(
     path.join(NOTES_DIR, "infra.md"),
