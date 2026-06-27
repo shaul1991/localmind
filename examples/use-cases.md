@@ -8,8 +8,10 @@
 |---|---|---|
 | 백엔드/풀스택 | 서비스·스크립트의 메터드 API를 로컬로 대체 | [chat-openai.py](chat-openai.py) |
 | 프론트엔드 | UI 카피·컴포넌트 초안을 키/비용 없이 | [chat-openai.mjs](chat-openai.mjs) |
+| 게임 개발 | NPC 대사·퀘스트 대량 생성·로어 일관성 | [function-calling.py](function-calling.py) |
 | 인프라/DevOps/SRE | 서버별 런북·장애기억·운영 RAG | [mcp-remote-infra.md](mcp-remote-infra.md) |
 | ML/데이터 엔지니어 | 파이프라인 임베딩·로컬 RAG·배치 LLM 0원 | [embeddings.py](embeddings.py) |
+| 데이터 분석가 | 민감 데이터 로컬 분석·지표 정의 RAG | [semantic-search.py](semantic-search.py) |
 | QA/테스트 | 테스트케이스 생성·로그 요약·CI 분류 | [function-calling.py](function-calling.py) |
 | 기술 리드/아키텍트 | 다중 모델 설계 리뷰·ADR 적재/검색 | [mcp-clients.md](mcp-clients.md) |
 | PM/기획(비개발) | 피드백 요약·스펙 초안·결정 회상 | [mcp-clients.md](mcp-clients.md) |
@@ -32,6 +34,12 @@
 - **효과**: 키·비용 없이 반복 작업 가속, 사내 문구는 로컬 밖으로 안 나감.
 - **시작**: [chat-openai.mjs](chat-openai.mjs) · [chat-streaming.sh](chat-streaming.sh)
 
+## 🎮 게임 개발자
+- **상황**: NPC 대사·퀘스트·아이템 설명을 대량 생성하고 세계관(로어) 일관성을 유지해야 하는데, 반복 API 호출 비용이 쌓인다.
+- **활용**: 로컬 chat으로 대사·플레이버 텍스트 생성(반복 호출 0원). `function-calling`으로 구조화된 아이템/퀘스트 JSON. 설정·로어 문서를 `NOTES_DIR`로 두고 `ask_brain`으로 캐릭터·세계관 일관성 체크. 런타임 NPC 대화 백엔드로 `:4000`을 게임 서버에 연결도 가능.
+- **효과**: 콘텐츠 대량 생성 **비용 0원**, RAG로 세계관 일관성 유지, 미공개 설정이 로컬 밖으로 안 나감.
+- **시작**: [function-calling.py](function-calling.py) · [chat-openai.mjs](chat-openai.mjs) · [brain-node.mjs](brain-node.mjs)
+
 ## 🛠️ 인프라 / DevOps / SRE
 - **상황**: 서버마다 스펙·백업정책·장애 이력이 머릿속/흩어진 메모에 있다.
 - **활용**: 서버별 독립 인스턴스(`MCP_INSTANCE=서버명`). `capture_note`로 런북 적재, `remember`로 장애 기록, `ask_brain`으로 "이 서버 한정" RAG. 노트북에서 서버별 원격 MCP로 질의.
@@ -43,6 +51,12 @@
 - **활용**: 임베딩을 로컬 bge-m3(다국어, 1024d)로. LangChain/LlamaIndex/Chroma의 base_url만 교체. 대량 배치 LLM 작업도 0원.
 - **효과**: 임베딩·LLM 호출 **비용·한도 해방**, 한국어 품질 유지.
 - **시작**: [embeddings.py](embeddings.py) · [semantic-search.py](semantic-search.py) · [langchain-rag.py](langchain-rag.py)
+
+## 📊 데이터 분석가
+- **상황**: 쿼리·집계·리포트를 다루는데, 사내/고객 데이터를 외부 API에 보내긴 부담스럽고 분석 보조는 필요하다.
+- **활용**: 로컬 chat으로 SQL/pandas 작성·결과 해석·리포트 초안. 지표 정의·데이터 사전을 `NOTES_DIR`로 두고 `ask_brain`으로 "이 지표 정의가 뭐였지?" RAG. 자유응답·로그 텍스트 분류/군집은 로컬 임베딩으로.
+- **효과**: 민감 데이터가 **로컬을 안 떠나며** 분석 가속, 지표·용어 일관성 유지.
+- **시작**: [chat-openai.py](chat-openai.py) · [semantic-search.py](semantic-search.py) · [brain-node.mjs](brain-node.mjs)
 
 ## 🔬 QA / 테스트 엔지니어
 - **상황**: 테스트 케이스 작성·실패 로그 분류·릴리즈 노트 요약이 수작업.

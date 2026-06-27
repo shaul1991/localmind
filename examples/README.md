@@ -34,7 +34,7 @@ make health        # 200 확인
 | [langchain-rag.py](langchain-rag.py) | LangChain의 LLM+임베딩을 localmind로 |
 | [mcp-clients.md](mcp-clients.md) | Cursor/Claude Desktop/Codex에 MCP 도구 붙이기 |
 | [mcp-remote-infra.md](mcp-remote-infra.md) | 서버별 원격 MCP로 인프라 운영 |
-| [use-cases.md](use-cases.md) | **직군별 유즈케이스(11개 페르소나)** — 내 직군 카드만 보면 됨 |
+| [use-cases.md](use-cases.md) | **직군별 유즈케이스(13개 페르소나)** — 내 직군 카드만 보면 됨 |
 
 ## 의존성(예제용)
 ```bash
