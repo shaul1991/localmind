@@ -77,6 +77,61 @@ docker run -d --name cli2port -p 8787:8787 \
 - claude는 glibc 네이티브 바이너리라 베이스 이미지는 Debian 계열(`node:24-slim`)을 사용합니다(alpine/musl 비호환).
 - 인증 토큰 갱신을 컨테이너가 호스트 파일에 다시 쓰므로 볼륨은 읽기·쓰기로 마운트합니다.
 
+## 임베딩까지 포함한 완전한 로컬 스택 (gateway 프로파일)
+
+cli2port는 채팅(생성)만 다룹니다 — CLI는 **임베딩**(텍스트→벡터)을 못 하기 때문입니다. 그래서 임베딩이 필요한 소비자(예: supermemory 같은 메모리/RAG 시스템)를 위해, **임베딩 서버(Ollama+bge-m3)** 와 **통합 게이트웨이(LiteLLM)** 를 opt-in 프로파일로 함께 제공합니다.
+
+```
+소비자 ──(base URL 하나)──▶ LiteLLM 게이트웨이 (:4000)
+                              ├─ /v1/embeddings        → ollama (bge-m3)
+                              └─ /v1/chat/completions  → cli2port → claude/codex CLI
+```
+
+소비자는 **base URL 하나**(`http://<host>:4000/v1`)만 바라보면, 임베딩은 로컬 모델로·채팅은 CLI 구독으로 자동 분기됩니다.
+
+### 기동
+
+```bash
+docker compose --profile gateway up -d --build
+# 최초 1회: ollama가 bge-m3(~1.2GB)를 자동 pull (수 분 소요)
+```
+
+올라오는 서비스:
+| 서비스 | 포트 | 역할 |
+|---|---|---|
+| `litellm` | 4000 | 통합 게이트웨이 (소비자가 바라보는 단일 엔드포인트) |
+| `cli2port` | 8787 | 채팅 (claude/codex CLI) |
+| `ollama` | (내부) | 임베딩 백엔드 (bge-m3) |
+
+### 소비자(supermemory 등) 연결
+
+OpenAI 호환 클라이언트의 base URL/key만 게이트웨이로 바꿉니다.
+
+```bash
+OPENAI_BASE_URL=http://<host>:4000/v1
+OPENAI_API_KEY=sk-local            # LITELLM_MASTER_KEY 값
+EMBEDDING_MODEL=text-embedding-3-small   # 또는 bge-m3 (둘 다 bge-m3로 매핑됨)
+```
+
+```python
+from openai import OpenAI
+c = OpenAI(base_url="http://localhost:4000/v1", api_key="sk-local")
+
+c.embeddings.create(model="text-embedding-3-small", input="의미 검색용 텍스트")  # → ollama bge-m3 (1024차원)
+c.chat.completions.create(model="claude-sonnet-4-6",                            # → cli2port → claude
+    messages=[{"role": "user", "content": "안녕"}])
+```
+
+### 라우팅 규칙 (`litellm.config.yaml`)
+- 임베딩 모델명(`text-embedding-3-small/large`, `ada-002`, `bge-m3`) → **ollama bge-m3**
+- 그 외 모든 모델 → **cli2port** (모델명으로 claude/codex 라우팅)
+- 다른 임베딩 모델명을 쓰면 `litellm.config.yaml`의 `model_list`에 한 줄 추가하세요(없으면 채팅으로 잘못 라우팅됨).
+
+### 주의
+- **임베딩 모델 일관성**: 색인과 쿼리는 같은 임베딩 모델이어야 합니다. 모델을 바꾸면 전체 재색인이 필요합니다(벡터 차원도 bge-m3=1024로 맞출 것).
+- `EMBEDDING_MODEL`/`LITELLM_MASTER_KEY`는 `.env`로 바꿀 수 있습니다.
+- GPU가 있고 대량 색인이면 ollama 대신 HF TEI/Infinity 같은 임베딩 전용 서버로 `litellm.config.yaml`의 `api_base`만 바꿔도 됩니다.
+
 ## 사용 예시
 
 ### curl
