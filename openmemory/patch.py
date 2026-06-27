@@ -118,16 +118,26 @@ c = c.replace(
 )
 open(cp, "w").write(c)
 
-# (1c) categorization.py가 gpt-4o-mini를 하드코딩 → 게이트웨이가 codex로
-#      라우팅해 502. CHAT_MODEL(claude)로 바꿔 올바른 백엔드로 보낸다.
-#      (구조화 출력 한계로 카테고리가 항상 채워지진 않지만 비치명적)
+# (1c) 자동 카테고리화 비활성화:
+#      categorization은 OpenAI 구조화 출력(response_format=pydantic, json_schema)을
+#      요구하는데 CLI 경로(claude)에선 강제되지 않아 항상 실패하고,
+#      @retry(3회 + 4~15s 백오프)가 단일 워커를 30~60초 막아 add를 느리게 하고
+#      직후 요청(목록 등)을 타임아웃시킨다. 빈 카테고리를 즉시 반환해 비활성화.
 catp = "/usr/src/openmemory/app/utils/categorization.py"
 ct = open(catp).read()
-if 'model="gpt-4o-mini"' in ct:
-    ct = ct.replace('model="gpt-4o-mini"', 'model=os.environ.get("CHAT_MODEL", "gpt-4o-mini")')
-    if "\nimport os" not in ct and not ct.startswith("import os"):
-        ct = "import os\n" + ct
-    open(catp, "w").write(ct)
+cat_old = """@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=15))
+def get_categories_for_memory(memory: str) -> List[str]:
+    try:"""
+assert cat_old in ct, "categorization 함수 형태 변경됨"
+ct = ct.replace(
+    cat_old,
+    """def get_categories_for_memory(memory: str) -> List[str]:
+    # cli2port: 구조화 출력이 필요한 카테고리화는 CLI 경로에서 항상 실패하고
+    # tenacity 재시도가 워커를 막으므로 비활성화(빈 카테고리 반환).
+    return []
+    try:""",
+)
+open(catp, "w").write(ct)
 
 # (2) Postgres 앱 DB 지원
 dp = "/usr/src/openmemory/app/database.py"
