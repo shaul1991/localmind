@@ -1,19 +1,61 @@
 # cli-gateway
 
-로컬에 설치된 **Claude Code CLI** / **Codex CLI**를 **OpenAI · Anthropic API 호환 HTTP 서버**로 노출합니다.
+로컬 **Claude Code / Codex CLI 구독**을 토대로, **메터드 API 0원의 완결형 로컬 AI 스택**을 repo 하나로 제공합니다.
 
-기존에 OpenAI/Claude API를 호출하던 코드의 `base_url`만 cli-gateway로 바꾸면, 실제 API 대신 로컬 CLI(구독 인증)가 요청을 처리합니다. 별도 API 키 발급·과금 없이 CLI 구독을 API처럼 쓰는 것이 목표입니다.
-
-OpenAI SDK(`/v1/chat/completions`)와 Anthropic SDK(`/v1/messages`)를 **모두** 그대로 붙일 수 있습니다.
+- **LLM API** — OpenAI(`/v1/chat/completions`)·Anthropic(`/v1/messages`) 호환. 기존 코드의 `base_url`만 바꾸면 됨.
+- **임베딩** — 로컬 bge-m3 (OpenAI `/v1/embeddings` 호환)
+- **메모리** — mem0 (진화하는 사실 기억)
+- **second-brain** — 내 마크다운 노트에 대한 RAG
+- **MCP 도구** — Cursor/Claude Desktop/Cline에서 위 기능을 도구로 사용
 
 ```
-클라이언트 (OpenAI SDK / Anthropic SDK)
-      │  POST /v1/chat/completions  또는  /v1/messages
-      ▼
-   cli-gateway  ──(모델명 라우팅)──▶  claude -p / codex exec
-      │                                   │
-      ◀────── SSE / JSON 응답 변환 ◀───────┘
+  HTTP API ┬─ /v1/chat/completions · /v1/messages   → claude/codex CLI
+           ├─ /v1/embeddings                         → bge-m3
+           └─ OpenMemory REST                        → mem0 + pgvector
+  MCP ───── ask · remember/recall · capture_note/search_notes/ask_brain
 ```
+
+## Quickstart
+
+### 0) 전제
+- Node.js ≥ 20, Docker
+- 호스트에 로그인된 `claude` / `codex` CLI
+
+### 1) 설치 & 기동
+```bash
+git clone https://github.com/shaul1991/cli-gateway && cd cli-gateway
+npm install && npm run build
+docker compose --profile gateway --profile memory up -d --build
+#   chat :8787 · 게이트웨이 :4000 · 메모리 :8767  (최초 빌드/모델 pull은 수 분)
+```
+
+### 2) API로 쓰기 (base_url만 교체)
+```bash
+curl http://localhost:8787/v1/chat/completions -H "Content-Type: application/json" \
+  -d '{"model":"sonnet","messages":[{"role":"user","content":"안녕"}]}'
+```
+OpenAI/Anthropic SDK는 `base_url`만 위 주소로 바꾸면 그대로 동작 → [사용 예시](#사용-예시).
+
+### 3) MCP로 쓰기 (개인 두뇌)
+Cursor `.cursor/mcp.json` / Claude Desktop `claude_desktop_config.json` / Cline MCP 설정에:
+```json
+{ "mcpServers": { "cli-gateway": {
+    "command": "node",
+    "args": ["/절대경로/cli-gateway/dist/mcp.js"],
+    "env": { "NOTES_DIR": "/내/노트/폴더", "OPENMEMORY_USER": "내이름" }
+}}}
+```
+→ 호스트가 `ask`·`remember/recall`·`capture_note/search_notes/ask_brain` 도구를 갖습니다.
+`NOTES_DIR`를 기존 `.md` 노트 폴더(예: second-brain-mesh)로 가리키면 **그 지식으로 바로 RAG**.
+
+### 4) 검증
+```bash
+npm run smoke           # OpenAI API
+npm run smoke:mcp       # MCP 도구 (ask/remember/recall)
+npm run smoke:brain     # second-brain (노트 RAG)
+```
+
+> 더 가볍게: 채팅 API만 쓰려면 `docker compose up -d --build` (게이트웨이/메모리 프로파일 생략).
 
 ## 동작 방식
 
