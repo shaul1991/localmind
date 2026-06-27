@@ -315,7 +315,10 @@ Claude Desktop `claude_desktop_config.json` (Cursor `.cursor/mcp.json`, Cline MC
 | `EMBEDDINGS_MODEL` | `text-embedding-3-small` | (게이트웨이가 bge-m3로 매핑) |
 | `BRAIN_BATCH` / `BRAIN_CONCURRENCY` / `BRAIN_CHUNK_SIZE` | `32` / `4` / `2000` | 인덱싱 튜닝 |
 
-> **인덱싱 성능**: 첫 인덱싱은 노트 전체를 임베딩하므로 시간이 걸리고(증분·resumable이라 이후엔 변경분만), bge-m3 CPU 임베딩이 바닥입니다. 더 빠르게: 더 가벼운 `EMBEDDING_MODEL`로 바꾸거나, GPU/전용 임베딩 서버(TEI 등)로 `EMBEDDINGS_URL`을 돌리세요.
+> **인덱싱 성능**: 첫 인덱싱은 노트 전체를 임베딩하므로 시간이 걸리고(증분·resumable이라 이후엔 변경분만), bge-m3 CPU 임베딩이 바닥입니다. 더 빠르게:
+> - **bge-m3 그대로 + GPU/전용 임베딩 서버(TEI/Infinity)** 로 `EMBEDDINGS_URL` 교체 (한국어 품질 유지하며 가속, 권장)
+> - 더 가벼운 모델로 바꾸려면 **반드시 다국어 모델**(multilingual-e5, snowflake-arctic-embed2)을 — `nomic-embed-text` 등 **영어 전용 모델은 한국어 검색 품질이 크게 떨어집니다**.
+> - 모델 변경 시 벡터 차원이 달라지므로 `EMBEDDING_DIMS` 조정 + 재인덱싱 필요.
 
 검증: `npm run smoke:mcp` (공식 MCP 클라이언트로 ask/remember/recall 점검).
 
