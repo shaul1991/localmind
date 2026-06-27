@@ -36,7 +36,10 @@
 - **활용**: `base_url`만 `http://localhost:4000/v1`로 바꾼다. 모델명으로 claude/codex 선택. 코딩 중엔 Cursor에서 `ask`로 다른 모델에 교차 상담.
 - **워크플로우**: 기존 API 호출부 `base_url`/`api_key` 교체 → 로컬에서 단위 테스트 → CI의 요약·분류 잡도 localmind로 → 구현 막히면 Cursor `ask`로 claude↔codex 교차 검토.
 - **효과**: 코드 변경 거의 0으로 **메터드 비용 0원**. 데이터는 로컬에서만.
-- **시작**: [chat-openai.py](chat-openai.py) · [function-calling.py](function-calling.py) · [mcp-clients.md](mcp-clients.md)
+- **시작**: [workflow-backend.py](workflow-backend.py) · [chat-openai.py](chat-openai.py) · [function-calling.py](function-calling.py)
+
+> 실제 플로우 — 로그 요약 → 분류(perf) → 대응 결정을 노트로 적재(.md 누적):
+> ![백엔드 실제 플로우](../docs/flow-backend.gif)
 
 ## 🎨 프론트엔드 개발자
 - **상황**: 버튼 문구·빈 상태 카피·컴포넌트 보일러플레이트를 빠르게 뽑고 싶지만 API 키 발급/비용이 번거롭다.
@@ -99,7 +102,10 @@
 - **활용**: **Claude Desktop**에 MCP만 붙이면 끝. `remember`로 결정·맥락 저장, `recall`로 회상, `capture_note`/`ask_brain`으로 기획 노트 RAG. 터미널 몰라도 됨.
 - **워크플로우**: Claude Desktop에 MCP 연결(1회) → 회의·고객 피드백을 `remember` → 스펙/PRD 초안을 chat으로 → "그때 왜 그렇게 정했지?"는 `recall`·`ask_brain`으로 즉답.
 - **효과**: 개인 비서급 기억 + "우리 그때 왜 그렇게 정했지?"에 즉답. 데이터는 내 노트북에만.
-- **시작**: [mcp-clients.md](mcp-clients.md) (Claude Desktop 섹션)
+- **시작**: [workflow-pm-spec.py](workflow-pm-spec.py) · [mcp-clients.md](mcp-clients.md) (Claude Desktop)
+
+> 실제 플로우 — 결정을 remember(mem0 저장) → PRD 초안 → 2주 뒤 recall로 회상(기억 누적):
+> ![PM 실제 플로우](../docs/flow-pm.gif)
 
 ## ✍️ 테크니컬 라이터 / 문서 담당
 - **상황**: 문서 초안·용어 일관성·기존 문서 검색에 시간이 든다.
