@@ -232,7 +232,7 @@ print(get_memory_client().search('반려견 간식', filters={'user_id':'cli-gat
 - ✅ **의미 회상**: mem0 엔진 `search()`가 게이트웨이로 임베딩해 의미 기반 검색.
 - `user_id`는 `OPENMEMORY_USER`로 시드된 사용자여야 합니다(임의 id는 "User not found").
 - **자동 카테고리화**(categorization)는 OpenAI 구조화 출력(json_schema)을 요구하는데 CLI 경로에선 강제가 안 되고 재시도가 워커를 막아 **비활성화**했습니다(메모리 기능엔 영향 없음).
-- mem0의 사실 추출 프롬프트가 영어 기반이라 **저장되는 사실이 영어로 정규화**될 수 있습니다(예: "User owns a blue Avante"). 한국어 저장을 원하면 mem0 추출 프롬프트를 커스터마이즈하세요.
+- mem0 사실 추출 프롬프트는 기본이 영어("User owns ...")라, `openmemory/patch.py`에서 **입력과 같은 언어 + 주어 생략**으로 패치했습니다 → 한국어 입력은 "매일 아침 6시에 기상한다"처럼 자연스러운 한국어로 저장됩니다.
 - OpenMemory는 단일 워커라 동시 add가 몰리면 직후 요청이 잠깐 밀릴 수 있습니다.
 - 임베딩 모델을 바꾸면 `EMBEDDING_DIMS`도 맞추고 `docker compose down -v`로 볼륨을 초기화하세요(차원이 테이블에 고정됨).
 

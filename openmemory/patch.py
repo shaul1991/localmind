@@ -168,6 +168,61 @@ ct = ct.replace(
 )
 open(catp, "w").write(ct)
 
+# (1e) 한국어 사실 추출 프롬프트 주입:
+#      mem0 기본 추출 프롬프트가 영어라 한국어 입력이 "User의 ~" 식 영어투로
+#      정규화된다. JSON 계약({"facts": [...]})은 유지하되 자연스러운 한국어로
+#      추출하도록 custom_fact_extraction_prompt를 Memory.from_config 직전에 넣는다.
+KO_FACT_PROMPT = (
+    "당신은 대화에서 기억할 만한 사실·선호·정보를 뽑아 정리하는 개인 정보 정리자입니다.\n\n"
+    "추출 대상: 개인 선호(좋아함/싫어함), 이름·관계·중요한 날짜, 계획·목표·할 일, "
+    "활동·서비스 선호, 건강·식습관·루틴, 직업·업무 정보(직책·도구·목표), 기타(책·영화·브랜드 등).\n\n"
+    "규칙:\n"
+    "- 추출한 사실은 반드시 **자연스러운 한국어**로 쓴다. 노트처럼 간결한 평서문(~다)로 쓴다.\n"
+    "- **주어를 쓰지 않는다.** '나는', 'User는', 'User가', '사용자는' 같은 주어를 절대 쓰지 말고 "
+    "생략한다. (예: '나는 매일 6시에 일어난다' → '매일 아침 6시에 기상한다')\n"
+    "- 영어 번역투('User의 ~')를 쓰지 않는다.\n"
+    "- 기억할 사실이 없으면 빈 배열을 반환한다.\n"
+    "- 인사말·잡담 등 의미 없는 내용은 무시한다.\n"
+    "- 다른 텍스트·코드펜스 없이 오직 아래 JSON 형식으로만 응답한다.\n\n"
+    '형식: {"facts": ["사실1", "사실2"]}\n\n'
+    "예시:\n"
+    '입력: "안녕!"\n출력: {"facts": []}\n'
+    '입력: "내 강아지 초코는 오이를 간식으로 좋아해"\n'
+    '출력: {"facts": ["강아지 이름은 초코이다", "초코는 오이를 간식으로 좋아한다"]}\n'
+    '입력: "나는 주로 타입스크립트랑 파이썬으로 개발해"\n'
+    '출력: {"facts": ["주로 사용하는 프로그래밍 언어는 타입스크립트와 파이썬이다"]}\n'
+    '입력: "나는 매일 아침 6시에 일어나서 달리기를 해"\n'
+    '출력: {"facts": ["매일 아침 6시에 기상한다", "아침마다 달리기를 한다"]}\n'
+)
+mp2 = "/usr/src/openmemory/app/utils/memory.py"
+m2 = open(mp2).read()
+anchor = "        config = _parse_environment_variables(config)"
+assert anchor in m2, "get_memory_client config 조립 지점 변경됨"
+m2 = m2.replace(
+    anchor,
+    anchor + "\n        config[\"custom_fact_extraction_prompt\"] = " + repr(KO_FACT_PROMPT),
+    1,
+)
+open(mp2, "w").write(m2)
+
+# (1f) mem0 라이브러리 추출 프롬프트 패치(언어/주어):
+#      이 mem0 버전은 ADDITIVE_EXTRACTION_PROMPT를 쓰며 'use "User" for user-stated
+#      facts'라고 명시해 모든 사실에 "User"가 붙고, same-language 지시도 없다.
+#      → 같은 언어(한국어면 한국어) + 주어 생략으로 바꾼다.
+mpp = "/usr/local/lib/python3.12/site-packages/mem0/configs/prompts.py"
+try:
+    mp_txt = open(mpp).read()
+    attr_old = """Attribute correctly: use "User" for user-stated facts. For assistant-generated content, frame in terms of the user's context (e.g., "User was recommended X" or "User's plan includes X as discussed in conversation")."""
+    attr_new = """Language and style (IMPORTANT): Write EVERY memory in the SAME LANGUAGE as the user input (Korean if the input is Korean). Do NOT use "User", "사용자", "나", or any subject pronoun — write each memory as a concise, natural, subject-less statement in the input's language (e.g., "매일 아침 6시에 기상한다", "주력 언어는 타입스크립트와 파이썬이다"). For assistant-generated content, also omit the subject and keep the input language."""
+    if attr_old in mp_txt:
+        mp_txt = mp_txt.replace(attr_old, attr_new, 1)
+        open(mpp, "w").write(mp_txt)
+        print("[patch] mem0 ADDITIVE_EXTRACTION_PROMPT 언어/주어 패치 적용")
+    else:
+        print("[patch] (skip) ADDITIVE_EXTRACTION_PROMPT 문구 변경됨 — 수동 확인 필요")
+except FileNotFoundError:
+    print("[patch] (skip) mem0 prompts.py 없음")
+
 # (2) Postgres 앱 DB 지원
 dp = "/usr/src/openmemory/app/database.py"
 d = open(dp).read()

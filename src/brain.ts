@@ -132,10 +132,11 @@ function cosine(a: number[], b: number[]): number {
 /**
  * 변경된 노트만 증분 임베딩해 인덱스를 최신화한다.
  *
- * 속도: 임베딩 요청은 고정 오버헤드(~0.4s)가 커서, 파일 단위가 아니라
- * 모든 청크를 펼쳐 배치(BRAIN_BATCH=32)로 묶고, 배치를 동시(BRAIN_CONCURRENCY=4)에
- * 보낸다 → 오버헤드 분산 + 병렬. 파일은 청크가 모두 임베딩된 뒤에만 커밋하고
- * 배치마다 저장해 중단에도 안전(재실행 시 이어감).
+ * 속도: 임베딩 요청은 고정 오버헤드가 커서, 파일 단위가 아니라 모든 청크를 펼쳐
+ * 배치(BRAIN_BATCH=8)로 묶어 보낸다 → 오버헤드 분산. CPU 임베딩은 청크당 1~4s라
+ * 배치가 크면 요청 타임아웃을 넘겨 재시도 cascade가 나므로 작게 잡고, 동시성도
+ * 낮게(BRAIN_CONCURRENCY=2: NUM_PARALLEL=1 ollama 큐 적체 완화) 둔다.
+ * 파일은 청크가 모두 임베딩된 뒤에만 커밋하고 배치마다 저장해 중단에도 안전(이어감).
  */
 async function ensureIndexed(): Promise<BrainIndex> {
   ensureDir();
