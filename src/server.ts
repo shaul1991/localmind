@@ -4,6 +4,7 @@ import { Router as BackendRouter } from "./backends/router.js";
 import { createChatHandler } from "./routes/chat.js";
 import { createMessagesHandler } from "./routes/messages.js";
 import { createModelsHandler } from "./routes/models.js";
+import { SessionStore } from "./session.js";
 import { log } from "./util/log.js";
 
 /**
@@ -28,6 +29,7 @@ function authMiddleware(config: Config) {
 export function createServer(config: Config) {
   const app = express();
   const backendRouter = new BackendRouter(config);
+  const sessions = new SessionStore(config.sessionMax, config.sessionTtlMs);
 
   app.use(express.json({ limit: "32mb" }));
 
@@ -39,11 +41,11 @@ export function createServer(config: Config) {
   const auth = authMiddleware(config);
 
   // OpenAI 호환 엔드포인트
-  app.post("/v1/chat/completions", auth, createChatHandler(backendRouter, config));
+  app.post("/v1/chat/completions", auth, createChatHandler(backendRouter, config, sessions));
   app.get("/v1/models", auth, createModelsHandler(config));
 
   // Anthropic 호환 엔드포인트
-  app.post("/v1/messages", auth, createMessagesHandler(backendRouter, config));
+  app.post("/v1/messages", auth, createMessagesHandler(backendRouter, config, sessions));
 
   // 잘못된 JSON 등 파싱 에러
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {

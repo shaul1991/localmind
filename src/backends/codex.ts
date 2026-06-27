@@ -18,7 +18,8 @@ export function createCodexBackend(config: Config): Backend {
   return {
     name: "codex",
     async *run(opts: BackendRunOptions): AsyncGenerator<string, BackendResult, void> {
-      const args = [
+      // exec 레벨 옵션은 resume 서브커맨드보다 반드시 앞에 와야 한다.
+      const base = [
         "exec",
         "--json",
         "--skip-git-repo-check",
@@ -28,15 +29,18 @@ export function createCodexBackend(config: Config): Backend {
         'approval_policy="never"', // 승인 프롬프트로 멈추지 않게
         "-C",
         os.tmpdir(),
-        "-m",
-        opts.model,
-        "-", // 프롬프트는 stdin에서 읽는다
       ];
+
+      // resume 시 system은 세션에 이미 반영돼 있으므로 다시 주입하지 않는다.
+      const args = opts.resumeId
+        ? [...base, "resume", opts.resumeId, "-"]
+        : [...base, "-m", opts.model, "-"];
+      const input = opts.resumeId ? opts.prompt : buildPrompt(opts.system, opts.prompt);
 
       const proc = spawnNdjson({
         bin: config.codexBin,
         args,
-        input: buildPrompt(opts.system, opts.prompt),
+        input,
         cwd: os.tmpdir(),
         signal: opts.signal,
       });
@@ -45,12 +49,16 @@ export function createCodexBackend(config: Config): Backend {
       let finalText = "";
       let inputTokens = 0;
       let outputTokens = 0;
+      let sessionId: string | undefined;
       let errored: string | null = null;
       let sawMessage = false;
 
       for await (const raw of proc.lines) {
         const obj = raw as Record<string, any>;
         switch (obj.type) {
+          case "thread.started":
+            if (typeof obj.thread_id === "string") sessionId = obj.thread_id;
+            break;
           case "item.completed": {
             const item = obj.item as Record<string, any> | undefined;
             if (item?.type === "agent_message" && typeof item.text === "string") {
@@ -122,6 +130,7 @@ export function createCodexBackend(config: Config): Backend {
         usage: { inputTokens, outputTokens },
         finishReason: "stop",
         model: opts.model,
+        sessionId,
       };
     },
   };

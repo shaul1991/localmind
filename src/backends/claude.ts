@@ -34,11 +34,19 @@ export function createClaudeBackend(config: Config): Backend {
         "", // 모든 내장 도구 비활성화 → 순수 텍스트 생성
         "--model",
         opts.model,
-        "--system-prompt",
-        opts.system && opts.system.trim() ? opts.system : DEFAULT_SYSTEM,
-        // CLAUDE.md / 환경정보 등 동적 시스템 섹션 제거 → 깔끔한 API 동작
-        "--exclude-dynamic-system-prompt-sections",
       ];
+
+      if (opts.resumeId) {
+        // resume 시 시스템 프롬프트는 세션에 이미 있으므로 건드리지 않는다.
+        args.push("--resume", opts.resumeId);
+      } else {
+        args.push(
+          "--system-prompt",
+          opts.system && opts.system.trim() ? opts.system : DEFAULT_SYSTEM,
+          // CLAUDE.md / 환경정보 등 동적 시스템 섹션 제거 → 깔끔한 API 동작
+          "--exclude-dynamic-system-prompt-sections",
+        );
+      }
 
       const proc = spawnNdjson({
         bin: config.claudeBin,
@@ -54,11 +62,13 @@ export function createClaudeBackend(config: Config): Backend {
       let outputTokens = 0;
       let stopReason: string | null = null;
       let model = opts.model;
+      let sessionId: string | undefined;
       let sawResult = false;
       let apiError: string | null = null;
 
       for await (const raw of proc.lines) {
         const obj = raw as Record<string, any>;
+        if (typeof obj.session_id === "string") sessionId = obj.session_id;
         switch (obj.type) {
           case "system":
             if (obj.subtype === "init" && typeof obj.model === "string") model = obj.model;
@@ -125,6 +135,7 @@ export function createClaudeBackend(config: Config): Backend {
         usage: { inputTokens, outputTokens },
         finishReason: mapStopReason(stopReason),
         model,
+        sessionId,
       };
     },
   };

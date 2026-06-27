@@ -4,6 +4,14 @@
 
 export type BackendName = "claude" | "codex";
 
+/**
+ * 세션 영속화 모드.
+ *  - off:      항상 stateless (매 요청 전체 히스토리 전송)
+ *  - explicit: 명시적 세션 id(헤더/필드)가 있을 때만 CLI 세션 resume
+ *  - auto:     명시 id + 메시지 prefix 자동 매칭으로 투명하게 resume
+ */
+export type SessionMode = "off" | "explicit" | "auto";
+
 export interface Config {
   port: number;
   host: string;
@@ -15,6 +23,9 @@ export interface Config {
   codexBin: string;
   requestTimeoutMs: number;
   logLevel: "debug" | "info" | "warn" | "error";
+  sessionMode: SessionMode;
+  sessionTtlMs: number;
+  sessionMax: number;
 }
 
 function num(name: string, fallback: number): number {
@@ -32,6 +43,7 @@ function str(name: string, fallback: string): string {
 export function loadConfig(): Config {
   const defaultBackend = str("DEFAULT_BACKEND", "claude");
   const logLevel = str("LOG_LEVEL", "info");
+  const sessionMode = str("SESSION_MODE", "auto");
   return {
     port: num("PORT", 8787),
     host: str("HOST", "127.0.0.1"),
@@ -45,5 +57,10 @@ export function loadConfig(): Config {
     logLevel: (["debug", "info", "warn", "error"].includes(logLevel)
       ? logLevel
       : "info") as Config["logLevel"],
+    sessionMode: (["off", "explicit", "auto"].includes(sessionMode)
+      ? sessionMode
+      : "auto") as SessionMode,
+    sessionTtlMs: num("SESSION_TTL_MS", 3_600_000),
+    sessionMax: num("SESSION_MAX", 1000),
   };
 }

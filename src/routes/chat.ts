@@ -3,7 +3,8 @@ import type { Request, Response } from "express";
 import type { Config } from "../config.js";
 import type { Router } from "../backends/router.js";
 import { BackendError } from "../backends/types.js";
-import { flattenMessages } from "../transform.js";
+import { contentToText, flattenMessages } from "../transform.js";
+import { extractExplicitId, prepareSession, type SessionStore } from "../session.js";
 import { log } from "../util/log.js";
 import type {
   ChatCompletionChunk,
@@ -39,7 +40,7 @@ function sse(res: Response, data: unknown): void {
   res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
-export function createChatHandler(router: Router, config: Config) {
+export function createChatHandler(router: Router, config: Config, sessions: SessionStore) {
   return async function chatHandler(req: Request, res: Response): Promise<void> {
     const body = req.body as ChatCompletionRequest;
 
@@ -51,7 +52,19 @@ export function createChatHandler(router: Router, config: Config) {
     }
 
     const { backend, model } = router.resolve(body.model);
-    const { system, prompt } = flattenMessages(body.messages);
+
+    // 세션 영속화: 이전 대화면 CLI 세션을 resume하고 새 턴만 전송.
+    const sess = prepareSession({
+      messages: body.messages,
+      norm: (m) => ({ role: m.role, text: contentToText(m.content).trim() }),
+      backend: backend.name,
+      explicitId: extractExplicitId(req.header("x-cli2port-session"), body as Record<string, unknown>),
+      config,
+      store: sessions,
+    });
+
+    // OpenAI는 system이 메시지 배열에 포함 → fresh면 자동 추출, resume면 새 턴엔 없음.
+    const { system, prompt } = flattenMessages(sess.sendMessages);
     const stream = body.stream === true;
     const includeUsage =
       stream && (body as any).stream_options?.include_usage === true;
@@ -70,11 +83,12 @@ export function createChatHandler(router: Router, config: Config) {
     const created = nowSec();
 
     log.info(
-      `chat: backend=${backend.name} model=${model} stream=${stream} msgs=${body.messages.length}`,
+      `chat: backend=${backend.name} model=${model} stream=${stream} msgs=${body.messages.length}` +
+        (sess.resumeId ? ` resume=${sess.resumeId.slice(0, 8)}` : ""),
     );
 
     try {
-      const gen = backend.run({ model, system, prompt, signal: ac.signal });
+      const gen = backend.run({ model, system, prompt, resumeId: sess.resumeId, signal: ac.signal });
 
       if (stream) {
         res.status(200);
@@ -93,6 +107,7 @@ export function createChatHandler(router: Router, config: Config) {
           next = await gen.next();
         }
         result = next.value;
+        sess.commit(result.sessionId, result.text);
 
         // 종료 청크
         sse(res, makeChunk(id, created, result.model || model, {}, result.finishReason));
@@ -120,6 +135,7 @@ export function createChatHandler(router: Router, config: Config) {
         let next = await gen.next();
         while (!next.done) next = await gen.next();
         const result = next.value;
+        sess.commit(result.sessionId, result.text);
 
         const response: ChatCompletionResponse = {
           id,

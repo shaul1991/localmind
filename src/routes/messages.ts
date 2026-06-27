@@ -3,7 +3,8 @@ import type { Request, Response } from "express";
 import type { Config } from "../config.js";
 import type { Router } from "../backends/router.js";
 import { BackendError } from "../backends/types.js";
-import { flattenAnthropic } from "../transform.js";
+import { contentToText, flattenAnthropic } from "../transform.js";
+import { extractExplicitId, prepareSession, type SessionStore } from "../session.js";
 import { log } from "../util/log.js";
 import type {
   AnthropicMessageResponse,
@@ -32,7 +33,7 @@ function sseEvent(res: Response, type: string, data: unknown): void {
   res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...(data as object) })}\n\n`);
 }
 
-export function createMessagesHandler(router: Router, config: Config) {
+export function createMessagesHandler(router: Router, config: Config, sessions: SessionStore) {
   return async function messagesHandler(req: Request, res: Response): Promise<void> {
     const body = req.body as AnthropicMessagesRequest;
 
@@ -45,7 +46,22 @@ export function createMessagesHandler(router: Router, config: Config) {
     }
 
     const { backend, model } = router.resolve(body.model);
-    const { system, prompt } = flattenAnthropic(body.system, body.messages);
+
+    // 세션 영속화: 이전 대화면 CLI 세션을 resume하고 새 턴만 전송.
+    const sess = prepareSession({
+      messages: body.messages,
+      norm: (m) => ({ role: m.role, text: contentToText(m.content).trim() }),
+      backend: backend.name,
+      explicitId: extractExplicitId(req.header("x-cli2port-session"), body as Record<string, unknown>),
+      config,
+      store: sessions,
+    });
+
+    // resume 시엔 system이 세션에 이미 있으므로 다시 보내지 않는다.
+    const { system, prompt } = flattenAnthropic(
+      sess.resumeId ? undefined : body.system,
+      sess.sendMessages,
+    );
     const stream = body.stream === true;
 
     const ac = new AbortController();
@@ -57,11 +73,12 @@ export function createMessagesHandler(router: Router, config: Config) {
 
     const id = newId();
     log.info(
-      `messages: backend=${backend.name} model=${model} stream=${stream} msgs=${body.messages.length}`,
+      `messages: backend=${backend.name} model=${model} stream=${stream} msgs=${body.messages.length}` +
+        (sess.resumeId ? ` resume=${sess.resumeId.slice(0, 8)}` : ""),
     );
 
     try {
-      const gen = backend.run({ model, system, prompt, signal: ac.signal });
+      const gen = backend.run({ model, system, prompt, resumeId: sess.resumeId, signal: ac.signal });
 
       if (stream) {
         res.status(200);
@@ -100,6 +117,7 @@ export function createMessagesHandler(router: Router, config: Config) {
           next = await gen.next();
         }
         const result = next.value;
+        sess.commit(result.sessionId, result.text);
 
         // 4) content_block_stop → message_delta(stop_reason + usage) → message_stop
         sseEvent(res, "content_block_stop", { index: 0 });
@@ -116,6 +134,7 @@ export function createMessagesHandler(router: Router, config: Config) {
         let next = await gen.next();
         while (!next.done) next = await gen.next();
         const result = next.value;
+        sess.commit(result.sessionId, result.text);
 
         const response: AnthropicMessageResponse = {
           id,

@@ -3,10 +3,12 @@
 export interface BackendRunOptions {
   /** CLI에 그대로 넘길 모델명 (별칭 또는 풀네임). */
   model: string;
-  /** 시스템 프롬프트(없으면 undefined). */
+  /** 시스템 프롬프트(없으면 undefined). resume 시에는 보통 생략. */
   system?: string;
   /** 평탄화된 사용자 프롬프트. */
   prompt: string;
+  /** 설정되면 해당 CLI 세션을 resume 한다. */
+  resumeId?: string;
   /** 요청 취소 신호. */
   signal: AbortSignal;
 }
@@ -23,6 +25,8 @@ export interface BackendResult {
   finishReason: string;
   /** 실제 응답한 모델명(가능하면). */
   model: string;
+  /** 다음 턴에 resume할 CLI 세션/스레드 id(가능하면). */
+  sessionId?: string;
 }
 
 export interface Backend {

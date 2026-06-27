@@ -152,6 +152,31 @@ with client.messages.stream(
 
 인증(`CLI2PORT_API_KEY` 설정 시)은 OpenAI식 `Authorization: Bearer <키>` 와 Anthropic식 `x-api-key: <키>` 헤더를 모두 허용합니다.
 
+## 세션 영속화 (컨텍스트 유지)
+
+OpenAI/Anthropic API는 stateless라 보통 매 요청마다 전체 대화 히스토리를 다시 보냅니다. cli2port는 대화를 **CLI 세션에 매핑**해, 이어지는 요청에서는 `claude --resume` / `codex exec resume`로 **새 턴만 전송**합니다. 결과적으로 CLI 측 컨텍스트와 프롬프트 캐시를 활용해 토큰을 아낍니다.
+
+`SESSION_MODE`로 동작을 정합니다.
+
+| 모드 | 동작 |
+|---|---|
+| `auto` (기본) | 메시지 prefix를 해시로 자동 인식. **클라이언트 코드 변경 불필요** — 일반적인 "히스토리를 계속 append하는" 채팅이면 자동으로 이어집니다. |
+| `explicit` | `x-cli2port-session` 헤더(또는 `session_id`/`user`/`metadata.user_id` 필드)가 있을 때만 해당 id로 세션을 잇습니다. 가장 견고합니다. |
+| `off` | 세션 없이 항상 전체 히스토리 전송. |
+
+```bash
+# explicit 모드 예: 같은 세션 id로 요청하면 컨텍스트가 이어짐
+curl http://127.0.0.1:8787/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "x-cli2port-session: my-convo-1" \
+  -d '{"model":"sonnet","messages":[{"role":"user","content":"내 이름은 지훈이야"}]}'
+```
+
+**auto 모드 주의점**
+- 클라이언트가 우리가 준 assistant 응답을 **그대로 다시 보낼 때** prefix가 일치해 이어집니다. 응답을 편집/요약해서 보내면 매칭이 깨지고, 이 경우 안전하게 **전체 히스토리로 새 세션을 다시 만듭니다**(틀린 답이 나오지는 않고, 토큰 절약만 사라짐).
+- **재생성(regeneration)·분기 안전**: 같은 prefix가 두 번 오면 첫 번째만 resume하고(consume-once), 두 번째는 fresh로 복구해 세션 오염을 막습니다.
+- 세션 매핑은 인메모리이며 서버 재시작 시 사라집니다(`SESSION_TTL_MS` 경과 시에도 만료). 그래도 컨텍스트는 항상 클라이언트가 보낸 히스토리로 복구 가능합니다.
+
 ## 설정 (환경변수)
 
 | 변수 | 기본값 | 설명 |
@@ -165,6 +190,9 @@ with client.messages.stream(
 | `CLAUDE_BIN` | `claude` | claude 실행 파일 경로 |
 | `CODEX_BIN` | `codex` | codex 실행 파일 경로 |
 | `REQUEST_TIMEOUT_MS` | `300000` | 요청 타임아웃(ms) |
+| `SESSION_MODE` | `auto` | 세션 영속화 모드 (`off`/`explicit`/`auto`) |
+| `SESSION_TTL_MS` | `3600000` | 세션 매핑 보관 시간(ms) |
+| `SESSION_MAX` | `1000` | 세션 매핑 최대 개수 |
 | `LOG_LEVEL` | `info` | `debug`/`info`/`warn`/`error` |
 
 ## 검증
@@ -187,7 +215,7 @@ MODEL=codex:gpt-5.5 npm run smoke:anthropic   # codex 백엔드
 
 - **Function calling / tools**: 미지원. OpenAI `tools` 필드는 무시됩니다 (CLI의 내장 도구는 의도적으로 비활성화).
 - **멀티모달**: 이미지 등 비텍스트 입력은 자리표시자로 치환됩니다.
-- **대화 맥락**: 멀티턴 `messages`는 `User:/Assistant:` 라벨로 평탄화해 전달합니다 (세션 영속화 아님).
+- **대화 맥락**: 세션 영속화(위 참고)로 CLI 세션을 resume합니다. 매칭이 안 되거나 `SESSION_MODE=off`면 멀티턴 `messages`를 `User:/Assistant:` 라벨로 평탄화해 전체 전달합니다.
 - **토큰 수**: CLI가 보고하는 값을 그대로 전달하므로, CLI 내부 시스템 프롬프트 토큰이 `prompt_tokens`(`input_tokens`)에 포함됩니다.
 - `temperature`, `max_tokens` 등 일부 샘플링 파라미터는 CLI가 지원하지 않아 무시될 수 있습니다.
 - **Anthropic 스트리밍**: `input_tokens`는 스트림 시작 시점(`message_start`)에 0으로 보내고, 최종 `message_delta`에서 실제 값을 채웁니다(SDK가 이를 합산해 최종 usage를 계산).
