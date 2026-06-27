@@ -177,6 +177,43 @@ curl http://127.0.0.1:8787/v1/chat/completions \
 - **재생성(regeneration)·분기 안전**: 같은 prefix가 두 번 오면 첫 번째만 resume하고(consume-once), 두 번째는 fresh로 복구해 세션 오염을 막습니다.
 - 세션 매핑은 인메모리이며 서버 재시작 시 사라집니다(`SESSION_TTL_MS` 경과 시에도 만료). 그래도 컨텍스트는 항상 클라이언트가 보낸 히스토리로 복구 가능합니다.
 
+## 함수 호출 (Function Calling, A2 프롬프트 방식 PoC)
+
+OpenAI `tools`(함수 정의)를 보내면, 모델이 함수 호출이 필요하다고 판단할 때 표준 `tool_calls` 응답(`finish_reason: "tool_calls"`)을 돌려줍니다. 공식 OpenAI SDK의 함수 호출 흐름이 그대로 동작합니다 (`/v1/chat/completions` 한정).
+
+```python
+tools = [{
+    "type": "function",
+    "function": {
+        "name": "get_weather",
+        "description": "Get current weather for a city",
+        "parameters": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]},
+    },
+}]
+
+# 1) 모델이 도구 호출을 결정
+r = client.chat.completions.create(model="sonnet", tools=tools,
+    messages=[{"role": "user", "content": "서울 날씨 알려줘"}])
+call = r.choices[0].message.tool_calls[0]      # get_weather({"city":"서울"})
+
+# 2) 함수를 실행하고 결과를 다시 전달 → 모델이 최종 답변
+r2 = client.chat.completions.create(model="sonnet", tools=tools, messages=[
+    {"role": "user", "content": "서울 날씨 알려줘"},
+    r.choices[0].message,
+    {"role": "tool", "tool_call_id": call.id, "content": "맑음, 25도"},
+])
+print(r2.choices[0].message.content)
+```
+
+**작동 방식 (A2)**: CLI에는 "외부가 실행할 함수 스펙을 받아 호출만 내뱉고 멈추는" 모드가 없으므로, `tools` 스펙을 시스템 프롬프트에 주입하고 모델이 약속된 JSON(`{"tool_calls":[...]}`)으로 출력하게 한 뒤 그 텍스트를 파싱해 OpenAI `tool_calls`로 변환합니다.
+
+**한계 (PoC)**
+- **프롬프트 기반이라 100% 보장은 아님**: 모델이 형식을 벗어나면 도구 호출로 인식되지 않고 일반 텍스트로 처리됩니다.
+- **스트리밍 시 버퍼링**: 도구 호출 여부는 전체 출력을 봐야 알 수 있어, `tools`가 있으면 전체를 모은 뒤 한 번에 방출합니다(토큰 단위 스트리밍 아님). `tools`가 없으면 기존대로 실시간 스트리밍.
+- **백엔드 특성 차이**: claude는 `--tools ""`로 순수 텍스트화되어 주입한 도구 결과를 충실히 따릅니다. **codex는 더 에이전트적**이라 자체 도구(웹 검색 등)를 써서 주입한 결과와 다른 답을 낼 수 있습니다.
+- **`/v1/messages`(Anthropic) 미지원**: 이번 PoC는 OpenAI 엔드포인트 한정입니다.
+- 멀티스텝 도구 루프에서 컨텍스트 유지는 [세션 영속화](#세션-영속화-컨텍스트-유지)를 따릅니다(매칭 안 되면 전체 히스토리로 복구).
+
 ## 설정 (환경변수)
 
 | 변수 | 기본값 | 설명 |
@@ -213,7 +250,7 @@ MODEL=codex:gpt-5.5 npm run smoke:anthropic   # codex 백엔드
 
 ## 현재 제한 사항 (MVP)
 
-- **Function calling / tools**: 미지원. OpenAI `tools` 필드는 무시됩니다 (CLI의 내장 도구는 의도적으로 비활성화).
+- **Function calling / tools**: OpenAI 엔드포인트에서 [A2 프롬프트 방식 PoC](#함수-호출-function-calling-a2-프롬프트-방식-poc)로 지원. Anthropic 엔드포인트는 아직 미지원.
 - **멀티모달**: 이미지 등 비텍스트 입력은 자리표시자로 치환됩니다.
 - **대화 맥락**: 세션 영속화(위 참고)로 CLI 세션을 resume합니다. 매칭이 안 되거나 `SESSION_MODE=off`면 멀티턴 `messages`를 `User:/Assistant:` 라벨로 평탄화해 전체 전달합니다.
 - **토큰 수**: CLI가 보고하는 값을 그대로 전달하므로, CLI 내부 시스템 프롬프트 토큰이 `prompt_tokens`(`input_tokens`)에 포함됩니다.

@@ -1,19 +1,36 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import type { Request, Response } from "express";
 import type { Config } from "../config.js";
 import type { Router } from "../backends/router.js";
-import { BackendError } from "../backends/types.js";
+import { BackendError, type BackendResult } from "../backends/types.js";
 import { contentToText, flattenMessages } from "../transform.js";
 import { extractExplicitId, prepareSession, type SessionStore } from "../session.js";
+import {
+  buildToolSystemPrompt,
+  parseToolCalls,
+  toolsActive,
+  type ParsedToolCall,
+  type ToolChoice,
+} from "../tools.js";
 import { log } from "../util/log.js";
 import type {
   ChatCompletionChunk,
   ChatCompletionRequest,
   ChatCompletionResponse,
+  ToolCall,
 } from "../types.js";
 
 function newId(): string {
   return `chatcmpl-${randomUUID().replace(/-/g, "")}`;
+}
+
+/** ParsedToolCall[] → OpenAI tool_calls(인자는 JSON 문자열). */
+function toOpenAIToolCalls(calls: ParsedToolCall[]): ToolCall[] {
+  return calls.map((c) => ({
+    id: `call_${randomBytes(12).toString("hex")}`,
+    type: "function" as const,
+    function: { name: c.name, arguments: JSON.stringify(c.arguments ?? {}) },
+  }));
 }
 
 function nowSec(): number {
@@ -38,6 +55,44 @@ function makeChunk(
 
 function sse(res: Response, data: unknown): void {
   res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+/** 종료 청크 + (옵션)usage 청크 + [DONE]를 쓰고 스트림을 닫는다. */
+function finishStream(
+  res: Response,
+  id: string,
+  created: number,
+  model: string,
+  finishReason: string,
+  result: BackendResult,
+  includeUsage: boolean,
+): void {
+  sse(res, makeChunk(id, created, model, {}, finishReason));
+  if (includeUsage) {
+    const usageChunk: ChatCompletionChunk = {
+      id,
+      object: "chat.completion.chunk",
+      created,
+      model,
+      choices: [],
+      usage: {
+        prompt_tokens: result.usage.inputTokens,
+        completion_tokens: result.usage.outputTokens,
+        total_tokens: result.usage.inputTokens + result.usage.outputTokens,
+      },
+    };
+    sse(res, usageChunk);
+  }
+  res.write("data: [DONE]\n\n");
+  res.end();
+}
+
+function setSseHeaders(res: Response): void {
+  res.status(200);
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders?.();
 }
 
 export function createChatHandler(router: Router, config: Config, sessions: SessionStore) {
@@ -69,6 +124,16 @@ export function createChatHandler(router: Router, config: Config, sessions: Sess
     const includeUsage =
       stream && (body as any).stream_options?.include_usage === true;
 
+    // 함수 호출(A2 프롬프트 방식): tools가 있으면 지시문을 system에 주입.
+    // resume 시엔 세션 system에 이미 들어있으므로 새로 넣지 않는다.
+    const toolChoice = (body as any).tool_choice as ToolChoice | undefined;
+    const toolsOn = toolsActive(body.tools, toolChoice);
+    let runSystem = system;
+    if (toolsOn && !sess.resumeId) {
+      const toolPrompt = buildToolSystemPrompt(body.tools as any[], toolChoice ?? "auto");
+      runSystem = system ? `${system}\n\n${toolPrompt}` : toolPrompt;
+    }
+
     // 요청 취소/타임아웃 → AbortController
     const ac = new AbortController();
     const timeout = setTimeout(() => ac.abort(), config.requestTimeoutMs);
@@ -88,48 +153,92 @@ export function createChatHandler(router: Router, config: Config, sessions: Sess
     );
 
     try {
-      const gen = backend.run({ model, system, prompt, resumeId: sess.resumeId, signal: ac.signal });
+      const gen = backend.run({
+        model,
+        system: runSystem,
+        prompt,
+        resumeId: sess.resumeId,
+        signal: ac.signal,
+      });
 
-      if (stream) {
-        res.status(200);
-        res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-        res.setHeader("Cache-Control", "no-cache, no-transform");
-        res.setHeader("Connection", "keep-alive");
-        res.flushHeaders?.();
-
-        // 첫 청크: role 알림
-        sse(res, makeChunk(id, created, model, { role: "assistant" }, null));
-
-        let result;
+      // ── 함수 호출 모드 ───────────────────────────────────────
+      // 도구 호출 여부는 전체 출력을 봐야 알 수 있어 버퍼링한 뒤 결정한다.
+      if (toolsOn) {
         let next = await gen.next();
-        while (!next.done) {
-          sse(res, makeChunk(id, created, model, { content: next.value }, null));
-          next = await gen.next();
-        }
-        result = next.value;
+        while (!next.done) next = await gen.next();
+        const result = next.value;
         sess.commit(result.sessionId, result.text);
 
-        // 종료 청크
-        sse(res, makeChunk(id, created, result.model || model, {}, result.finishReason));
+        const parsed = parseToolCalls(result.text);
+        const toolCalls = parsed ? toOpenAIToolCalls(parsed) : null;
+        const finishReason = toolCalls ? "tool_calls" : "stop";
+        const outModel = result.model || model;
 
-        if (includeUsage) {
-          const usageChunk: ChatCompletionChunk = {
+        if (stream) {
+          setSseHeaders(res);
+          sse(res, makeChunk(id, created, outModel, { role: "assistant" }, null));
+          if (toolCalls) {
+            sse(res, {
+              id,
+              object: "chat.completion.chunk",
+              created,
+              model: outModel,
+              choices: [
+                {
+                  index: 0,
+                  delta: {
+                    tool_calls: toolCalls.map((tc, i) => ({ index: i, ...tc })),
+                  },
+                  finish_reason: null,
+                },
+              ],
+            } satisfies ChatCompletionChunk);
+          } else if (result.text) {
+            sse(res, makeChunk(id, created, outModel, { content: result.text }, null));
+          }
+          finishStream(res, id, created, outModel, finishReason, result, includeUsage);
+        } else {
+          const response: ChatCompletionResponse = {
             id,
-            object: "chat.completion.chunk",
+            object: "chat.completion",
             created,
-            model: result.model || model,
-            choices: [],
+            model: outModel,
+            choices: [
+              {
+                index: 0,
+                message: toolCalls
+                  ? { role: "assistant", content: null, tool_calls: toolCalls }
+                  : { role: "assistant", content: result.text },
+                finish_reason: finishReason,
+              },
+            ],
             usage: {
               prompt_tokens: result.usage.inputTokens,
               completion_tokens: result.usage.outputTokens,
               total_tokens: result.usage.inputTokens + result.usage.outputTokens,
             },
           };
-          sse(res, usageChunk);
+          res.status(200).json(response);
         }
+        return;
+      }
 
-        res.write("data: [DONE]\n\n");
-        res.end();
+      // ── 일반 모드 ────────────────────────────────────────────
+      if (stream) {
+        setSseHeaders(res);
+
+        // 첫 청크: role 알림
+        sse(res, makeChunk(id, created, model, { role: "assistant" }, null));
+
+        let next = await gen.next();
+        while (!next.done) {
+          sse(res, makeChunk(id, created, model, { content: next.value }, null));
+          next = await gen.next();
+        }
+        const result = next.value;
+        sess.commit(result.sessionId, result.text);
+
+        finishStream(res, id, created, result.model || model, result.finishReason, result, includeUsage);
       } else {
         // 비스트리밍: 제너레이터를 끝까지 소진하고 최종 결과 사용
         let next = await gen.next();

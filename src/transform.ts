@@ -42,6 +42,26 @@ export interface FlattenedPrompt {
   prompt: string;
 }
 
+/** 한 메시지를 프롬프트 텍스트로 렌더링(함수 호출/결과 포함). */
+function renderTurn(m: ChatMessage, idToName: Record<string, string>): string {
+  const parts: string[] = [];
+  const content = contentToText(m.content);
+  if (content) parts.push(content);
+
+  // assistant가 호출한 함수들을 표기 → 모델이 자신의 직전 행동을 인지.
+  for (const tc of m.tool_calls ?? []) {
+    parts.push(`[tool_call] ${tc.function?.name}(${tc.function?.arguments ?? "{}"})`);
+  }
+
+  // tool 결과를 어떤 호출의 결과인지와 함께 표기.
+  if (m.role === "tool") {
+    const name = m.tool_call_id ? idToName[m.tool_call_id] : undefined;
+    return `[tool_result${name ? ` ${name}` : ""}] ${content}`;
+  }
+
+  return parts.join("\n");
+}
+
 /**
  * OpenAI messages 배열을 CLI가 받을 수 있는 형태로 변환한다.
  *  - system/developer 메시지 → system 프롬프트로 합침
@@ -54,12 +74,20 @@ export function flattenMessages(messages: ChatMessage[]): FlattenedPrompt {
   const systemParts: string[] = [];
   const turns: { role: ChatMessage["role"]; text: string }[] = [];
 
+  // tool_call_id → 함수 이름 매핑(tool 결과를 어떤 호출 결과인지 표시하기 위함).
+  const idToName: Record<string, string> = {};
   for (const m of messages) {
-    const text = contentToText(m.content);
+    for (const tc of m.tool_calls ?? []) {
+      if (tc.id && tc.function?.name) idToName[tc.id] = tc.function.name;
+    }
+  }
+
+  for (const m of messages) {
     if (m.role === "system" || m.role === "developer") {
+      const text = contentToText(m.content);
       if (text) systemParts.push(text);
     } else {
-      turns.push({ role: m.role, text });
+      turns.push({ role: m.role, text: renderTurn(m, idToName) });
     }
   }
 

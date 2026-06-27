@@ -14,10 +14,20 @@ export interface ContentPart {
   [k: string]: unknown;
 }
 
+export interface ToolCall {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string }; // arguments는 JSON 문자열
+}
+
 export interface ChatMessage {
   role: Role;
   content: MessageContent;
   name?: string;
+  /** assistant 메시지가 함수 호출을 담을 때. */
+  tool_calls?: ToolCall[];
+  /** tool 메시지가 어떤 호출의 결과인지. */
+  tool_call_id?: string;
 }
 
 export interface ChatCompletionRequest {
@@ -41,7 +51,7 @@ export interface Usage {
 
 export interface ChatCompletionChoice {
   index: number;
-  message: { role: "assistant"; content: string };
+  message: { role: "assistant"; content: string | null; tool_calls?: ToolCall[] };
   finish_reason: string;
 }
 
@@ -62,7 +72,11 @@ export interface ChatCompletionChunk {
   model: string;
   choices: {
     index: number;
-    delta: { role?: "assistant"; content?: string };
+    delta: {
+      role?: "assistant";
+      content?: string | null;
+      tool_calls?: (Partial<ToolCall> & { index: number })[];
+    };
     finish_reason: string | null;
   }[];
   usage?: Usage | null;
