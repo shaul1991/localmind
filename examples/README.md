@@ -31,6 +31,7 @@ make health        # 200 확인
 | [semantic-search.py](semantic-search.py) | 임베딩으로 미니 의미검색 RAG(외부 DB 없이) |
 | [memory.sh](memory.sh) | 진화하는 기억 remember/recall (mem0) |
 | [brain-node.mjs](brain-node.mjs) | second-brain: 노트 저장·검색·RAG를 코드로 |
+| [workflow-youtube-script.py](workflow-youtube-script.py) | **끝-to-끝 워크플로우**: 유튜브 대본(보이스 기억→아웃라인→후킹→대본) |
 | [langchain-rag.py](langchain-rag.py) | LangChain의 LLM+임베딩을 localmind로 |
 | [mcp-clients.md](mcp-clients.md) | Cursor/Claude Desktop/Codex에 MCP 도구 붙이기 |
 | [mcp-remote-infra.md](mcp-remote-infra.md) | 서버별 원격 MCP로 인프라 운영 |
