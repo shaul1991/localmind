@@ -1,3 +1,6 @@
+# 프로젝트명을 고정 → 클론 디렉토리명과 무관하게 컨테이너/볼륨/네트워크가 일관(localmind_*).
+name: localmind
+
 services:
   localmind:
     build: .
@@ -36,7 +39,9 @@ services:
     environment:
       - MCP_HTTP_HOST=0.0.0.0
       - MCP_HTTP_PORT=8788
-      - MCP_HTTP_TOKEN=${MCP_HTTP_TOKEN:?MCP_HTTP_TOKEN을 .env에 설정하세요(네트워크 노출)}
+      # 토큰 강제는 앱(mcp-http)이 한다 — 없으면 컨테이너가 명확한 메시지로 기동 거부.
+      # compose `:?`는 프로파일 무관하게 보간돼 `make up`까지 막으므로 쓰지 않는다.
+      - MCP_HTTP_TOKEN=${MCP_HTTP_TOKEN:-}
       - MCP_INSTANCE=${MCP_INSTANCE:-localmind}
       - MCP_DEFAULT_MODEL=${MCP_DEFAULT_MODEL:-sonnet}
       - LOCALMIND_URL=http://localmind:8787
