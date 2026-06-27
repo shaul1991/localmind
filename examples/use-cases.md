@@ -6,28 +6,28 @@
 > 한 직군의 **끝-to-끝 실행 가능한 워크플로우**가 궁금하면 → [workflow-youtube-script.py](workflow-youtube-script.py)
 > (유튜브 대본가: 채널 보이스 기억 → 아웃라인 → 후킹 3안 → 대본 초안까지 한 번에).
 
-## 한눈에
-| 직군 | 핵심 활용 | 시작 |
+## 한눈에 (직군 → 바로 돌리는 워크플로우)
+| 직군 | 핵심 활용 | ▶ 워크플로우 실행 |
 |---|---|---|
-| 백엔드/풀스택 | 서비스·스크립트의 메터드 API를 로컬로 대체 | [chat-openai.py](chat-openai.py) |
-| 프론트엔드 | UI 카피·컴포넌트 초안을 키/비용 없이 | [chat-openai.mjs](chat-openai.mjs) |
-| 앱 개발(모바일) | Swift/Kotlin 코드·다국어 문자열·인앱 AI 백엔드 | [mcp-clients.md](mcp-clients.md) |
-| 게임 개발 | NPC 대사·퀘스트 대량 생성·로어 일관성 | [function-calling.py](function-calling.py) |
-| 인프라/DevOps/SRE | 서버별 런북·장애기억·운영 RAG | [mcp-remote-infra.md](mcp-remote-infra.md) |
-| ML/데이터 엔지니어 | 파이프라인 임베딩·로컬 RAG·배치 LLM 0원 | [embeddings.py](embeddings.py) |
-| 데이터 분석가 | 민감 데이터 로컬 분석·지표 정의 RAG | [semantic-search.py](semantic-search.py) |
-| QA/테스트 | 테스트케이스 생성·로그 요약·CI 분류 | [function-calling.py](function-calling.py) |
-| 기술 리드/아키텍트 | 다중 모델 설계 리뷰·ADR 적재/검색 | [mcp-clients.md](mcp-clients.md) |
-| PM/기획(비개발) | 피드백 요약·스펙 초안·결정 회상 | [mcp-clients.md](mcp-clients.md) |
-| 테크니컬 라이터 | 문서 초안·내부 노트 검색·일관성 | [brain-node.mjs](brain-node.mjs) |
-| AI 글 작성가 | 초안·리라이트·문체 일관, 원고 로컬 보호 | [chat-openai.py](chat-openai.py) |
+| 백엔드/풀스택 | 서비스·스크립트의 메터드 API를 로컬로 대체 | [workflow-backend.py](workflow-backend.py) |
+| 프론트엔드 | UI 카피·컴포넌트 초안을 키/비용 없이 | [workflow-frontend.mjs](workflow-frontend.mjs) |
+| 앱 개발(모바일) | Swift/Kotlin 코드·다국어 문자열·인앱 AI 백엔드 | [workflow-mobile-i18n.py](workflow-mobile-i18n.py) |
+| 게임 개발 | NPC 대사·퀘스트 대량 생성·로어 일관성 | [workflow-game-content.py](workflow-game-content.py) |
+| 인프라/DevOps/SRE | 서버별 런북·장애기억·운영 RAG | [workflow-infra-runbook.mjs](workflow-infra-runbook.mjs) |
+| ML/데이터 엔지니어 | 파이프라인 임베딩·로컬 RAG·배치 LLM 0원 | [workflow-ml-index.py](workflow-ml-index.py) |
+| 데이터 분석가 | 민감 데이터 로컬 분석·지표 정의 RAG | [workflow-data-analysis.py](workflow-data-analysis.py) |
+| QA/테스트 | 테스트케이스 생성·로그 요약·CI 분류 | [workflow-qa-testcases.py](workflow-qa-testcases.py) |
+| 기술 리드/아키텍트 | 다중 모델 설계 리뷰·ADR 적재/검색 | [workflow-design-review.py](workflow-design-review.py) |
+| PM/기획(비개발) | 피드백 요약·스펙 초안·결정 회상 | [workflow-pm-spec.py](workflow-pm-spec.py) |
+| 테크니컬 라이터 | 문서 초안·내부 노트 검색·일관성 | [workflow-docs-draft.mjs](workflow-docs-draft.mjs) |
+| AI 글 작성가 | 초안·리라이트·문체 일관, 원고 로컬 보호 | [workflow-ai-writer.py](workflow-ai-writer.py) |
 | 유튜브 대본가 | 아웃라인→대본·후킹 인트로·채널 톤 | [workflow-youtube-script.py](workflow-youtube-script.py) |
-| 유튜브 편집자 | 자막→챕터·하이라이트·설명문(텍스트) | [semantic-search.py](semantic-search.py) |
-| 썸네일 작업자 | 썸네일 문구·컨셉 A/B (이미지 생성 X) | [chat-openai.py](chat-openai.py) |
-| 인플루언서 | 캡션·해시태그·멀티플랫폼 리퍼포징 | [chat-openai.py](chat-openai.py) |
-| 보안/SecOps | 데이터 미유출·로그 분석·위협 노트 RAG | [memory.sh](memory.sh) |
-| 연구자/지식노동자 | 노트·논문 second-brain·진화 기억 | [brain-node.mjs](brain-node.mjs) |
-| 1인 개발/스타트업 | 두뇌 전체 0원(백엔드+비서) | [README](README.md) |
+| 유튜브 편집자 | 자막→챕터·하이라이트·설명문(텍스트) | [workflow-youtube-edit.py](workflow-youtube-edit.py) |
+| 썸네일 작업자 | 썸네일 문구·컨셉 A/B (이미지 생성 X) | [workflow-thumbnail-copy.py](workflow-thumbnail-copy.py) |
+| 인플루언서 | 캡션·해시태그·멀티플랫폼 리퍼포징 | [workflow-influencer-repurpose.py](workflow-influencer-repurpose.py) |
+| 보안/SecOps | 데이터 미유출·로그 분석·위협 노트 RAG | [workflow-security-triage.py](workflow-security-triage.py) |
+| 연구자/지식노동자 | 노트·논문 second-brain·진화 기억 | [workflow-research-synthesis.mjs](workflow-research-synthesis.mjs) |
+| 1인 개발/스타트업 | 두뇌 전체 0원(백엔드+비서) | [workflow-solo-stack.sh](workflow-solo-stack.sh) |
 
 ---
 

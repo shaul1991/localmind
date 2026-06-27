@@ -37,6 +37,11 @@ make health        # 200 확인
 | [mcp-remote-infra.md](mcp-remote-infra.md) | 서버별 원격 MCP로 인프라 운영 |
 | [use-cases.md](use-cases.md) | **직군별 유즈케이스(19개 페르소나)** — 내 직군 카드만 보면 됨 |
 
+## 직군별 워크플로우 (끝-to-끝 실행)
+`workflow-*.{py,mjs,sh}` **19종** — 직군마다 실무 흐름을 그대로 돌려본다(상황→단계→결과).
+직군 ↔ 스크립트 매핑은 [use-cases.md](use-cases.md)의 "한눈에" 표 참고.
+> 예: [workflow-backend.py](workflow-backend.py) · [workflow-infra-runbook.mjs](workflow-infra-runbook.mjs) · [workflow-youtube-script.py](workflow-youtube-script.py) · [workflow-solo-stack.sh](workflow-solo-stack.sh)
+
 ## 의존성(예제용)
 ```bash
 pip install openai anthropic langchain langchain-openai   # 필요한 것만
