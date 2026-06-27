@@ -67,6 +67,26 @@ make health             # 엔드포인트 상태(:8787 / :4000 / :8767)
 
 > 더 가볍게: 채팅 API만 쓰려면 `docker compose up -d --build` (게이트웨이/메모리 프로파일 생략 — 이 경우만 raw).
 
+## 온보딩 (역할별)
+
+모든 인스턴스는 **각자 독립**으로 동작합니다(중앙 서버·공유 계정 의존 0). 역할에 맞는 경로만 따라가세요.
+
+**① 개인 — 내 PC에서 바로 쓰기**
+1. `git clone https://github.com/shaul1991/cli-gateway && cd cli-gateway`
+2. `make install build && make up` (전제: 호스트에 `claude`/`codex` 로그인)
+3. `make health`로 확인 → Cursor/Claude Desktop에 MCP 설정(아래 *MCP 서버* 섹션)
+4. `NOTES_DIR`를 내 노트 폴더로 가리키면 그 지식으로 바로 RAG
+
+**② 인프라 운영 — 서버별로 관리**
+- 서버마다 `MCP_INSTANCE=서버명`으로 **독립 인스턴스** → 그 서버의 자원/메모리/노트를 로컬에서 관리
+- `.env`에 `MCP_HTTP_TOKEN` 설정 후 `make up-mcp` → 노트북에서 서버별 원격 MCP로 접속 (아래 *디바이스/서버별 관리*)
+
+**③ 팀원 — 이미 떠 있는 서버에 붙기**
+- 운영자에게 받은 **URL + 토큰**을 클라이언트에 원격 MCP로 등록 (아래 *원격 MCP*)
+- 추론은 그 인스턴스의 계정으로 수행 — 내 코딩 구독(Cursor/Claude/Codex)은 그대로 따로 씀
+
+> 어떤 경로든 **메터드 API 0원**, 데이터는 그 인스턴스 로컬에만 둡니다.
+
 ## 동작 방식
 
 1. OpenAI 형식 요청(`messages`, `stream`, ...)을 받습니다.
