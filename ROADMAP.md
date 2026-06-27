@@ -17,8 +17,9 @@ repo 하나로 도는 완결형 로컬 AI 스택. 전부 로컬, 메터드 API 0
 - **임베딩 게이트웨이** — LiteLLM + ollama(bge-m3)
 - **메모리** — OpenMemory(mem0) + Postgres/pgvector (소스 빌드 + 패치)
 - **second-brain** — `.md` 노트 RAG (capture_note/search_notes/ask_brain)
-- **MCP 서버** — ask · remember/recall · 노트 도구 (stdio)
-- Docker(profiles: gateway/memory), CI
+- **MCP 서버** — ask · remember/recall · 노트 · whoami 도구 (stdio + **원격 HTTP/SSE**)
+- **인스턴스 격리** — `MCP_INSTANCE`로 디바이스/서버별 메모리·노트 분리
+- Docker(profiles: gateway/memory/mcp), CI
 
 ---
 
@@ -70,9 +71,9 @@ repo 하나로 도는 완결형 로컬 AI 스택. 전부 로컬, 메터드 API 0
 - ⚠️ 공유 구독은 ToS/한도 제약이 본질 — 아래 "제약" 참고.
 
 ### Phase 4 — 공유 second-brain + 원격 MCP
-- 공유 노트 = git repo(팀 KB). 사용자별/공유 격리.
-- MCP를 **HTTP/SSE transport**로도 노출 → 원격 멤버가 URL+키로 접속(tailnet).
-- 관측: LiteLLM 사용량 대시보드, 백업/복원.
+- ✅ MCP **HTTP/SSE transport** 노출 → 원격 멤버가 URL+키로 접속(tailnet). ChatGPT 원격 connector 가능.
+- ✅ **인스턴스 격리**(`MCP_INSTANCE`) — 디바이스/서버별 메모리·노트 분리(인프라 운영).
+- (남음) 공유 노트 = git repo(팀 KB) 다중 소스 + 스코프, per-user 가상키 연동, LiteLLM 사용량 대시보드.
 
 ---
 

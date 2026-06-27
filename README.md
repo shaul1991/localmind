@@ -261,6 +261,7 @@ cli-gateway의 능력을 **MCP 도구**로 노출해, MCP 호스트(Claude Deskt
 
 | 도구 | 설명 |
 |---|---|
+| `whoami` | 이 인스턴스(디바이스/서버) 식별 — 어느 서버의 메모리/노트인지 |
 | `ask` | claude/codex CLI에 교차 질의(다른 모델 상담) → cli-gateway 경유 |
 | `remember` | 진화하는 기억에 사실 저장 (mem0: claude 추출 + bge-m3) |
 | `recall` | 의미 기반 회상 (mem0 벡터 검색) |
@@ -301,9 +302,52 @@ Claude Desktop `claude_desktop_config.json` (Cursor `.cursor/mcp.json`, Cline MC
 }
 ```
 
+### 원격 MCP (HTTP/SSE) — URL 하나로 팀/원격 접속
+stdio는 각자 로컬 서브프로세스라 "URL 공유"가 안 됩니다. 원격 서버(`dist/mcp-http.js`)는
+**URL 하나로** Claude Code / Cursor / **ChatGPT 원격 connector** 까지 접속하게 합니다.
+
+```bash
+# .env 에 MCP_HTTP_TOKEN(필수) + MCP_INSTANCE 설정 후
+docker compose --profile gateway --profile memory --profile mcp up -d --build
+#  → http://<host>:8788/mcp  (Streamable HTTP),  http://<host>:8788/sse (레거시)
+```
+
+- `POST /mcp` — Streamable HTTP(현대 표준), `GET /sse`+`POST /messages` — 레거시 SSE, `GET /health`.
+- **인증 필수**: 네트워크 노출이므로 `MCP_HTTP_TOKEN` 없으면 기동 거부. 클라이언트는 `Authorization: Bearer <토큰>`.
+- tailnet 등 신뢰 네트워크에만 노출하세요(포트 8788).
+
+클라이언트 등록 예:
+```bash
+# Claude Code
+claude mcp add --transport http my-server https://<host>:8788/mcp --header "Authorization: Bearer <토큰>"
+```
+```jsonc
+// Cursor .cursor/mcp.json
+{ "mcpServers": { "my-server": {
+  "url": "http://<host>:8788/mcp",
+  "headers": { "Authorization": "Bearer <토큰>" }
+}}}
+```
+
+### 디바이스/서버별 관리 (인프라 운영)
+**한 인스턴스 = 한 디바이스/서버.** 서버마다 `MCP_INSTANCE`를 다르게 주면 그 서버의
+**메모리·노트가 인스턴스별로 격리**됩니다. 각 서버가 자기 자원 정보(스펙·설정·장애 이력)를
+로컬에서 관리하고, 클라이언트에선 서버별 원격 MCP를 각각 등록해 골라 씁니다.
+
+```
+db-server   : MCP_INSTANCE=db-server   → db-server의 메모리/노트  (http://db-server:8788/mcp)
+app-server-1: MCP_INSTANCE=app-server-1 → app-server-1의 메모리/노트
+```
+- 메모리 격리: `OPENMEMORY_USER`를 안 주면 `MCP_INSTANCE`가 곧 메모리 owner가 됩니다.
+- `whoami` 도구로 "지금 어느 서버의 두뇌인지" 즉시 확인.
+- 각 서버에서 `capture_note`로 그 서버의 자원/장애를 기록 → `ask_brain`으로 그 서버 한정 RAG.
+
 ### 환경변수 (MCP 서버)
 | 변수 | 기본값 | 설명 |
 |---|---|---|
+| `MCP_INSTANCE` | 호스트명 | 디바이스/서버 식별자(메모리 owner 기본값) — 서버별 격리 |
+| `MCP_HTTP_TOKEN` | (없음) | 원격 MCP Bearer 토큰. 네트워크 노출 시 필수 |
+| `MCP_HTTP_PORT` / `MCP_HTTP_HOST` | `8788` / `0.0.0.0` | 원격 MCP 바인딩 |
 | `CLI_GATEWAY_URL` | `http://localhost:8787` | ask가 호출할 cli-gateway |
 | `CLI_GATEWAY_API_KEY` | (없음) | cli-gateway 인증 시 |
 | `OPENMEMORY_URL` | `http://localhost:8767` | remember/recall 대상 |
