@@ -37,6 +37,6 @@ jobs:
         with:
           context: .
           push: false
-          tags: cli2port:ci
+          tags: cli-gateway:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max

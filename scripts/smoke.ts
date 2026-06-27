@@ -1,5 +1,5 @@
 /**
- * 공식 OpenAI SDK로 cli2port의 드롭인 호환성을 검증하는 스모크 테스트.
+ * 공식 OpenAI SDK로 cli-gateway의 드롭인 호환성을 검증하는 스모크 테스트.
  *
  *   npm run smoke               # 기본 http://127.0.0.1:8787, 모델 sonnet
  *   BASE_URL=... MODEL=gpt-5.5 npm run smoke
@@ -9,7 +9,7 @@
 import OpenAI from "openai";
 
 const baseURL = (process.env.BASE_URL ?? "http://127.0.0.1:8787") + "/v1";
-const apiKey = process.env.CLI2PORT_API_KEY ?? "not-needed";
+const apiKey = process.env.CLI_GATEWAY_API_KEY ?? "not-needed";
 const model = process.env.MODEL ?? "sonnet";
 
 const client = new OpenAI({ baseURL, apiKey });
@@ -70,7 +70,7 @@ async function testModels(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  console.log(`cli2port 스모크 테스트 → ${baseURL} (model=${model})\n`);
+  console.log(`cli-gateway 스모크 테스트 → ${baseURL} (model=${model})\n`);
   await testModels();
   await testNonStreaming();
   await testStreaming();

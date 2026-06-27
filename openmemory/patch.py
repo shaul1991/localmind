@@ -1,5 +1,5 @@
 """
-최신 OpenMemory 소스에 cli2port 패치를 적용한다.
+최신 OpenMemory 소스에 cli-gateway 패치를 적용한다.
 
 (1) 목록/검색 읽기 버그:
     list_memories / filter_memories가 categories를 메인 쿼리에 조인하면서
@@ -132,7 +132,7 @@ assert cat_old in ct, "categorization 함수 형태 변경됨"
 ct = ct.replace(
     cat_old,
     """def get_categories_for_memory(memory: str) -> List[str]:
-    # cli2port: 구조화 출력이 필요한 카테고리화는 CLI 경로에서 항상 실패하고
+    # cli-gateway: 구조화 출력이 필요한 카테고리화는 CLI 경로에서 항상 실패하고
     # tenacity 재시도가 워커를 막으므로 비활성화(빈 카테고리 반환).
     return []
     try:""",

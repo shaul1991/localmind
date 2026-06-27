@@ -113,7 +113,7 @@ export function createChatHandler(router: Router, config: Config, sessions: Sess
       messages: body.messages,
       norm: (m) => ({ role: m.role, text: contentToText(m.content).trim() }),
       backend: backend.name,
-      explicitId: extractExplicitId(req.header("x-cli2port-session"), body as Record<string, unknown>),
+      explicitId: extractExplicitId(req.header("x-cli-gateway-session"), body as Record<string, unknown>),
       config,
       store: sessions,
     });

@@ -10,7 +10,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { Tool, MessageParam } from "@anthropic-ai/sdk/resources/messages";
 
 const baseURL = process.env.BASE_URL ?? "http://127.0.0.1:8787";
-const apiKey = process.env.CLI2PORT_API_KEY ?? "not-needed";
+const apiKey = process.env.CLI_GATEWAY_API_KEY ?? "not-needed";
 const model = process.env.MODEL ?? "sonnet";
 const client = new Anthropic({ baseURL, apiKey });
 
@@ -105,7 +105,7 @@ async function testStreamingToolUse(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  console.log(`cli2port Anthropic tool_use 스모크 → ${baseURL} (model=${model})\n`);
+  console.log(`cli-gateway Anthropic tool_use 스모크 → ${baseURL} (model=${model})\n`);
   await testToolRoundTrip();
   await testNoToolNeeded();
   await testStreamingToolUse();

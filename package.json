@@ -1,11 +1,11 @@
 {
-  "name": "cli2port",
+  "name": "cli-gateway",
   "version": "0.1.0",
   "description": "Expose local Claude Code / Codex CLIs as an OpenAI- and Anthropic-compatible HTTP API",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "cli2port": "dist/index.js"
+    "cli-gateway": "dist/index.js"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",

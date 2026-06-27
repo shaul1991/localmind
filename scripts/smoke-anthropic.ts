@@ -1,5 +1,5 @@
 /**
- * 공식 Anthropic SDK로 cli2port의 /v1/messages 드롭인 호환성을 검증한다.
+ * 공식 Anthropic SDK로 cli-gateway의 /v1/messages 드롭인 호환성을 검증한다.
  *
  *   npm run smoke:anthropic
  *   BASE_URL=... MODEL=claude-sonnet-4-6 npm run smoke:anthropic
@@ -9,7 +9,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 const baseURL = process.env.BASE_URL ?? "http://127.0.0.1:8787";
-const apiKey = process.env.CLI2PORT_API_KEY ?? "not-needed";
+const apiKey = process.env.CLI_GATEWAY_API_KEY ?? "not-needed";
 const model = process.env.MODEL ?? "sonnet";
 
 const client = new Anthropic({ baseURL, apiKey });
@@ -61,7 +61,7 @@ async function testStreaming(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  console.log(`cli2port Anthropic 스모크 테스트 → ${baseURL} (model=${model})\n`);
+  console.log(`cli-gateway Anthropic 스모크 테스트 → ${baseURL} (model=${model})\n`);
   await testNonStreaming();
   await testStreaming();
   console.log("\n\x1b[32m모든 테스트 통과\x1b[0m");

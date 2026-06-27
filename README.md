@@ -1,8 +1,8 @@
-# cli2port
+# cli-gateway
 
 로컬에 설치된 **Claude Code CLI** / **Codex CLI**를 **OpenAI · Anthropic API 호환 HTTP 서버**로 노출합니다.
 
-기존에 OpenAI/Claude API를 호출하던 코드의 `base_url`만 cli2port로 바꾸면, 실제 API 대신 로컬 CLI(구독 인증)가 요청을 처리합니다. 별도 API 키 발급·과금 없이 CLI 구독을 API처럼 쓰는 것이 목표입니다.
+기존에 OpenAI/Claude API를 호출하던 코드의 `base_url`만 cli-gateway로 바꾸면, 실제 API 대신 로컬 CLI(구독 인증)가 요청을 처리합니다. 별도 API 키 발급·과금 없이 CLI 구독을 API처럼 쓰는 것이 목표입니다.
 
 OpenAI SDK(`/v1/chat/completions`)와 Anthropic SDK(`/v1/messages`)를 **모두** 그대로 붙일 수 있습니다.
 
@@ -10,7 +10,7 @@ OpenAI SDK(`/v1/chat/completions`)와 Anthropic SDK(`/v1/messages`)를 **모두*
 클라이언트 (OpenAI SDK / Anthropic SDK)
       │  POST /v1/chat/completions  또는  /v1/messages
       ▼
-   cli2port  ──(모델명 라우팅)──▶  claude -p / codex exec
+   cli-gateway  ──(모델명 라우팅)──▶  claude -p / codex exec
       │                                   │
       ◀────── SSE / JSON 응답 변환 ◀───────┘
 ```
@@ -63,12 +63,12 @@ curl http://127.0.0.1:8787/health
 ### docker run
 
 ```bash
-docker build -t cli2port .
-docker run -d --name cli2port -p 8787:8787 \
+docker build -t cli-gateway .
+docker run -d --name cli-gateway -p 8787:8787 \
   -v "$HOME/.claude:/root/.claude" \
   -v "$HOME/.claude.json:/root/.claude.json" \
   -v "$HOME/.codex:/root/.codex" \
-  cli2port
+  cli-gateway
 ```
 
 **주의사항**
@@ -79,12 +79,12 @@ docker run -d --name cli2port -p 8787:8787 \
 
 ## 임베딩까지 포함한 완전한 로컬 스택 (gateway 프로파일)
 
-cli2port는 채팅(생성)만 다룹니다 — CLI는 **임베딩**(텍스트→벡터)을 못 하기 때문입니다. 그래서 임베딩이 필요한 소비자(예: supermemory 같은 메모리/RAG 시스템)를 위해, **임베딩 서버(Ollama+bge-m3)** 와 **통합 게이트웨이(LiteLLM)** 를 opt-in 프로파일로 함께 제공합니다.
+cli-gateway는 채팅(생성)만 다룹니다 — CLI는 **임베딩**(텍스트→벡터)을 못 하기 때문입니다. 그래서 임베딩이 필요한 소비자(예: supermemory 같은 메모리/RAG 시스템)를 위해, **임베딩 서버(Ollama+bge-m3)** 와 **통합 게이트웨이(LiteLLM)** 를 opt-in 프로파일로 함께 제공합니다.
 
 ```
 소비자 ──(base URL 하나)──▶ LiteLLM 게이트웨이 (:4000)
                               ├─ /v1/embeddings        → ollama (bge-m3)
-                              └─ /v1/chat/completions  → cli2port → claude/codex CLI
+                              └─ /v1/chat/completions  → cli-gateway → claude/codex CLI
 ```
 
 소비자는 **base URL 하나**(`http://<host>:4000/v1`)만 바라보면, 임베딩은 로컬 모델로·채팅은 CLI 구독으로 자동 분기됩니다.
@@ -100,7 +100,7 @@ docker compose --profile gateway up -d --build
 | 서비스 | 포트 | 역할 |
 |---|---|---|
 | `litellm` | 4000 | 통합 게이트웨이 (소비자가 바라보는 단일 엔드포인트) |
-| `cli2port` | 8787 | 채팅 (claude/codex CLI) |
+| `cli-gateway` | 8787 | 채팅 (claude/codex CLI) |
 | `ollama` | (내부) | 임베딩 백엔드 (bge-m3) |
 
 ### 소비자(supermemory 등) 연결
@@ -118,13 +118,13 @@ from openai import OpenAI
 c = OpenAI(base_url="http://localhost:4000/v1", api_key="sk-local")
 
 c.embeddings.create(model="text-embedding-3-small", input="의미 검색용 텍스트")  # → ollama bge-m3 (1024차원)
-c.chat.completions.create(model="claude-sonnet-4-6",                            # → cli2port → claude
+c.chat.completions.create(model="claude-sonnet-4-6",                            # → cli-gateway → claude
     messages=[{"role": "user", "content": "안녕"}])
 ```
 
 ### 라우팅 규칙 (`litellm.config.yaml`)
 - 임베딩 모델명(`text-embedding-3-small/large`, `ada-002`, `bge-m3`) → **ollama bge-m3**
-- 그 외 모든 모델 → **cli2port** (모델명으로 claude/codex 라우팅)
+- 그 외 모든 모델 → **cli-gateway** (모델명으로 claude/codex 라우팅)
 - 다른 임베딩 모델명을 쓰면 `litellm.config.yaml`의 `model_list`에 한 줄 추가하세요(없으면 채팅으로 잘못 라우팅됨).
 
 ### 주의
@@ -139,11 +139,11 @@ c.chat.completions.create(model="claude-sonnet-4-6",                            
 ```
 OpenMemory(:8767) ──▶ LiteLLM 게이트웨이
    │  add/list/search     ├─ 임베딩 → ollama(bge-m3)
-   ▼                      └─ 추출 LLM → cli2port → claude/codex CLI
+   ▼                      └─ 추출 LLM → cli-gateway → claude/codex CLI
  Postgres + pgvector (메타데이터 + 벡터)
 ```
 
-> OpenMemory는 게시 이미지가 pgvector 미지원 + 읽기 버그가 있어, **최신 소스를 빌드하고 cli2port 패치**(`openmemory/`)를 적용합니다. 저장소는 Postgres+pgvector 단일 DB로 통합합니다.
+> OpenMemory는 게시 이미지가 pgvector 미지원 + 읽기 버그가 있어, **최신 소스를 빌드하고 cli-gateway 패치**(`openmemory/`)를 적용합니다. 저장소는 Postgres+pgvector 단일 DB로 통합합니다.
 
 ### 기동
 
@@ -163,22 +163,22 @@ docker compose --profile gateway --profile memory up -d --build
 # 추가: claude가 사실을 추출해 저장 — user_id는 OPENMEMORY_USER 값
 curl -X POST http://localhost:8767/api/v1/memories/ \
   -H "Content-Type: application/json" \
-  -d '{"user_id":"cli2port","text":"내 강아지 초코는 오이를 간식으로 좋아한다.","infer":true}'
+  -d '{"user_id":"cli-gateway","text":"내 강아지 초코는 오이를 간식으로 좋아한다.","infer":true}'
 
 # 목록 (키워드+최신순)
-curl "http://localhost:8767/api/v1/memories/?user_id=cli2port&size=20"
+curl "http://localhost:8767/api/v1/memories/?user_id=cli-gateway&size=20"
 
 # 검색 (키워드 필터)
 curl -X POST http://localhost:8767/api/v1/memories/filter \
   -H "Content-Type: application/json" \
-  -d '{"user_id":"cli2port","search_query":"강아지","size":10}'
+  -d '{"user_id":"cli-gateway","search_query":"강아지","size":10}'
 ```
 
 의미 기반 회상(임베딩 벡터 검색)은 mem0 엔진으로:
 ```bash
-docker exec cli2port-openmemory python -c "
+docker exec cli-gateway-openmemory python -c "
 from app.utils.memory import get_memory_client
-print(get_memory_client().search('반려견 간식', filters={'user_id':'cli2port'}, limit=3))"
+print(get_memory_client().search('반려견 간식', filters={'user_id':'cli-gateway'}, limit=3))"
 # → 의미 매칭 결과 (점수 높은 순)
 ```
 
@@ -212,7 +212,7 @@ from openai import OpenAI
 
 client = OpenAI(
     base_url="http://127.0.0.1:8787/v1",
-    api_key="not-needed",   # CLI2PORT_API_KEY를 설정했다면 그 값
+    api_key="not-needed",   # CLI_GATEWAY_API_KEY를 설정했다면 그 값
 )
 
 resp = client.chat.completions.create(
@@ -243,14 +243,14 @@ const res = await client.chat.completions.create({
 
 ### Anthropic SDK (`/v1/messages`)
 
-OpenAI뿐 아니라 공식 Anthropic SDK도 그대로 붙습니다. `base_url`만 cli2port로 바꾸면 됩니다.
+OpenAI뿐 아니라 공식 Anthropic SDK도 그대로 붙습니다. `base_url`만 cli-gateway로 바꾸면 됩니다.
 
 ```python
 from anthropic import Anthropic
 
 client = Anthropic(
     base_url="http://127.0.0.1:8787",
-    api_key="not-needed",   # CLI2PORT_API_KEY를 설정했다면 그 값 (x-api-key 헤더로 전송됨)
+    api_key="not-needed",   # CLI_GATEWAY_API_KEY를 설정했다면 그 값 (x-api-key 헤더로 전송됨)
 )
 
 msg = client.messages.create(
@@ -297,25 +297,25 @@ with client.messages.stream(
 | GET | `/v1/models` | OpenAI | 모델 목록 |
 | GET | `/health` | — | 헬스체크 (인증 불필요) |
 
-인증(`CLI2PORT_API_KEY` 설정 시)은 OpenAI식 `Authorization: Bearer <키>` 와 Anthropic식 `x-api-key: <키>` 헤더를 모두 허용합니다.
+인증(`CLI_GATEWAY_API_KEY` 설정 시)은 OpenAI식 `Authorization: Bearer <키>` 와 Anthropic식 `x-api-key: <키>` 헤더를 모두 허용합니다.
 
 ## 세션 영속화 (컨텍스트 유지)
 
-OpenAI/Anthropic API는 stateless라 보통 매 요청마다 전체 대화 히스토리를 다시 보냅니다. cli2port는 대화를 **CLI 세션에 매핑**해, 이어지는 요청에서는 `claude --resume` / `codex exec resume`로 **새 턴만 전송**합니다. 결과적으로 CLI 측 컨텍스트와 프롬프트 캐시를 활용해 토큰을 아낍니다.
+OpenAI/Anthropic API는 stateless라 보통 매 요청마다 전체 대화 히스토리를 다시 보냅니다. cli-gateway는 대화를 **CLI 세션에 매핑**해, 이어지는 요청에서는 `claude --resume` / `codex exec resume`로 **새 턴만 전송**합니다. 결과적으로 CLI 측 컨텍스트와 프롬프트 캐시를 활용해 토큰을 아낍니다.
 
 `SESSION_MODE`로 동작을 정합니다.
 
 | 모드 | 동작 |
 |---|---|
 | `auto` (기본) | 메시지 prefix를 해시로 자동 인식. **클라이언트 코드 변경 불필요** — 일반적인 "히스토리를 계속 append하는" 채팅이면 자동으로 이어집니다. |
-| `explicit` | `x-cli2port-session` 헤더(또는 `session_id`/`user`/`metadata.user_id` 필드)가 있을 때만 해당 id로 세션을 잇습니다. 가장 견고합니다. |
+| `explicit` | `x-cli-gateway-session` 헤더(또는 `session_id`/`user`/`metadata.user_id` 필드)가 있을 때만 해당 id로 세션을 잇습니다. 가장 견고합니다. |
 | `off` | 세션 없이 항상 전체 히스토리 전송. |
 
 ```bash
 # explicit 모드 예: 같은 세션 id로 요청하면 컨텍스트가 이어짐
 curl http://127.0.0.1:8787/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "x-cli2port-session: my-convo-1" \
+  -H "x-cli-gateway-session: my-convo-1" \
   -d '{"model":"sonnet","messages":[{"role":"user","content":"내 이름은 지훈이야"}]}'
 ```
 
@@ -391,7 +391,7 @@ print(r2.content[0].text)
 |---|---|---|
 | `PORT` | `8787` | 포트 |
 | `HOST` | `127.0.0.1` | 바인딩 호스트 |
-| `CLI2PORT_API_KEY` | (없음) | 설정 시 `Authorization: Bearer <키>` 필수 |
+| `CLI_GATEWAY_API_KEY` | (없음) | 설정 시 `Authorization: Bearer <키>` 필수 |
 | `DEFAULT_BACKEND` | `claude` | 라우팅 실패 시 기본 백엔드 |
 | `CLAUDE_DEFAULT_MODEL` | `sonnet` | claude 기본 모델 |
 | `CODEX_DEFAULT_MODEL` | `gpt-5.5` | codex 기본 모델 |
