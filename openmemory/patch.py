@@ -103,6 +103,35 @@ s = patch(
     "filter eager",
 )
 
+# (1d) 의미 기반 검색 라우트 추가 (cli-gateway MCP recall용):
+#      REST /filter는 키워드(ilike)라, mem0.search로 임베딩 의미검색을 노출한다.
+s += '''
+
+# ── cli-gateway: 의미 기반 검색(mem0.search) 엔드포인트 ──
+from pydantic import BaseModel as _CGBase
+
+
+class _CGSemanticReq(_CGBase):
+    user_id: str
+    query: str
+    limit: int = 5
+
+
+@router.post("/semantic")
+def cg_semantic_search(req: _CGSemanticReq, db: Session = Depends(get_db)):
+    from app.utils.memory import get_memory_client
+    client = get_memory_client()
+    if client is None:
+        return {"results": []}
+    res = client.search(req.query, filters={"user_id": req.user_id}, limit=req.limit)
+    items = res.get("results", res) if isinstance(res, dict) else res
+    out = []
+    for i in items or []:
+        if isinstance(i, dict):
+            out.append({"memory": i.get("memory", i.get("data", "")), "score": i.get("score", 0)})
+    return {"results": out}
+'''
+
 open(mp, "w").write(s)
 
 # (1b) config.py PUT 핸들러 버그: update_configuration이 save/return을 빠뜨려

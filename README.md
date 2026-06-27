@@ -192,6 +192,58 @@ print(get_memory_client().search('반려견 간식', filters={'user_id':'cli-gat
 - OpenMemory는 단일 워커라 동시 add가 몰리면 직후 요청이 잠깐 밀릴 수 있습니다.
 - 임베딩 모델을 바꾸면 `EMBEDDING_DIMS`도 맞추고 `docker compose down -v`로 볼륨을 초기화하세요(차원이 테이블에 고정됨).
 
+## MCP 서버 (도구로 사용)
+
+cli-gateway의 능력을 **MCP 도구**로 노출해, MCP 호스트(Claude Desktop / Cursor / Cline 등)가 자기 모델로 돌면서 끌어 쓰게 합니다. (MCP는 호스트의 *모델을 바꾸는 게 아니라* 도구를 줍니다.)
+
+| 도구 | 설명 |
+|---|---|
+| `ask` | claude/codex CLI에 교차 질의(다른 모델 상담) → cli-gateway 경유 |
+| `remember` | 로컬 메모리에 사실 저장 (claude 추출 + bge-m3, 메터드 API 0원) |
+| `recall` | 의미 기반 회상 (mem0 벡터 검색) |
+
+```
+MCP 호스트(Claude Desktop/Cursor/Cline)
+   │ stdio
+   ▼
+cli-gateway MCP 서버 (dist/mcp.js)
+   ├─ ask              → cli-gateway :8787 (claude/codex)
+   └─ remember/recall  → OpenMemory :8767 (pgvector)
+```
+
+### 준비
+```bash
+npm install && npm run build          # dist/mcp.js 생성
+docker compose --profile gateway --profile memory up -d --build   # 스택 기동
+#  - ask는 gateway 스택(:8787)만 있으면 동작
+#  - remember/recall은 memory 스택(:8767)도 필요
+```
+
+### 호스트 설정 (stdio)
+Claude Desktop `claude_desktop_config.json` (Cursor `.cursor/mcp.json`, Cline MCP 설정도 동일 구조):
+```json
+{
+  "mcpServers": {
+    "cli-gateway": {
+      "command": "node",
+      "args": ["/절대경로/cli-gateway/dist/mcp.js"],
+      "env": { "OPENMEMORY_USER": "내이름" }
+    }
+  }
+}
+```
+
+### 환경변수 (MCP 서버)
+| 변수 | 기본값 | 설명 |
+|---|---|---|
+| `CLI_GATEWAY_URL` | `http://localhost:8787` | ask가 호출할 cli-gateway |
+| `CLI_GATEWAY_API_KEY` | (없음) | cli-gateway 인증 시 |
+| `OPENMEMORY_URL` | `http://localhost:8767` | remember/recall 대상 |
+| `OPENMEMORY_USER` | `cli-gateway` | 메모리 소유자 id |
+| `MCP_DEFAULT_MODEL` | `sonnet` | ask 기본 모델 |
+
+검증: `npm run smoke:mcp` (공식 MCP 클라이언트로 ask/remember/recall 점검).
+
 ## 사용 예시
 
 ### curl
