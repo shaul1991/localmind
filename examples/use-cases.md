@@ -8,6 +8,7 @@
 |---|---|---|
 | 백엔드/풀스택 | 서비스·스크립트의 메터드 API를 로컬로 대체 | [chat-openai.py](chat-openai.py) |
 | 프론트엔드 | UI 카피·컴포넌트 초안을 키/비용 없이 | [chat-openai.mjs](chat-openai.mjs) |
+| 앱 개발(모바일) | Swift/Kotlin 코드·다국어 문자열·인앱 AI 백엔드 | [mcp-clients.md](mcp-clients.md) |
 | 게임 개발 | NPC 대사·퀘스트 대량 생성·로어 일관성 | [function-calling.py](function-calling.py) |
 | 인프라/DevOps/SRE | 서버별 런북·장애기억·운영 RAG | [mcp-remote-infra.md](mcp-remote-infra.md) |
 | ML/데이터 엔지니어 | 파이프라인 임베딩·로컬 RAG·배치 LLM 0원 | [embeddings.py](embeddings.py) |
@@ -16,6 +17,11 @@
 | 기술 리드/아키텍트 | 다중 모델 설계 리뷰·ADR 적재/검색 | [mcp-clients.md](mcp-clients.md) |
 | PM/기획(비개발) | 피드백 요약·스펙 초안·결정 회상 | [mcp-clients.md](mcp-clients.md) |
 | 테크니컬 라이터 | 문서 초안·내부 노트 검색·일관성 | [brain-node.mjs](brain-node.mjs) |
+| AI 글 작성가 | 초안·리라이트·문체 일관, 원고 로컬 보호 | [chat-openai.py](chat-openai.py) |
+| 유튜브 대본가 | 아웃라인→대본·후킹 인트로·채널 톤 | [chat-openai.py](chat-openai.py) |
+| 유튜브 편집자 | 자막→챕터·하이라이트·설명문(텍스트) | [semantic-search.py](semantic-search.py) |
+| 썸네일 작업자 | 썸네일 문구·컨셉 A/B (이미지 생성 X) | [chat-openai.py](chat-openai.py) |
+| 인플루언서 | 캡션·해시태그·멀티플랫폼 리퍼포징 | [chat-openai.py](chat-openai.py) |
 | 보안/SecOps | 데이터 미유출·로그 분석·위협 노트 RAG | [memory.sh](memory.sh) |
 | 연구자/지식노동자 | 노트·논문 second-brain·진화 기억 | [brain-node.mjs](brain-node.mjs) |
 | 1인 개발/스타트업 | 두뇌 전체 0원(백엔드+비서) | [README](README.md) |
@@ -33,6 +39,12 @@
 - **활용**: 로컬 엔드포인트로 OpenAI SDK 그대로. 스트리밍으로 즉시 미리보기. Cursor에 MCP를 붙여 `ask`로 접근성 카피 검토.
 - **효과**: 키·비용 없이 반복 작업 가속, 사내 문구는 로컬 밖으로 안 나감.
 - **시작**: [chat-openai.mjs](chat-openai.mjs) · [chat-streaming.sh](chat-streaming.sh)
+
+## 📱 앱 개발자 (모바일)
+- **상황**: iOS/Android 코드 작성과 인앱 AI 기능(요약·분류·챗) 붙이기에 API 키·비용이 걸린다.
+- **활용**: IDE/Cursor에 MCP를 붙여 Swift/Kotlin 코드·에러 메시지·다국어 문자열 생성, `ask`로 교차 모델 검토. 인앱 LLM 기능은 서버에 띄운 localmind(`:4000`)를 백엔드로(키 0원).
+- **효과**: 개발 가속 + 인앱 AI를 메터드 0원으로 프로토타이핑.
+- **시작**: [mcp-clients.md](mcp-clients.md) · [chat-openai.mjs](chat-openai.mjs)
 
 ## 🎮 게임 개발자
 - **상황**: NPC 대사·퀘스트·아이템 설명을 대량 생성하고 세계관(로어) 일관성을 유지해야 하는데, 반복 API 호출 비용이 쌓인다.
@@ -81,6 +93,38 @@
 - **활용**: 기존 마크다운 문서 폴더를 `NOTES_DIR`로(마이그레이션 0). `search_notes`로 관련 문단 찾고 `ask_brain`으로 근거 있는 초안. 초안 다듬기는 chat.
 - **효과**: "이미 어딘가 쓴 내용"을 빠르게 재사용, 출처 기반 정확한 초안.
 - **시작**: [brain-node.mjs](brain-node.mjs) · [mcp-clients.md](mcp-clients.md)
+
+> 🎬 **콘텐츠 크리에이터 직군 참고**: localmind는 **텍스트·임베딩·기억** 전용입니다(이미지·영상 생성 없음). 아래 직군에선 *대본·카피·아이디어·검색·일관성* 을 담당하고, 그림/영상은 별도 툴과 병행합니다.
+
+## ✍️ AI 글 작성가
+- **상황**: 블로그·뉴스레터·카피를 대량 작성/편집하는데 외부 API 비용과 클라이언트 원고 유출이 걱정된다.
+- **활용**: 로컬 chat으로 초안·리라이트·톤 조정. 내 문체 가이드·금칙어를 `remember`로 저장해 일관 유지, 자료 노트를 `ask_brain`으로 근거 있는 글. 원고가 로컬을 안 떠남.
+- **효과**: 무제한 반복 작성 **0원** + 문체 일관 + 클라이언트 기밀 보호.
+- **시작**: [chat-openai.py](chat-openai.py) · [brain-node.mjs](brain-node.mjs) · [memory.sh](memory.sh)
+
+## 🎥 유튜브 대본가
+- **상황**: 주제 하나로 후킹 인트로·대본·아웃라인을 여러 버전 뽑고 채널 톤을 유지해야 한다.
+- **활용**: 로컬 chat으로 아웃라인→대본, 인트로 후킹 3안. 채널 톤·금지표현을 `remember`로, 과거 대본을 `NOTES_DIR`로 두고 `search_notes`로 재활용.
+- **효과**: 대본 생산 가속(반복 0원), 채널 보이스 일관.
+- **시작**: [chat-openai.py](chat-openai.py) · [brain-node.mjs](brain-node.mjs)
+
+## 🎬 유튜브 편집자
+- **상황**: 긴 자막/대본에서 챕터·하이라이트·설명문을 뽑는 데 시간이 든다.
+- **활용**: 자막(텍스트)을 넣어 **챕터 타임스탬프·하이라이트 후보·영상 설명/제목** 생성. 과거 영상 자막을 임베딩으로 검색해 재사용 클립 탐색.
+- **효과**: 텍스트 작업(챕터·설명·검색) 자동화. *영상 픽셀 편집은 NLE에서 — localmind는 자막/메타데이터 보조.*
+- **시작**: [chat-openai.py](chat-openai.py) · [semantic-search.py](semantic-search.py)
+
+## 🖼️ 썸네일 작업자
+- **상황**: 클릭을 부르는 썸네일 **문구·컨셉**을 빠르게 여러 안 뽑고 싶다.
+- **활용**: 로컬 chat으로 썸네일 카피·후킹 단어 A/B, 제목↔썸네일 문구 조합. 잘 먹힌 패턴을 `remember`로 축적해 다음에 참고.
+- **효과**: 컨셉·문구 브레인스토밍 가속(0원). *이미지 생성은 안 함 — 별도 이미지 툴과 병행, localmind는 문구·아이디어 담당.*
+- **시작**: [chat-openai.py](chat-openai.py) · [memory.sh](memory.sh)
+
+## 🌟 인플루언서
+- **상황**: 캡션·해시태그·릴스 아이디어를 여러 플랫폼용으로 변주하고 DM/댓글 응대도 잦다.
+- **활용**: 로컬 chat으로 캡션·해시태그·플랫폼별 리퍼포징(하나→인스타/유튜브/X). 브랜드 보이스·협찬 가이드를 `remember`로, 콘텐츠 캘린더를 노트로. 응대 초안도.
+- **효과**: 멀티플랫폼 콘텐츠 생산 가속 + 톤 일관, 비용 0원.
+- **시작**: [chat-openai.py](chat-openai.py) · [memory.sh](memory.sh)
 
 ## 🔐 보안 / SecOps
 - **상황**: 민감 로그·코드를 외부 API에 보내기 부담스럽다.
