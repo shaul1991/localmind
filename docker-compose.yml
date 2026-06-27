@@ -1,0 +1,22 @@
+services:
+  cli2port:
+    build: .
+    image: cli2port
+    container_name: cli2port
+    ports:
+      - "8787:8787"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8787
+      # 필요 시 주석 해제
+      # - CLI2PORT_API_KEY=change-me
+      # - DEFAULT_BACKEND=claude
+      # - SESSION_MODE=auto
+      # - LOG_LEVEL=info
+    volumes:
+      # 호스트의 CLI 구독 인증/설정을 컨테이너로 공유한다.
+      # (claude/codex가 컨테이너 안에서 호스트와 동일한 계정으로 동작)
+      - ${HOME}/.claude:/root/.claude
+      - ${HOME}/.claude.json:/root/.claude.json
+      - ${HOME}/.codex:/root/.codex
+    restart: unless-stopped

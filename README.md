@@ -45,6 +45,38 @@ npm start
 
 기본적으로 `http://127.0.0.1:8787` 에서 대기합니다. 설정은 환경변수로 변경합니다 (`.env.example` 참고).
 
+## Docker
+
+이미지에는 `claude`·`codex` CLI가 함께 설치됩니다. 인증은 **호스트의 CLI 인증 디렉토리를 볼륨 마운트**해 재사용합니다(별도 로그인 불필요).
+
+> 전제: 호스트에서 `claude`/`codex`에 이미 로그인되어 있어야 합니다(`~/.claude`, `~/.codex`).
+
+### docker compose (권장)
+
+```bash
+docker compose up -d --build
+curl http://127.0.0.1:8787/health
+```
+
+`docker-compose.yml`이 호스트의 `~/.claude`, `~/.claude.json`, `~/.codex`를 컨테이너로 마운트합니다.
+
+### docker run
+
+```bash
+docker build -t cli2port .
+docker run -d --name cli2port -p 8787:8787 \
+  -v "$HOME/.claude:/root/.claude" \
+  -v "$HOME/.claude.json:/root/.claude.json" \
+  -v "$HOME/.codex:/root/.codex" \
+  cli2port
+```
+
+**주의사항**
+- 컨테이너 안의 CLI는 호스트와 **동일한 계정/인증/상태를 공유**합니다. 호스트에서 같은 CLI를 동시에 무겁게 쓰면 상태(히스토리·토큰 갱신 등)가 섞일 수 있습니다.
+- 컨테이너 내부는 `HOST=0.0.0.0`으로 바인딩해야 외부에서 접근됩니다(이미지 기본값).
+- claude는 glibc 네이티브 바이너리라 베이스 이미지는 Debian 계열(`node:24-slim`)을 사용합니다(alpine/musl 비호환).
+- 인증 토큰 갱신을 컨테이너가 호스트 파일에 다시 쓰므로 볼륨은 읽기·쓰기로 마운트합니다.
+
 ## 사용 예시
 
 ### curl
