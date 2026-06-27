@@ -8,6 +8,8 @@
 - **second-brain** — 내 마크다운 노트에 대한 RAG
 - **MCP 도구** — Cursor/Claude Desktop/Cline에서 위 기능을 도구로 사용
 
+> 지금은 **개인용 MVP**. 진화 방향(개인 + 회사/팀 shared 하이브리드)은 [ROADMAP.md](ROADMAP.md) 참고.
+
 ```
   HTTP API ┬─ /v1/chat/completions · /v1/messages   → claude/codex CLI
            ├─ /v1/embeddings                         → bge-m3
