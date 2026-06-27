@@ -3,4 +3,13 @@ dist/
 *.log
 .env
 .env.local
+.env.*.local
 .DS_Store
+
+# 로컬 개인 데이터 — 절대 커밋 금지 (각 인스턴스 로컬에만 존재)
+.brain-index.json
+**/.brain-index.json
+brain-index.json
+cli-gateway-brain/
+memory-backup.md
+*-backup.md
