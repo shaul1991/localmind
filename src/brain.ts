@@ -97,15 +97,26 @@ function sha(s: string): string {
 
 async function embed(texts: string[]): Promise<number[][]> {
   if (!texts.length) return [];
-  const res = await fetch(`${EMB_URL}/embeddings`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${EMB_KEY}` },
-    body: JSON.stringify({ model: EMB_MODEL, input: texts }),
-  });
-  if (!res.ok) throw new Error(`embeddings HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const j: any = await res.json();
-  // index 순서 보존
-  return (j.data as any[]).sort((a, b) => a.index - b.index).map((d) => d.embedding as number[]);
+  const attempts = Math.max(1, Number(process.env.EMBED_RETRIES ?? 5));
+  const timeoutMs = Number(process.env.EMBED_TIMEOUT_MS ?? 120000);
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const res = await fetch(`${EMB_URL}/embeddings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${EMB_KEY}` },
+        body: JSON.stringify({ model: EMB_MODEL, input: texts }),
+        signal: AbortSignal.timeout(timeoutMs), // 행 방지: 요청 타임아웃 후 재시도
+      });
+      if (!res.ok) throw new Error(`embeddings HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      const j: any = await res.json();
+      return (j.data as any[]).sort((a, b) => a.index - b.index).map((d) => d.embedding as number[]); // index 순서 보존
+    } catch (e) {
+      lastErr = e;
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, 1500 * (i + 1))); // 백오프
+    }
+  }
+  throw lastErr;
 }
 
 function cosine(a: number[], b: number[]): number {
@@ -156,7 +167,9 @@ async function ensureIndexed(): Promise<BrainIndex> {
     const flat: Ref[] = [];
     for (const p of pending) p.chunks.forEach((c, ci) => flat.push({ rel: p.rel, ci, text: c }));
 
-    const batchSize = Math.max(1, Number(process.env.BRAIN_BATCH ?? 32));
+    // CPU 임베딩은 청크당 1~4s라 배치가 크면 요청이 타임아웃을 넘겨 재시도 cascade가
+    // 난다. 작은 배치(8)로 각 요청을 타임아웃 한참 안에 끝낸다.
+    const batchSize = Math.max(1, Number(process.env.BRAIN_BATCH ?? 8));
     const batches: Ref[][] = [];
     for (let i = 0; i < flat.length; i += batchSize) batches.push(flat.slice(i, i + batchSize));
 
@@ -181,7 +194,8 @@ async function ensureIndexed(): Promise<BrainIndex> {
         saveIndex(idx); // 완료된 파일만 반영해 진행 저장
       }
     }
-    const conc = Math.max(1, Number(process.env.BRAIN_CONCURRENCY ?? 4));
+    // NUM_PARALLEL=1 ollama에선 동시 요청이 큐 적체로 행을 유발할 수 있어 기본 2.
+    const conc = Math.max(1, Number(process.env.BRAIN_CONCURRENCY ?? 2));
     await Promise.all(Array.from({ length: Math.min(conc, batches.length) }, () => worker()));
   }
 
