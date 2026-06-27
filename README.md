@@ -308,6 +308,15 @@ MODEL=sonnet npm run smoke:tools             # OpenAI tools
 MODEL=sonnet npm run smoke:anthropic:tools   # Anthropic tool_use
 ```
 
+## CI
+
+GitHub Actions(`.github/workflows/ci.yml`)에서 push/PR마다 다음을 검증합니다.
+
+- **typecheck & build**: Node 20·22·24 매트릭스로 `npm ci → typecheck → build`
+- **docker build**: 이미지가 정상 빌드되는지 확인
+
+> 스모크 테스트(`npm run smoke*`)는 인증된 `claude`/`codex` CLI가 필요해 CI에서는 실행하지 않습니다. 로컬에서 서버를 띄운 뒤 수동으로 돌리세요.
+
 ## 현재 제한 사항 (MVP)
 
 - **Function calling / tools**: OpenAI·Anthropic 양쪽 엔드포인트에서 [A2 프롬프트 방식 PoC](#함수-호출-function-calling-a2-프롬프트-방식-poc)로 지원.
