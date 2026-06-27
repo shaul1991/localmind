@@ -199,8 +199,13 @@ cli-gateway의 능력을 **MCP 도구**로 노출해, MCP 호스트(Claude Deskt
 | 도구 | 설명 |
 |---|---|
 | `ask` | claude/codex CLI에 교차 질의(다른 모델 상담) → cli-gateway 경유 |
-| `remember` | 로컬 메모리에 사실 저장 (claude 추출 + bge-m3, 메터드 API 0원) |
+| `remember` | 진화하는 기억에 사실 저장 (mem0: claude 추출 + bge-m3) |
 | `recall` | 의미 기반 회상 (mem0 벡터 검색) |
+| `capture_note` | second-brain: 마크다운 노트 저장 + 인덱싱 (정본은 `.md`) |
+| `search_notes` | second-brain: 내 노트 의미검색(원문·경로) |
+| `ask_brain` | second-brain: 내 노트만 근거로 RAG 답변(출처 인용) |
+
+> **두 종류의 기억**: `remember/recall`은 mem0의 *진화하는 사실 메모리*, `capture_note/search_notes/ask_brain`은 *내 마크다운 노트(정본) RAG* 입니다.
 
 ```
 MCP 호스트(Claude Desktop/Cursor/Cline)
@@ -240,7 +245,10 @@ Claude Desktop `claude_desktop_config.json` (Cursor `.cursor/mcp.json`, Cline MC
 | `CLI_GATEWAY_API_KEY` | (없음) | cli-gateway 인증 시 |
 | `OPENMEMORY_URL` | `http://localhost:8767` | remember/recall 대상 |
 | `OPENMEMORY_USER` | `cli-gateway` | 메모리 소유자 id |
-| `MCP_DEFAULT_MODEL` | `sonnet` | ask 기본 모델 |
+| `MCP_DEFAULT_MODEL` | `sonnet` | ask / ask_brain 기본 모델 |
+| `NOTES_DIR` | `~/cli-gateway-brain` | second-brain 노트 폴더(정본). 내 노트 경로로 지정 |
+| `EMBEDDINGS_URL` | `http://localhost:4000/v1` | 노트 임베딩(게이트웨이) |
+| `EMBEDDINGS_MODEL` | `text-embedding-3-small` | (게이트웨이가 bge-m3로 매핑) |
 
 검증: `npm run smoke:mcp` (공식 MCP 클라이언트로 ask/remember/recall 점검).
 

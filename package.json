@@ -18,7 +18,8 @@
     "smoke:anthropic": "tsx scripts/smoke-anthropic.ts",
     "smoke:tools": "tsx scripts/smoke-tools.ts",
     "smoke:anthropic:tools": "tsx scripts/smoke-anthropic-tools.ts",
-    "smoke:mcp": "tsx scripts/smoke-mcp.ts"
+    "smoke:mcp": "tsx scripts/smoke-mcp.ts",
+    "smoke:brain": "tsx scripts/smoke-brain.ts"
   },
   "keywords": [
     "claude",

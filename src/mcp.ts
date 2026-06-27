@@ -15,6 +15,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { askBrain, capture, notesDir, searchNotes } from "./brain.js";
 
 const GATEWAY_URL = (process.env.CLI_GATEWAY_URL ?? "http://localhost:8787").replace(/\/$/, "");
 const GATEWAY_KEY = process.env.CLI_GATEWAY_API_KEY?.trim();
@@ -127,11 +128,80 @@ server.registerTool(
   },
 );
 
+// ── second-brain: .md 노트 RAG ──────────────────────────────────
+server.registerTool(
+  "capture_note",
+  {
+    title: "Capture note",
+    description:
+      "Save a markdown note into the second-brain notes folder (canonical) and index it for search. " +
+      "Use to persist knowledge, decisions, snippets.",
+    inputSchema: {
+      text: z.string().describe("Note body (markdown)"),
+      title: z.string().optional().describe("Optional note title"),
+    },
+  },
+  async ({ text, title }) => {
+    try {
+      const file = await capture(text, title);
+      return textResult(`노트 저장: ${file}`);
+    } catch (e) {
+      return textResult(`capture_note 실패: ${(e as Error).message}`, true);
+    }
+  },
+);
+
+server.registerTool(
+  "search_notes",
+  {
+    title: "Search notes",
+    description: "Semantically search your second-brain markdown notes. Returns matching snippets with paths.",
+    inputSchema: {
+      query: z.string().describe("What to find in your notes"),
+      limit: z.number().int().min(1).max(20).optional().describe("Max snippets (default 5)"),
+    },
+  },
+  async ({ query, limit }) => {
+    try {
+      const hits = await searchNotes(query, limit ?? 5);
+      if (!hits.length) return textResult("관련 노트 없음");
+      return textResult(
+        hits.map((h) => `(${h.score.toFixed(3)}) [${h.path}]\n${h.text.slice(0, 280)}`).join("\n\n"),
+      );
+    } catch (e) {
+      return textResult(`search_notes 실패: ${(e as Error).message}`, true);
+    }
+  },
+);
+
+server.registerTool(
+  "ask_brain",
+  {
+    title: "Ask second-brain (RAG)",
+    description:
+      "Answer a question grounded ONLY in your second-brain notes (RAG). Cites source note paths.",
+    inputSchema: {
+      question: z.string().describe("Question to answer from your notes"),
+      k: z.number().int().min(1).max(20).optional().describe("Notes to retrieve (default 5)"),
+    },
+  },
+  async ({ question, k }) => {
+    try {
+      const { answer, sources } = await askBrain(question, k ?? 5);
+      const cite = sources.length ? `\n\n출처: ${sources.join(", ")}` : "";
+      return textResult(answer + cite);
+    } catch (e) {
+      return textResult(`ask_brain 실패: ${(e as Error).message}`, true);
+    }
+  },
+);
+
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   process.stderr.write(
-    `[cli-gateway-mcp] ready (gateway=${GATEWAY_URL}, memory=${OPENMEMORY_URL}, user=${MEMORY_USER})\n`,
+    `[cli-gateway-mcp] ready (gateway=${GATEWAY_URL}, memory=${OPENMEMORY_URL}, ` +
+      `user=${MEMORY_USER}, notes=${notesDir()})\n`,
   );
 }
 
