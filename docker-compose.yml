@@ -59,21 +59,36 @@ services:
     restart: unless-stopped
 
   # ── opt: 메모리 서비스 (profile: memory) — OpenMemory(mem0) ──
-  # 벡터 저장소(qdrant) + OpenMemory API. LLM·임베더를 게이트웨이로 돌려
-  # claude(추출) + bge-m3(임베딩)로 동작 → 메터드 API 0원.
-  mem0_store:
+  # 저장소는 Postgres+pgvector 단일 DB(앱 메타데이터 + 벡터). OpenMemory는
+  # 최신 소스 + cli2port 패치로 빌드(게시 이미지는 pgvector 미지원 + 읽기 버그).
+  # LLM·임베더는 게이트웨이로 → claude(추출) + bge-m3(임베딩), 메터드 API 0원.
+  mem0_pg:
     profiles: ["memory"]
-    image: qdrant/qdrant:latest
-    container_name: cli2port-qdrant
+    image: pgvector/pgvector:pg16
+    container_name: cli2port-pg
+    environment:
+      - POSTGRES_USER=mem0
+      - POSTGRES_PASSWORD=mem0
+      - POSTGRES_DB=openmemory
     volumes:
-      - mem0-qdrant:/qdrant/storage
+      - mem0-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mem0 -d openmemory"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
     restart: unless-stopped
 
   openmemory:
     profiles: ["memory"]
-    image: mem0/openmemory-mcp:latest
+    build: ./openmemory
+    image: cli2port-openmemory
     container_name: cli2port-openmemory
-    depends_on: [mem0_store, litellm]
+    depends_on:
+      mem0_pg:
+        condition: service_healthy
+      litellm:
+        condition: service_started
     ports:
       # 호스트 8765는 다른 서비스가 쓸 수 있어 8767로 노출(컨테이너 내부는 8765).
       - "${OPENMEMORY_PORT:-8767}:8765"
@@ -84,7 +99,15 @@ services:
       # openai SDK가 직접 읽는 base URL → LLM·임베더 모두 게이트웨이로.
       - OPENAI_BASE_URL=http://litellm:4000/v1
       - USER=${OPENMEMORY_USER:-cli2port}
-      # LLM·임베더를 게이트웨이로 (차원/벡터스토어는 기동 후 config API로 보정)
+      # 앱 메타데이터 DB → Postgres (목록/검색 버그 해소)
+      - DATABASE_URL=postgresql://mem0:mem0@mem0_pg:5432/openmemory
+      # 벡터스토어 → pgvector (PG_HOST/PORT 감지 시 mem0가 pgvector 사용)
+      - PG_HOST=mem0_pg
+      - PG_PORT=5432
+      - PG_DB=openmemory
+      - PG_USER=mem0
+      - PG_PASSWORD=mem0
+      # LLM·임베더를 게이트웨이로
       - LLM_PROVIDER=openai
       - LLM_MODEL=${CHAT_MODEL:-claude-sonnet-4-6}
       - LLM_BASE_URL=http://litellm:4000/v1
@@ -95,40 +118,46 @@ services:
       - EMBEDDER_API_KEY=${LITELLM_MASTER_KEY:-sk-local}
     restart: unless-stopped
 
-  # OpenMemory 부트스트랩(일회성): qdrant 컬렉션 차원을 임베딩 모델에 맞추고,
-  # LLM/임베더 모델명을 게이트웨이 라우팅에 맞게 설정한다.
+  # 부트스트랩(일회성): pgvector 테이블을 임베딩 차원에 맞춰 선생성(mem0가 재사용)
+  # 하고 LLM/임베더 모델명을 게이트웨이 라우팅에 맞게 설정한다.
   openmemory-init:
     profiles: ["memory"]
-    image: curlimages/curl:latest
+    image: cli2port-openmemory
     container_name: cli2port-openmemory-init
-    depends_on: [mem0_store, openmemory]
+    depends_on:
+      mem0_pg:
+        condition: service_healthy
+      openmemory:
+        condition: service_started
     restart: "no"
-    entrypoint: ["/bin/sh", "-c"]
+    environment:
+      - EMBEDDING_DIMS=${EMBEDDING_DIMS:-1024}
+      - CHAT_MODEL=${CHAT_MODEL:-claude-sonnet-4-6}
+    entrypoint: ["python", "-c"]
     command:
       - |
-        set -e
-        DIMS=${EMBEDDING_DIMS:-1024}
-        echo "[init] qdrant 대기..."
-        until curl -sf http://mem0_store:6333/readyz >/dev/null 2>&1; do sleep 2; done
-        EXIST=$$(curl -s -o /dev/null -w '%{http_code}' http://mem0_store:6333/collections/openmemory)
-        if [ "$$EXIST" = "404" ]; then
-          echo "[init] openmemory 컬렉션 생성 (dim=$$DIMS)"
-          curl -s -X PUT http://mem0_store:6333/collections/openmemory -H 'Content-Type: application/json' -d "{\"vectors\":{\"size\":$$DIMS,\"distance\":\"Cosine\"}}" >/dev/null
-        else
-          SIZE=$$(curl -s http://mem0_store:6333/collections/openmemory | grep -o '"size":[0-9]*' | head -1 | grep -o '[0-9]*')
-          if [ "$$SIZE" != "$$DIMS" ]; then
-            echo "[init] 차원 불일치($$SIZE!=$$DIMS) → 재생성"
-            curl -s -X DELETE http://mem0_store:6333/collections/openmemory >/dev/null
-            curl -s -X PUT http://mem0_store:6333/collections/openmemory -H 'Content-Type: application/json' -d "{\"vectors\":{\"size\":$$DIMS,\"distance\":\"Cosine\"}}" >/dev/null
-          fi
-        fi
-        echo "[init] openmemory API 대기..."
-        until curl -sf http://openmemory:8765/docs >/dev/null 2>&1; do sleep 2; done
-        echo "[init] LLM/임베더 모델 설정"
-        curl -s -X PUT http://openmemory:8765/api/v1/config/ -H 'Content-Type: application/json' \
-          -d '{"mem0":{"llm":{"provider":"openai","config":{"model":"'"${CHAT_MODEL:-claude-sonnet-4-6}"'","temperature":0.1,"max_tokens":2000,"api_key":"env:API_KEY"}},"embedder":{"provider":"openai","config":{"model":"text-embedding-3-small","api_key":"env:API_KEY"}}}}' >/dev/null
-        echo "[init] 완료 ✅"
+        import os, time, json, urllib.request, psycopg2
+        dims = int(os.environ.get("EMBEDDING_DIMS", "1024"))
+        model = os.environ.get("CHAT_MODEL", "claude-sonnet-4-6")
+        for _ in range(60):
+            try:
+                conn = psycopg2.connect(host="mem0_pg", port=5432, dbname="openmemory", user="mem0", password="mem0"); break
+            except Exception: time.sleep(2)
+        cur = conn.cursor()
+        cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        cur.execute("CREATE TABLE IF NOT EXISTS openmemory (id UUID PRIMARY KEY, vector vector(%d), payload JSONB)" % dims)
+        conn.commit(); conn.close()
+        print("[init] pgvector table ready (dim=%d)" % dims)
+        for _ in range(60):
+            try: urllib.request.urlopen("http://openmemory:8765/docs", timeout=3); break
+            except Exception: time.sleep(2)
+        # 모델명은 LLM_MODEL env로 이미 적용됨. config API는 best-effort 보정.
+        cfg = {"mem0": {"llm": {"provider": "openai", "config": {"model": model, "temperature": 0.1, "max_tokens": 2000, "api_key": "env:API_KEY"}}, "embedder": {"provider": "openai", "config": {"model": "text-embedding-3-small", "api_key": "env:API_KEY"}}}}
+        req = urllib.request.Request("http://openmemory:8765/api/v1/config/", data=json.dumps(cfg).encode(), headers={"Content-Type": "application/json"}, method="PUT")
+        try: urllib.request.urlopen(req, timeout=15)
+        except Exception as e: print("[init] config PUT skipped:", e)
+        print("[init] done")
 
 volumes:
   ollama-data:
-  mem0-qdrant:
+  mem0-pg:
