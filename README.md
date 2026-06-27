@@ -90,6 +90,21 @@ make health             # 엔드포인트 상태(:8787 / :4000 / :8767)
 📂 바로 따라 할 **케이스별 예제**는 [examples/](examples/) — API 대체·임베딩·메모리·second-brain·MCP까지.
 👥 **내 직군에선 어떻게?** → [직군별 유즈케이스](examples/use-cases.md) — 개발(백엔드·프론트·앱·게임), 데이터/ML, QA·아키텍트·인프라, 비개발(PM·라이터·보안·연구자), **콘텐츠 크리에이터**(AI 글작성·유튜브 대본/편집·썸네일·인플루언서) 등 **19개 페르소나**.
 
+## 🧑‍💻 직군별 워크플로우 — 내 직군, 바로 실행
+
+`make up` 후 **내 직군 스크립트 하나만 돌리면** localmind 활용이 한 번에 체감됩니다. 전부 실행·검증됨.
+
+| 그룹 | 바로 실행할 워크플로우 |
+|---|---|
+| **개발** | [백엔드](examples/workflow-backend.py) · [프론트](examples/workflow-frontend.mjs) · [앱/모바일](examples/workflow-mobile-i18n.py) · [게임](examples/workflow-game-content.py) |
+| **데이터/ML** | [ML 엔지니어](examples/workflow-ml-index.py) · [데이터 분석](examples/workflow-data-analysis.py) |
+| **품질·설계·운영** | [QA](examples/workflow-qa-testcases.py) · [아키텍트](examples/workflow-design-review.py) · [인프라/SRE](examples/workflow-infra-runbook.mjs) |
+| **비개발** | [PM](examples/workflow-pm-spec.py) · [테크니컬 라이터](examples/workflow-docs-draft.mjs) · [보안](examples/workflow-security-triage.py) · [연구자](examples/workflow-research-synthesis.mjs) |
+| **콘텐츠** | [AI 글작성](examples/workflow-ai-writer.py) · [유튜브 대본](examples/workflow-youtube-script.py) · [유튜브 편집](examples/workflow-youtube-edit.py) · [썸네일](examples/workflow-thumbnail-copy.py) · [인플루언서](examples/workflow-influencer-repurpose.py) |
+| **1인 개발** | [풀스택 투어](examples/workflow-solo-stack.sh) |
+
+각 직군의 **상황 → 활용 → 워크플로우 단계 → 효과**는 👉 [직군별 유즈케이스(19 페르소나)](examples/use-cases.md). 모든 예제는 [examples/](examples/).
+
 ## 동작 방식
 
 1. OpenAI 형식 요청(`messages`, `stream`, ...)을 받습니다.
