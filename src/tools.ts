@@ -3,43 +3,82 @@
  *
  * CLI에는 "외부가 실행할 함수 스펙을 받아 호출만 내뱉고 멈추는" 모드가 없으므로,
  * tools 스펙을 시스템 프롬프트에 주입하고 모델이 약속된 JSON 형식으로 출력하게 한 뒤
- * 그 텍스트를 파싱해 OpenAI tool_calls 응답으로 변환한다.
+ * 그 텍스트를 파싱해 tool_calls/tool_use 응답으로 변환한다.
+ *
+ * OpenAI(/v1/chat/completions)와 Anthropic(/v1/messages) 양쪽이 공유한다.
  */
 
-export interface OpenAITool {
-  type: "function";
-  function: { name: string; description?: string; parameters?: unknown };
+/** 백엔드 무관 내부 도구 표현. */
+export interface ToolDef {
+  name: string;
+  description?: string;
+  parameters?: unknown; // JSON Schema
 }
 
-export type ToolChoice =
-  | "none"
-  | "auto"
-  | "required"
-  | { type: "function"; function: { name: string } };
+/** 정규화된 도구 선택. "none"이면 비활성. */
+export type NormalizedChoice = "none" | { mode: "auto" | "required"; forced?: string };
 
 export interface ParsedToolCall {
   name: string;
   arguments: Record<string, unknown>;
 }
 
-/** tools가 실제로 활성화돼야 하는지(배열이 있고 tool_choice가 none이 아님). */
-export function toolsActive(tools: unknown, toolChoice: unknown): tools is OpenAITool[] {
-  return Array.isArray(tools) && tools.length > 0 && toolChoice !== "none";
+// ── OpenAI 포맷 정규화 ────────────────────────────────────────
+export interface OpenAITool {
+  type: "function";
+  function: { name: string; description?: string; parameters?: unknown };
+}
+
+export function normalizeOpenAITools(tools: unknown): ToolDef[] {
+  if (!Array.isArray(tools)) return [];
+  return tools
+    .filter((t: any) => t?.function?.name)
+    .map((t: any) => ({
+      name: t.function.name,
+      description: t.function.description,
+      parameters: t.function.parameters,
+    }));
+}
+
+export function normalizeOpenAIChoice(choice: unknown): NormalizedChoice {
+  if (choice === "none") return "none";
+  if (choice === "required") return { mode: "required" };
+  if (typeof choice === "object" && choice && (choice as any).function?.name) {
+    return { mode: "required", forced: (choice as any).function.name };
+  }
+  return { mode: "auto" };
+}
+
+// ── Anthropic 포맷 정규화 ─────────────────────────────────────
+export interface AnthropicToolDef {
+  name: string;
+  description?: string;
+  input_schema?: unknown;
+}
+
+export function normalizeAnthropicTools(tools: unknown): ToolDef[] {
+  if (!Array.isArray(tools)) return [];
+  return tools
+    .filter((t: any) => typeof t?.name === "string")
+    .map((t: any) => ({ name: t.name, description: t.description, parameters: t.input_schema }));
+}
+
+export function normalizeAnthropicChoice(choice: unknown): NormalizedChoice {
+  const c = choice as any;
+  if (!c || c.type === "auto") return { mode: "auto" };
+  if (c.type === "none") return "none";
+  if (c.type === "any") return { mode: "required" };
+  if (c.type === "tool" && typeof c.name === "string") return { mode: "required", forced: c.name };
+  return { mode: "auto" };
 }
 
 /** tools 스펙을 시스템 프롬프트에 주입할 지시문으로 변환. */
-export function buildToolSystemPrompt(tools: OpenAITool[], toolChoice: ToolChoice): string {
-  const defs = tools.map((t) => ({
-    name: t.function?.name,
-    description: t.function?.description,
-    parameters: t.function?.parameters,
-  }));
-
+export function buildToolSystemPrompt(defs: ToolDef[], choice: NormalizedChoice): string {
   let directive = "도구가 필요 없으면 평소처럼 자연어로 답하라(이 JSON 형식을 쓰지 말 것).";
-  if (toolChoice === "required") {
+  if (choice !== "none" && choice.forced) {
+    directive = `반드시 "${choice.forced}" 도구를 호출해야 한다.`;
+  } else if (choice !== "none" && choice.mode === "required") {
     directive = "반드시 하나 이상의 도구를 호출해야 한다.";
-  } else if (typeof toolChoice === "object" && toolChoice?.function?.name) {
-    directive = `반드시 "${toolChoice.function.name}" 도구를 호출해야 한다.`;
   }
 
   return [

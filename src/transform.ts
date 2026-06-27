@@ -11,6 +11,15 @@ export function contentToText(content: MessageContent): string {
       if (part.type === "text" && typeof part.text === "string") return part.text;
       // 비텍스트 파트(이미지 등)는 자리표시자로 남긴다(CLI는 텍스트만 받음).
       if (part.type === "image_url" || part.type === "image") return "[image omitted]";
+      // Anthropic 함수 호출/결과 블록을 텍스트로 렌더링.
+      if (part.type === "tool_use") {
+        return `[tool_call] ${(part as any).name}(${JSON.stringify((part as any).input ?? {})})`;
+      }
+      if (part.type === "tool_result") {
+        const c = (part as any).content;
+        const text = typeof c === "string" ? c : contentToText(c as ContentPart[]);
+        return `[tool_result] ${text}`;
+      }
       return "";
     })
     .filter(Boolean)

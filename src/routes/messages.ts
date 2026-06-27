@@ -5,14 +5,36 @@ import type { Router } from "../backends/router.js";
 import { BackendError } from "../backends/types.js";
 import { contentToText, flattenAnthropic } from "../transform.js";
 import { extractExplicitId, prepareSession, type SessionStore } from "../session.js";
+import {
+  buildToolSystemPrompt,
+  normalizeAnthropicChoice,
+  normalizeAnthropicTools,
+  parseToolCalls,
+  type ParsedToolCall,
+} from "../tools.js";
 import { log } from "../util/log.js";
 import type {
   AnthropicMessageResponse,
   AnthropicMessagesRequest,
+  AnthropicToolUseBlock,
 } from "../types-anthropic.js";
 
 function newId(): string {
   return `msg_${randomBytes(18).toString("hex")}`;
+}
+
+function newToolId(): string {
+  return `toolu_${randomBytes(18).toString("hex")}`;
+}
+
+/** ParsedToolCall[] → Anthropic tool_use 블록(input은 객체). */
+function toToolUseBlocks(calls: ParsedToolCall[]): AnthropicToolUseBlock[] {
+  return calls.map((c) => ({
+    type: "tool_use" as const,
+    id: newToolId(),
+    name: c.name,
+    input: c.arguments ?? {},
+  }));
 }
 
 /** OpenAI 스타일 finish_reason → Anthropic stop_reason 역매핑. */
@@ -31,6 +53,29 @@ function toStopReason(finish: string): string {
 /** Anthropic SSE는 `event: <타입>` 라인을 동반한다. */
 function sseEvent(res: Response, type: string, data: unknown): void {
   res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...(data as object) })}\n\n`);
+}
+
+function setSseHeaders(res: Response): void {
+  res.status(200);
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders?.();
+}
+
+function emitMessageStart(res: Response, id: string, model: string): void {
+  sseEvent(res, "message_start", {
+    message: {
+      id,
+      type: "message",
+      role: "assistant",
+      model,
+      content: [],
+      stop_reason: null,
+      stop_sequence: null,
+      usage: { input_tokens: 0, output_tokens: 0 },
+    },
+  });
 }
 
 export function createMessagesHandler(router: Router, config: Config, sessions: SessionStore) {
@@ -64,6 +109,16 @@ export function createMessagesHandler(router: Router, config: Config, sessions: 
     );
     const stream = body.stream === true;
 
+    // 함수 호출(A2 프롬프트 방식): tools가 있으면 지시문을 system에 주입.
+    const toolDefs = normalizeAnthropicTools(body.tools);
+    const toolChoice = normalizeAnthropicChoice(body.tool_choice);
+    const toolsOn = toolDefs.length > 0 && toolChoice !== "none";
+    let runSystem = system;
+    if (toolsOn && !sess.resumeId) {
+      const toolPrompt = buildToolSystemPrompt(toolDefs, toolChoice);
+      runSystem = system ? `${system}\n\n${toolPrompt}` : toolPrompt;
+    }
+
     const ac = new AbortController();
     const timeout = setTimeout(() => ac.abort(), config.requestTimeoutMs);
     timeout.unref?.();
@@ -78,28 +133,82 @@ export function createMessagesHandler(router: Router, config: Config, sessions: 
     );
 
     try {
-      const gen = backend.run({ model, system, prompt, resumeId: sess.resumeId, signal: ac.signal });
+      const gen = backend.run({
+        model,
+        system: runSystem,
+        prompt,
+        resumeId: sess.resumeId,
+        signal: ac.signal,
+      });
 
-      if (stream) {
-        res.status(200);
-        res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-        res.setHeader("Cache-Control", "no-cache, no-transform");
-        res.setHeader("Connection", "keep-alive");
-        res.flushHeaders?.();
+      // ── 함수 호출 모드 ───────────────────────────────────────
+      // 도구 호출 여부는 전체 출력을 봐야 알 수 있어 버퍼링한 뒤 결정한다.
+      if (toolsOn) {
+        let next = await gen.next();
+        while (!next.done) next = await gen.next();
+        const result = next.value;
+        sess.commit(result.sessionId, result.text);
 
-        // 1) message_start (input_tokens는 아직 모르므로 0, 최종 usage는 message_delta에서 보정)
-        sseEvent(res, "message_start", {
-          message: {
+        const parsed = parseToolCalls(result.text);
+        const toolUses = parsed ? toToolUseBlocks(parsed) : null;
+        const stopReason = toolUses ? "tool_use" : "end_turn";
+        const outModel = result.model || model;
+        const usage = {
+          input_tokens: result.usage.inputTokens,
+          output_tokens: result.usage.outputTokens,
+        };
+
+        if (stream) {
+          setSseHeaders(res);
+          emitMessageStart(res, id, outModel);
+          if (toolUses) {
+            toolUses.forEach((tu, i) => {
+              sseEvent(res, "content_block_start", {
+                index: i,
+                content_block: { type: "tool_use", id: tu.id, name: tu.name, input: {} },
+              });
+              sseEvent(res, "content_block_delta", {
+                index: i,
+                delta: { type: "input_json_delta", partial_json: JSON.stringify(tu.input) },
+              });
+              sseEvent(res, "content_block_stop", { index: i });
+            });
+          } else {
+            sseEvent(res, "content_block_start", { index: 0, content_block: { type: "text", text: "" } });
+            sseEvent(res, "content_block_delta", {
+              index: 0,
+              delta: { type: "text_delta", text: result.text },
+            });
+            sseEvent(res, "content_block_stop", { index: 0 });
+          }
+          sseEvent(res, "message_delta", {
+            delta: { stop_reason: stopReason, stop_sequence: null },
+            usage,
+          });
+          sseEvent(res, "message_stop", {});
+          res.end();
+        } else {
+          const response: AnthropicMessageResponse = {
             id,
             type: "message",
             role: "assistant",
-            model,
-            content: [],
-            stop_reason: null,
+            model: outModel,
+            content: toolUses ?? [{ type: "text", text: result.text }],
+            stop_reason: stopReason,
             stop_sequence: null,
-            usage: { input_tokens: 0, output_tokens: 0 },
-          },
-        });
+            usage,
+          };
+          res.status(200).json(response);
+        }
+        return;
+      }
+
+      // ── 일반 모드 ────────────────────────────────────────────
+      if (stream) {
+        setSseHeaders(res);
+
+        // 1) message_start (input_tokens는 아직 모르므로 0, 최종 usage는 message_delta에서 보정)
+        emitMessageStart(res, id, model);
         // 2) content_block_start + ping
         sseEvent(res, "content_block_start", {
           index: 0,

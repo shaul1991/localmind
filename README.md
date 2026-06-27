@@ -179,7 +179,9 @@ curl http://127.0.0.1:8787/v1/chat/completions \
 
 ## 함수 호출 (Function Calling, A2 프롬프트 방식 PoC)
 
-OpenAI `tools`(함수 정의)를 보내면, 모델이 함수 호출이 필요하다고 판단할 때 표준 `tool_calls` 응답(`finish_reason: "tool_calls"`)을 돌려줍니다. 공식 OpenAI SDK의 함수 호출 흐름이 그대로 동작합니다 (`/v1/chat/completions` 한정).
+OpenAI(`/v1/chat/completions`)와 Anthropic(`/v1/messages`) **양쪽** 모두 함수 호출을 지원합니다. 모델이 함수 호출이 필요하다고 판단하면 각 포맷의 표준 응답(OpenAI `tool_calls` / Anthropic `tool_use` 블록)을 돌려줍니다. 공식 OpenAI/Anthropic SDK의 함수 호출 흐름이 그대로 동작합니다.
+
+### OpenAI (`/v1/chat/completions`)
 
 ```python
 tools = [{
@@ -205,13 +207,35 @@ r2 = client.chat.completions.create(model="sonnet", tools=tools, messages=[
 print(r2.choices[0].message.content)
 ```
 
-**작동 방식 (A2)**: CLI에는 "외부가 실행할 함수 스펙을 받아 호출만 내뱉고 멈추는" 모드가 없으므로, `tools` 스펙을 시스템 프롬프트에 주입하고 모델이 약속된 JSON(`{"tool_calls":[...]}`)으로 출력하게 한 뒤 그 텍스트를 파싱해 OpenAI `tool_calls`로 변환합니다.
+### Anthropic (`/v1/messages`)
+
+Anthropic 포맷(`tools`는 `{name, description, input_schema}`, 결과는 `user` 메시지의 `tool_result` 블록)도 그대로 지원합니다.
+
+```python
+tools = [{
+    "name": "get_weather",
+    "description": "Get current weather for a city",
+    "input_schema": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]},
+}]
+
+r = client.messages.create(model="sonnet", max_tokens=1024, tools=tools,
+    messages=[{"role": "user", "content": "서울 날씨 알려줘"}])
+tool_use = next(b for b in r.content if b.type == "tool_use")   # get_weather(input={"city":"서울"})
+
+r2 = client.messages.create(model="sonnet", max_tokens=1024, tools=tools, messages=[
+    {"role": "user", "content": "서울 날씨 알려줘"},
+    {"role": "assistant", "content": r.content},
+    {"role": "user", "content": [{"type": "tool_result", "tool_use_id": tool_use.id, "content": "맑음, 25도"}]},
+])
+print(r2.content[0].text)
+```
+
+**작동 방식 (A2)**: CLI에는 "외부가 실행할 함수 스펙을 받아 호출만 내뱉고 멈추는" 모드가 없으므로, `tools` 스펙을 시스템 프롬프트에 주입하고 모델이 약속된 JSON(`{"tool_calls":[...]}`)으로 출력하게 한 뒤 그 텍스트를 파싱해 각 포맷의 `tool_calls`/`tool_use`로 변환합니다.
 
 **한계 (PoC)**
 - **프롬프트 기반이라 100% 보장은 아님**: 모델이 형식을 벗어나면 도구 호출로 인식되지 않고 일반 텍스트로 처리됩니다.
 - **스트리밍 시 버퍼링**: 도구 호출 여부는 전체 출력을 봐야 알 수 있어, `tools`가 있으면 전체를 모은 뒤 한 번에 방출합니다(토큰 단위 스트리밍 아님). `tools`가 없으면 기존대로 실시간 스트리밍.
 - **백엔드 특성 차이**: claude는 `--tools ""`로 순수 텍스트화되어 주입한 도구 결과를 충실히 따릅니다. **codex는 더 에이전트적**이라 자체 도구(웹 검색 등)를 써서 주입한 결과와 다른 답을 낼 수 있습니다.
-- **`/v1/messages`(Anthropic) 미지원**: 이번 PoC는 OpenAI 엔드포인트 한정입니다.
 - 멀티스텝 도구 루프에서 컨텍스트 유지는 [세션 영속화](#세션-영속화-컨텍스트-유지)를 따릅니다(매칭 안 되면 전체 히스토리로 복구).
 
 ## 설정 (환경변수)
@@ -246,11 +270,15 @@ MODEL=gpt-5.5 npm run smoke          # codex 백엔드
 # Anthropic 엔드포인트(/v1/messages)
 MODEL=sonnet        npm run smoke:anthropic   # claude 백엔드
 MODEL=codex:gpt-5.5 npm run smoke:anthropic   # codex 백엔드
+
+# 함수 호출
+MODEL=sonnet npm run smoke:tools             # OpenAI tools
+MODEL=sonnet npm run smoke:anthropic:tools   # Anthropic tool_use
 ```
 
 ## 현재 제한 사항 (MVP)
 
-- **Function calling / tools**: OpenAI 엔드포인트에서 [A2 프롬프트 방식 PoC](#함수-호출-function-calling-a2-프롬프트-방식-poc)로 지원. Anthropic 엔드포인트는 아직 미지원.
+- **Function calling / tools**: OpenAI·Anthropic 양쪽 엔드포인트에서 [A2 프롬프트 방식 PoC](#함수-호출-function-calling-a2-프롬프트-방식-poc)로 지원.
 - **멀티모달**: 이미지 등 비텍스트 입력은 자리표시자로 치환됩니다.
 - **대화 맥락**: 세션 영속화(위 참고)로 CLI 세션을 resume합니다. 매칭이 안 되거나 `SESSION_MODE=off`면 멀티턴 `messages`를 `User:/Assistant:` 라벨로 평탄화해 전체 전달합니다.
 - **토큰 수**: CLI가 보고하는 값을 그대로 전달하므로, CLI 내부 시스템 프롬프트 토큰이 `prompt_tokens`(`input_tokens`)에 포함됩니다.

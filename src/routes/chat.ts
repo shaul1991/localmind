@@ -7,10 +7,10 @@ import { contentToText, flattenMessages } from "../transform.js";
 import { extractExplicitId, prepareSession, type SessionStore } from "../session.js";
 import {
   buildToolSystemPrompt,
+  normalizeOpenAIChoice,
+  normalizeOpenAITools,
   parseToolCalls,
-  toolsActive,
   type ParsedToolCall,
-  type ToolChoice,
 } from "../tools.js";
 import { log } from "../util/log.js";
 import type {
@@ -126,11 +126,12 @@ export function createChatHandler(router: Router, config: Config, sessions: Sess
 
     // 함수 호출(A2 프롬프트 방식): tools가 있으면 지시문을 system에 주입.
     // resume 시엔 세션 system에 이미 들어있으므로 새로 넣지 않는다.
-    const toolChoice = (body as any).tool_choice as ToolChoice | undefined;
-    const toolsOn = toolsActive(body.tools, toolChoice);
+    const toolDefs = normalizeOpenAITools(body.tools);
+    const toolChoice = normalizeOpenAIChoice((body as any).tool_choice);
+    const toolsOn = toolDefs.length > 0 && toolChoice !== "none";
     let runSystem = system;
     if (toolsOn && !sess.resumeId) {
-      const toolPrompt = buildToolSystemPrompt(body.tools as any[], toolChoice ?? "auto");
+      const toolPrompt = buildToolSystemPrompt(toolDefs, toolChoice);
       runSystem = system ? `${system}\n\n${toolPrompt}` : toolPrompt;
     }
 
