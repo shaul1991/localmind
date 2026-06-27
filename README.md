@@ -289,8 +289,12 @@ Claude Desktop `claude_desktop_config.json` (Cursor `.cursor/mcp.json`, Cline MC
 | `OPENMEMORY_USER` | `cli-gateway` | 메모리 소유자 id |
 | `MCP_DEFAULT_MODEL` | `sonnet` | ask / ask_brain 기본 모델 |
 | `NOTES_DIR` | `~/cli-gateway-brain` | second-brain 노트 폴더(정본). 내 노트 경로로 지정 |
+| `BRAIN_INDEX` | `<NOTES_DIR>/.brain-index.json` | 임베딩 인덱스 위치. git/싱크 볼트를 안 더럽히려면 밖으로 |
 | `EMBEDDINGS_URL` | `http://localhost:4000/v1` | 노트 임베딩(게이트웨이) |
 | `EMBEDDINGS_MODEL` | `text-embedding-3-small` | (게이트웨이가 bge-m3로 매핑) |
+| `BRAIN_BATCH` / `BRAIN_CONCURRENCY` / `BRAIN_CHUNK_SIZE` | `32` / `4` / `2000` | 인덱싱 튜닝 |
+
+> **인덱싱 성능**: 첫 인덱싱은 노트 전체를 임베딩하므로 시간이 걸리고(증분·resumable이라 이후엔 변경분만), bge-m3 CPU 임베딩이 바닥입니다. 더 빠르게: 더 가벼운 `EMBEDDING_MODEL`로 바꾸거나, GPU/전용 임베딩 서버(TEI 등)로 `EMBEDDINGS_URL`을 돌리세요.
 
 검증: `npm run smoke:mcp` (공식 MCP 클라이언트로 ask/remember/recall 점검).
 

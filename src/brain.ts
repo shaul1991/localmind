@@ -13,7 +13,9 @@ import path from "node:path";
 import crypto from "node:crypto";
 
 const NOTES_DIR = process.env.NOTES_DIR ?? path.join(process.env.HOME ?? ".", "cli-gateway-brain");
-const INDEX_PATH = path.join(NOTES_DIR, ".brain-index.json");
+// 인덱스는 기본적으로 노트 폴더 안에 두되, git/싱크 볼트를 더럽히지 않도록
+// BRAIN_INDEX로 위치를 바꿀 수 있다.
+const INDEX_PATH = process.env.BRAIN_INDEX ?? path.join(NOTES_DIR, ".brain-index.json");
 
 const EMB_URL = (process.env.EMBEDDINGS_URL ?? "http://localhost:4000/v1").replace(/\/$/, "");
 const EMB_KEY = process.env.EMBEDDINGS_KEY ?? process.env.LITELLM_MASTER_KEY ?? "sk-local";
@@ -23,7 +25,7 @@ const GATEWAY_URL = (process.env.CLI_GATEWAY_URL ?? "http://localhost:8787").rep
 const GATEWAY_KEY = process.env.CLI_GATEWAY_API_KEY?.trim();
 const ANSWER_MODEL = process.env.MCP_DEFAULT_MODEL ?? "sonnet";
 
-const MAX_CHUNK = 1200;
+const MAX_CHUNK = Math.max(400, Number(process.env.BRAIN_CHUNK_SIZE ?? 2000));
 
 interface IndexedChunk {
   path: string;
@@ -116,30 +118,73 @@ function cosine(a: number[], b: number[]): number {
   return d / (Math.sqrt(na) * Math.sqrt(nb) || 1);
 }
 
-/** 변경된 노트만 증분 임베딩해 인덱스를 최신화한다. */
+/**
+ * 변경된 노트만 증분 임베딩해 인덱스를 최신화한다.
+ *
+ * 속도: 임베딩 요청은 고정 오버헤드(~0.4s)가 커서, 파일 단위가 아니라
+ * 모든 청크를 펼쳐 배치(BRAIN_BATCH=32)로 묶고, 배치를 동시(BRAIN_CONCURRENCY=4)에
+ * 보낸다 → 오버헤드 분산 + 병렬. 파일은 청크가 모두 임베딩된 뒤에만 커밋하고
+ * 배치마다 저장해 중단에도 안전(재실행 시 이어감).
+ */
 async function ensureIndexed(): Promise<BrainIndex> {
   ensureDir();
   const idx = loadIndex();
   const files = listMarkdown(NOTES_DIR);
   const seen = new Set<string>();
 
+  const pending: { rel: string; hash: string; chunks: string[] }[] = [];
   for (const full of files) {
     const rel = path.relative(NOTES_DIR, full);
     seen.add(rel);
     const text = fs.readFileSync(full, "utf8");
     const h = sha(text);
     if (idx.files[rel]?.hash === h) continue; // 변경 없음
-    const chunks = chunkText(text);
-    if (!chunks.length) {
-      idx.files[rel] = { hash: h, chunks: [] };
-      continue;
-    }
-    const vectors = await embed(chunks);
-    idx.files[rel] = {
-      hash: h,
-      chunks: chunks.map((c, i) => ({ path: rel, text: c, vector: vectors[i] })),
-    };
+    pending.push({ rel, hash: h, chunks: chunkText(text) });
   }
+
+  if (pending.length) {
+    const vecs = new Map<string, (number[] | undefined)[]>();
+    const remaining = new Map<string, number>();
+    const byRel = new Map(pending.map((p) => [p.rel, p]));
+    for (const p of pending) {
+      vecs.set(p.rel, new Array(p.chunks.length));
+      remaining.set(p.rel, p.chunks.length);
+      if (p.chunks.length === 0) idx.files[p.rel] = { hash: p.hash, chunks: [] }; // 빈 파일 즉시 커밋
+    }
+
+    type Ref = { rel: string; ci: number; text: string };
+    const flat: Ref[] = [];
+    for (const p of pending) p.chunks.forEach((c, ci) => flat.push({ rel: p.rel, ci, text: c }));
+
+    const batchSize = Math.max(1, Number(process.env.BRAIN_BATCH ?? 32));
+    const batches: Ref[][] = [];
+    for (let i = 0; i < flat.length; i += batchSize) batches.push(flat.slice(i, i + batchSize));
+
+    let cursor = 0;
+    async function worker(): Promise<void> {
+      while (cursor < batches.length) {
+        const batch = batches[cursor++];
+        const out = await embed(batch.map((r) => r.text));
+        for (let j = 0; j < batch.length; j++) {
+          const r = batch[j];
+          vecs.get(r.rel)![r.ci] = out[j];
+          const rem = remaining.get(r.rel)! - 1;
+          remaining.set(r.rel, rem);
+          if (rem === 0) {
+            const p = byRel.get(r.rel)!;
+            idx.files[r.rel] = {
+              hash: p.hash,
+              chunks: p.chunks.map((c, k) => ({ path: r.rel, text: c, vector: vecs.get(r.rel)![k]! })),
+            };
+          }
+        }
+        saveIndex(idx); // 완료된 파일만 반영해 진행 저장
+      }
+    }
+    const conc = Math.max(1, Number(process.env.BRAIN_CONCURRENCY ?? 4));
+    await Promise.all(Array.from({ length: Math.min(conc, batches.length) }, () => worker()));
+  }
+
   // 삭제된 파일 제거
   for (const rel of Object.keys(idx.files)) if (!seen.has(rel)) delete idx.files[rel];
 
