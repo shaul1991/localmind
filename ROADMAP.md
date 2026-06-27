@@ -90,7 +90,7 @@ repo 하나로 도는 완결형 로컬 AI 스택. 전부 로컬, 메터드 API 0
 "파일이 정본, DB/인덱스는 파생" 철학 → GitHub(또는 사설 git) 백업이 자연스럽다.
 
 - **노트(.md)** → git repo, `git push` = 백업. `.brain-index.json`은 `.gitignore`(파생).
-- **메모리(mem0)** → Postgres라 git-native 아님 → **마크다운/JSON export**를 git에 커밋(예정).
+- **메모리(mem0)** → `npm run memory:export`로 마크다운 덤프 → git 커밋. 복원은 `memory:import`(멱등). ✅
 - 복원: 노트/메모리 파일 → import → 인덱스/DB 재생성.
 
 > 개인 단계에선 개인 repo, 팀 단계에선 개인 repo + 공유 repo로 분리.

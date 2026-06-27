@@ -19,7 +19,9 @@
     "smoke:tools": "tsx scripts/smoke-tools.ts",
     "smoke:anthropic:tools": "tsx scripts/smoke-anthropic-tools.ts",
     "smoke:mcp": "tsx scripts/smoke-mcp.ts",
-    "smoke:brain": "tsx scripts/smoke-brain.ts"
+    "smoke:brain": "tsx scripts/smoke-brain.ts",
+    "memory:export": "tsx scripts/memory-export.ts",
+    "memory:import": "tsx scripts/memory-import.ts"
   },
   "keywords": [
     "claude",

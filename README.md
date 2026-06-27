@@ -236,6 +236,25 @@ print(get_memory_client().search('반려견 간식', filters={'user_id':'cli-gat
 - OpenMemory는 단일 워커라 동시 add가 몰리면 직후 요청이 잠깐 밀릴 수 있습니다.
 - 임베딩 모델을 바꾸면 `EMBEDDING_DIMS`도 맞추고 `docker compose down -v`로 볼륨을 초기화하세요(차원이 테이블에 고정됨).
 
+## 메모리 백업 (git)
+
+mem0 메모리는 Postgres에 있어 그대로는 git-native가 아닙니다. **마크다운으로 export**해 git에 올려 백업합니다(메모리 1개당 한 줄 → diff가 깔끔). 노트(.md)는 이미 파일이라 그 자체로 git 백업되니, 이 둘이면 두뇌 전체가 git에 들어갑니다.
+
+```bash
+# 내보내기 (마크다운)
+OPENMEMORY_USER=내이름 npm run memory:export -- ~/brain/memory.md
+
+# 백업: 노트 폴더(또는 백업 repo)에서 커밋·푸시
+cd ~/brain && git add memory.md && git commit -m "memory backup" && git push
+
+# 복원 (멱등 — 이미 있는 내용은 스킵)
+OPENMEMORY_USER=내이름 npm run memory:import -- ~/brain/memory.md
+```
+
+- export 출력은 `- <사실>` 한 줄씩이라 메모리 추가/삭제가 git diff에 1줄로 보입니다.
+- import는 `infer:false`로 사실을 그대로 저장하고, **이미 있는 내용은 건너뜁니다**(여러 번 실행 안전).
+- 파생물(pgvector/`.brain-index.json`)은 백업 불필요 — 노트·메모리에서 재생성됩니다.
+
 ## MCP 서버 (도구로 사용)
 
 cli-gateway의 능력을 **MCP 도구**로 노출해, MCP 호스트(Claude Desktop / Cursor / Cline 등)가 자기 모델로 돌면서 끌어 쓰게 합니다. (MCP는 호스트의 *모델을 바꾸는 게 아니라* 도구를 줍니다.)
