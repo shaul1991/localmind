@@ -87,6 +87,8 @@ make health             # 엔드포인트 상태(:8787 / :4000 / :8767)
 
 > 어떤 경로든 **메터드 API 0원**, 데이터는 그 인스턴스 로컬에만 둡니다.
 
+📂 바로 따라 할 **케이스별 예제**는 [examples/](examples/) — API 대체·임베딩·메모리·second-brain·MCP·역할별 시나리오까지.
+
 ## 동작 방식
 
 1. OpenAI 형식 요청(`messages`, `stream`, ...)을 받습니다.
@@ -393,6 +395,8 @@ app-server-1: MCP_INSTANCE=app-server-1 → app-server-1의 메모리/노트
 검증: `make smoke`(MCP 포함 일괄) 또는 원격 MCP는 `npm run smoke:mcp:http`.
 
 ## 사용 예시
+
+> 🧩 **케이스별 runnable 예제 모음 → [examples/](examples/)** — API 대체(Python/Node/Anthropic), 함수호출, 임베딩·의미검색, 메모리, second-brain, LangChain, MCP(Cursor/Claude/Codex·원격 인프라), 역할별 시나리오. 전부 실행·검증됨.
 
 ### curl
 
