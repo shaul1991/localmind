@@ -58,5 +58,77 @@ services:
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-local}
     restart: unless-stopped
 
+  # ── opt: 메모리 서비스 (profile: memory) — OpenMemory(mem0) ──
+  # 벡터 저장소(qdrant) + OpenMemory API. LLM·임베더를 게이트웨이로 돌려
+  # claude(추출) + bge-m3(임베딩)로 동작 → 메터드 API 0원.
+  mem0_store:
+    profiles: ["memory"]
+    image: qdrant/qdrant:latest
+    container_name: cli2port-qdrant
+    volumes:
+      - mem0-qdrant:/qdrant/storage
+    restart: unless-stopped
+
+  openmemory:
+    profiles: ["memory"]
+    image: mem0/openmemory-mcp:latest
+    container_name: cli2port-openmemory
+    depends_on: [mem0_store, litellm]
+    ports:
+      # 호스트 8765는 다른 서비스가 쓸 수 있어 8767로 노출(컨테이너 내부는 8765).
+      - "${OPENMEMORY_PORT:-8767}:8765"
+    environment:
+      # config.json이 env:API_KEY를 참조하므로 둘 다 세팅.
+      - API_KEY=${LITELLM_MASTER_KEY:-sk-local}
+      - OPENAI_API_KEY=${LITELLM_MASTER_KEY:-sk-local}
+      # openai SDK가 직접 읽는 base URL → LLM·임베더 모두 게이트웨이로.
+      - OPENAI_BASE_URL=http://litellm:4000/v1
+      - USER=${OPENMEMORY_USER:-cli2port}
+      # LLM·임베더를 게이트웨이로 (차원/벡터스토어는 기동 후 config API로 보정)
+      - LLM_PROVIDER=openai
+      - LLM_MODEL=${CHAT_MODEL:-claude-sonnet-4-6}
+      - LLM_BASE_URL=http://litellm:4000/v1
+      - LLM_API_KEY=${LITELLM_MASTER_KEY:-sk-local}
+      - EMBEDDER_PROVIDER=openai
+      - EMBEDDER_MODEL=text-embedding-3-small
+      - EMBEDDER_BASE_URL=http://litellm:4000/v1
+      - EMBEDDER_API_KEY=${LITELLM_MASTER_KEY:-sk-local}
+    restart: unless-stopped
+
+  # OpenMemory 부트스트랩(일회성): qdrant 컬렉션 차원을 임베딩 모델에 맞추고,
+  # LLM/임베더 모델명을 게이트웨이 라우팅에 맞게 설정한다.
+  openmemory-init:
+    profiles: ["memory"]
+    image: curlimages/curl:latest
+    container_name: cli2port-openmemory-init
+    depends_on: [mem0_store, openmemory]
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        DIMS=${EMBEDDING_DIMS:-1024}
+        echo "[init] qdrant 대기..."
+        until curl -sf http://mem0_store:6333/readyz >/dev/null 2>&1; do sleep 2; done
+        EXIST=$$(curl -s -o /dev/null -w '%{http_code}' http://mem0_store:6333/collections/openmemory)
+        if [ "$$EXIST" = "404" ]; then
+          echo "[init] openmemory 컬렉션 생성 (dim=$$DIMS)"
+          curl -s -X PUT http://mem0_store:6333/collections/openmemory -H 'Content-Type: application/json' -d "{\"vectors\":{\"size\":$$DIMS,\"distance\":\"Cosine\"}}" >/dev/null
+        else
+          SIZE=$$(curl -s http://mem0_store:6333/collections/openmemory | grep -o '"size":[0-9]*' | head -1 | grep -o '[0-9]*')
+          if [ "$$SIZE" != "$$DIMS" ]; then
+            echo "[init] 차원 불일치($$SIZE!=$$DIMS) → 재생성"
+            curl -s -X DELETE http://mem0_store:6333/collections/openmemory >/dev/null
+            curl -s -X PUT http://mem0_store:6333/collections/openmemory -H 'Content-Type: application/json' -d "{\"vectors\":{\"size\":$$DIMS,\"distance\":\"Cosine\"}}" >/dev/null
+          fi
+        fi
+        echo "[init] openmemory API 대기..."
+        until curl -sf http://openmemory:8765/docs >/dev/null 2>&1; do sleep 2; done
+        echo "[init] LLM/임베더 모델 설정"
+        curl -s -X PUT http://openmemory:8765/api/v1/config/ -H 'Content-Type: application/json' \
+          -d '{"mem0":{"llm":{"provider":"openai","config":{"model":"'"${CHAT_MODEL:-claude-sonnet-4-6}"'","temperature":0.1,"max_tokens":2000,"api_key":"env:API_KEY"}},"embedder":{"provider":"openai","config":{"model":"text-embedding-3-small","api_key":"env:API_KEY"}}}}' >/dev/null
+        echo "[init] 완료 ✅"
+
 volumes:
   ollama-data:
+  mem0-qdrant:

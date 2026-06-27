@@ -132,6 +132,52 @@ c.chat.completions.create(model="claude-sonnet-4-6",                            
 - `EMBEDDING_MODEL`/`LITELLM_MASTER_KEY`는 `.env`로 바꿀 수 있습니다.
 - GPU가 있고 대량 색인이면 ollama 대신 HF TEI/Infinity 같은 임베딩 전용 서버로 `litellm.config.yaml`의 `api_base`만 바꿔도 됩니다.
 
+## 메모리 서비스 (OpenMemory, memory 프로파일)
+
+게이트웨이 위에 **OpenMemory(mem0)** 를 얹어, 메터드 API 없이 동작하는 메모리/RAG 서비스를 바로 띄울 수 있습니다. OpenMemory의 **LLM(사실 추출)·임베더를 모두 게이트웨이로** 돌려 claude + bge-m3로 동작합니다.
+
+```
+OpenMemory(:8767) ──▶ LiteLLM 게이트웨이
+   │  capture/recall      ├─ 임베딩 → ollama(bge-m3)
+   ▼                      └─ 추출 LLM → cli2port → claude
+ qdrant (벡터 저장)
+```
+
+### 기동
+
+```bash
+docker compose --profile gateway --profile memory up -d
+# openmemory-init 사이드카가 자동으로:
+#  - qdrant 컬렉션을 임베딩 차원(bge-m3=1024)에 맞춰 생성
+#  - LLM/임베더 모델을 게이트웨이 라우팅에 맞게 설정
+```
+
+올라오는 서비스: `openmemory`(:8767 REST), `mem0_store`(qdrant), `openmemory-init`(일회성 부트스트랩) + gateway 일체.
+
+### 사용 (REST)
+
+```bash
+# 메모리 추가 (claude가 사실을 추출해 저장) — user_id는 OPENMEMORY_USER 값
+curl -X POST http://localhost:8767/api/v1/memories/ \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"cli2port","text":"내 강아지 초코는 오이를 간식으로 좋아한다.","infer":true}'
+```
+
+의미 회상(검증된 경로 — mem0 엔진):
+```bash
+docker exec cli2port-openmemory python -c "
+from app.utils.memory import get_memory_client
+print(get_memory_client().search('반려견 간식', user_id='cli2port', limit=3))"
+# → '강아지 초코의 간식으로 오이를 준다' 등 의미 매칭 결과
+```
+
+### 검증된 동작 / 알려진 한계
+- ✅ **쓰기 파이프라인**: 추가(REST) → claude 사실 추출 → bge-m3 임베딩(1024) → qdrant 저장.
+- ✅ **의미 회상**: mem0 엔진 `search()`가 게이트웨이로 임베딩해 의미 기반 검색.
+- ⚠️ **OpenMemory REST 읽기 엔드포인트**(`GET /memories`, `POST /memories/filter`)는 현재 업스트림 이미지가 **SQLite와 안 맞는 쿼리/직렬화 버그**가 있어 목록/검색 결과가 비거나 500이 납니다(로그: `DISTINCT ON is ... only PostgreSQL`). 회상은 위의 mem0 엔진 경로를 쓰거나, 업스트림 수정/Postgres 백엔드를 기다리세요. **게이트웨이 통합 자체는 완전히 동작**합니다.
+- `user_id`는 `OPENMEMORY_USER`로 시드된 사용자여야 합니다(임의 id는 "User not found").
+- 임베딩 모델을 바꾸면 `EMBEDDING_DIMS`도 맞추고 `docker compose down -v`로 qdrant 볼륨을 초기화하세요(차원이 컬렉션에 고정됨).
+
 ## 사용 예시
 
 ### curl
