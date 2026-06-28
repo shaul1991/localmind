@@ -1,8 +1,8 @@
 /**
  * second-brain 레이어: .md 노트(정본)에 대한 로컬 RAG.
  *
- *  - 노트는 NOTES_DIR의 마크다운 파일이 정본.
- *  - 임베딩 인덱스는 파생물( NOTES_DIR/.brain-index.json ). 파일 해시로 증분 갱신.
+ *  - 노트는 NOTES_DIR의 마크다운 파일이 정본. NOTES_DIR는 쉼표로 여러 폴더 지정 가능.
+ *  - 임베딩 인덱스는 파생물( 첫 폴더의 .brain-index.json ). 파일 해시로 증분 갱신.
  *  - 임베딩은 게이트웨이(bge-m3), 종합은 localmind 채팅(claude/codex)을 쓴다.
  *
  * pgvector/포트 노출이 필요 없도록 인덱스는 로컬 파일 + 인메모리 코사인으로 처리한다
@@ -12,10 +12,43 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 
-const NOTES_DIR = process.env.NOTES_DIR ?? path.join(process.env.HOME ?? ".", "localmind-brain");
-// 인덱스는 기본적으로 노트 폴더 안에 두되, git/싱크 볼트를 더럽히지 않도록
-// BRAIN_INDEX로 위치를 바꿀 수 있다.
-const INDEX_PATH = process.env.BRAIN_INDEX ?? path.join(NOTES_DIR, ".brain-index.json");
+export interface NoteFolder {
+  label: string;
+  dir: string;
+}
+
+function expandHome(p: string): string {
+  return p.startsWith("~") ? path.join(process.env.HOME ?? ".", p.slice(1)) : p;
+}
+
+// NOTES_DIR는 쉼표로 여러 폴더를 지정할 수 있다(주제/프로젝트별 분리).
+//   NOTES_DIR="/notes/work,/notes/personal"
+//   라벨을 직접 주려면  NOTES_DIR="work=/notes/work,life=/notes/personal"
+// 라벨은 출처 표기(label/파일명)와 folder 스코프 필터에 쓰인다. 미지정 시 폴더명에서 자동.
+function parseFolders(): NoteFolder[] {
+  const raw = (process.env.NOTES_DIR ?? path.join(process.env.HOME ?? ".", "localmind-brain")).trim();
+  const used = new Set<string>();
+  const folders: NoteFolder[] = [];
+  for (const spec of raw.split(",").map((s) => s.trim()).filter(Boolean)) {
+    const eq = spec.indexOf("=");
+    let label = eq > 0 ? spec.slice(0, eq).trim() : "";
+    let dir = path.resolve(expandHome(eq > 0 ? spec.slice(eq + 1).trim() : spec));
+    if (!label) label = path.basename(dir) || "notes";
+    let uniq = label;
+    for (let n = 2; used.has(uniq); n++) uniq = `${label}-${n}`; // 라벨 충돌 방지
+    used.add(uniq);
+    folders.push({ label: uniq, dir });
+  }
+  return folders.length
+    ? folders
+    : [{ label: "notes", dir: path.resolve(path.join(process.env.HOME ?? ".", "localmind-brain")) }];
+}
+
+const FOLDERS = parseFolders();
+const FOLDER_BY_LABEL = new Map(FOLDERS.map((f) => [f.label, f]));
+// 인덱스는 기본적으로 첫 노트 폴더 안에 두되(기존 호환), git/싱크 볼트를 더럽히지
+// 않도록 BRAIN_INDEX로 위치를 바꿀 수 있다.
+const INDEX_PATH = process.env.BRAIN_INDEX ?? path.join(FOLDERS[0].dir, ".brain-index.json");
 
 const EMB_URL = (process.env.EMBEDDINGS_URL ?? "http://localhost:4000/v1").replace(/\/$/, "");
 const EMB_KEY = process.env.EMBEDDINGS_KEY ?? process.env.LITELLM_MASTER_KEY ?? "sk-local";
@@ -27,6 +60,8 @@ const ANSWER_MODEL = process.env.MCP_DEFAULT_MODEL ?? "sonnet";
 
 const MAX_CHUNK = Math.max(400, Number(process.env.BRAIN_CHUNK_SIZE ?? 2000));
 
+const INDEX_VERSION = 2; // 1→2: 인덱스 키를 'label/rel'로 namespacing + folder 태그
+
 interface IndexedChunk {
   path: string;
   text: string;
@@ -34,6 +69,7 @@ interface IndexedChunk {
 }
 interface FileEntry {
   hash: string;
+  folder: string;
   chunks: IndexedChunk[];
 }
 interface BrainIndex {
@@ -41,16 +77,18 @@ interface BrainIndex {
   files: Record<string, FileEntry>;
 }
 
-function ensureDir(): void {
-  fs.mkdirSync(NOTES_DIR, { recursive: true });
+function ensureDirs(): void {
+  for (const f of FOLDERS) fs.mkdirSync(f.dir, { recursive: true });
 }
 
 function loadIndex(): BrainIndex {
   try {
-    return JSON.parse(fs.readFileSync(INDEX_PATH, "utf8"));
+    const idx = JSON.parse(fs.readFileSync(INDEX_PATH, "utf8")) as BrainIndex;
+    if (idx.version === INDEX_VERSION && idx.files) return idx;
   } catch {
-    return { version: 1, files: {} };
+    /* 없음/손상 → 새로 만든다 */
   }
+  return { version: INDEX_VERSION, files: {} }; // 버전 불일치(스키마 변경) → 전체 재인덱싱
 }
 
 function saveIndex(idx: BrainIndex): void {
@@ -130,7 +168,8 @@ function cosine(a: number[], b: number[]): number {
 }
 
 /**
- * 변경된 노트만 증분 임베딩해 인덱스를 최신화한다.
+ * 변경된 노트만 증분 임베딩해 인덱스를 최신화한다. 모든 폴더를 훑되 키는 'label/rel'로
+ * namespacing 해 폴더 간 같은 파일명 충돌을 막고, folder 태그로 스코프 검색을 가능케 한다.
  *
  * 속도: 임베딩 요청은 고정 오버헤드가 커서, 파일 단위가 아니라 모든 청크를 펼쳐
  * 배치(BRAIN_BATCH=8)로 묶어 보낸다 → 오버헤드 분산. CPU 임베딩은 청크당 1~4s라
@@ -139,34 +178,35 @@ function cosine(a: number[], b: number[]): number {
  * 파일은 청크가 모두 임베딩된 뒤에만 커밋하고 배치마다 저장해 중단에도 안전(이어감).
  */
 async function ensureIndexed(): Promise<BrainIndex> {
-  ensureDir();
+  ensureDirs();
   const idx = loadIndex();
-  const files = listMarkdown(NOTES_DIR);
   const seen = new Set<string>();
 
-  const pending: { rel: string; hash: string; chunks: string[] }[] = [];
-  for (const full of files) {
-    const rel = path.relative(NOTES_DIR, full);
-    seen.add(rel);
-    const text = fs.readFileSync(full, "utf8");
-    const h = sha(text);
-    if (idx.files[rel]?.hash === h) continue; // 변경 없음
-    pending.push({ rel, hash: h, chunks: chunkText(text) });
+  const pending: { key: string; folder: string; hash: string; chunks: string[] }[] = [];
+  for (const f of FOLDERS) {
+    for (const full of listMarkdown(f.dir)) {
+      const key = `${f.label}/${path.relative(f.dir, full)}`;
+      seen.add(key);
+      const text = fs.readFileSync(full, "utf8");
+      const h = sha(text);
+      if (idx.files[key]?.hash === h) continue; // 변경 없음
+      pending.push({ key, folder: f.label, hash: h, chunks: chunkText(text) });
+    }
   }
 
   if (pending.length) {
     const vecs = new Map<string, (number[] | undefined)[]>();
     const remaining = new Map<string, number>();
-    const byRel = new Map(pending.map((p) => [p.rel, p]));
+    const byKey = new Map(pending.map((p) => [p.key, p]));
     for (const p of pending) {
-      vecs.set(p.rel, new Array(p.chunks.length));
-      remaining.set(p.rel, p.chunks.length);
-      if (p.chunks.length === 0) idx.files[p.rel] = { hash: p.hash, chunks: [] }; // 빈 파일 즉시 커밋
+      vecs.set(p.key, new Array(p.chunks.length));
+      remaining.set(p.key, p.chunks.length);
+      if (p.chunks.length === 0) idx.files[p.key] = { hash: p.hash, folder: p.folder, chunks: [] }; // 빈 파일 즉시 커밋
     }
 
-    type Ref = { rel: string; ci: number; text: string };
+    type Ref = { key: string; ci: number; text: string };
     const flat: Ref[] = [];
-    for (const p of pending) p.chunks.forEach((c, ci) => flat.push({ rel: p.rel, ci, text: c }));
+    for (const p of pending) p.chunks.forEach((c, ci) => flat.push({ key: p.key, ci, text: c }));
 
     // CPU 임베딩은 청크당 1~4s라 배치가 크면 요청이 타임아웃을 넘겨 재시도 cascade가
     // 난다. 작은 배치(8)로 각 요청을 타임아웃 한참 안에 끝낸다.
@@ -181,14 +221,15 @@ async function ensureIndexed(): Promise<BrainIndex> {
         const out = await embed(batch.map((r) => r.text));
         for (let j = 0; j < batch.length; j++) {
           const r = batch[j];
-          vecs.get(r.rel)![r.ci] = out[j];
-          const rem = remaining.get(r.rel)! - 1;
-          remaining.set(r.rel, rem);
+          vecs.get(r.key)![r.ci] = out[j];
+          const rem = remaining.get(r.key)! - 1;
+          remaining.set(r.key, rem);
           if (rem === 0) {
-            const p = byRel.get(r.rel)!;
-            idx.files[r.rel] = {
+            const p = byKey.get(r.key)!;
+            idx.files[r.key] = {
               hash: p.hash,
-              chunks: p.chunks.map((c, k) => ({ path: r.rel, text: c, vector: vecs.get(r.rel)![k]! })),
+              folder: p.folder,
+              chunks: p.chunks.map((c, k) => ({ path: r.key, text: c, vector: vecs.get(r.key)![k]! })),
             };
           }
         }
@@ -201,7 +242,7 @@ async function ensureIndexed(): Promise<BrainIndex> {
   }
 
   // 삭제된 파일 제거
-  for (const rel of Object.keys(idx.files)) if (!seen.has(rel)) delete idx.files[rel];
+  for (const key of Object.keys(idx.files)) if (!seen.has(key)) delete idx.files[key];
 
   saveIndex(idx);
   return idx;
@@ -213,20 +254,23 @@ export interface NoteHit {
   score: number;
 }
 
-export async function searchNotes(query: string, limit = 5): Promise<NoteHit[]> {
+/** 노트 의미검색. folder(라벨)를 주면 그 폴더로 한정. */
+export async function searchNotes(query: string, limit = 5, folder?: string): Promise<NoteHit[]> {
   const idx = await ensureIndexed();
   const [qv] = await embed([query]);
   const hits: NoteHit[] = [];
   for (const fe of Object.values(idx.files)) {
+    if (folder && fe.folder !== folder) continue; // 스코프 필터
     for (const c of fe.chunks) hits.push({ path: c.path, text: c.text, score: cosine(qv, c.vector) });
   }
   hits.sort((a, b) => b.score - a.score);
   return hits.slice(0, limit);
 }
 
-/** 노트를 새 마크다운 파일로 저장하고 인덱싱한다. 생성된 상대 경로를 반환. */
-export async function capture(text: string, title?: string): Promise<string> {
-  ensureDir();
+/** 노트를 새 마크다운 파일로 저장하고 인덱싱한다. folder(라벨)로 대상 폴더 선택(기본 첫 폴더). 생성된 'label/파일명' 반환. */
+export async function capture(text: string, title?: string, folder?: string): Promise<string> {
+  ensureDirs();
+  const target = (folder && FOLDER_BY_LABEL.get(folder)) || FOLDERS[0];
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const slug =
     (title ?? text)
@@ -235,11 +279,11 @@ export async function capture(text: string, title?: string): Promise<string> {
       .trim()
       .replace(/\s+/g, "-") || "note";
   const fname = `${ts}-${slug}`.slice(0, 80) + ".md";
-  const fpath = path.join(NOTES_DIR, fname);
+  const fpath = path.join(target.dir, fname);
   const body = title ? `# ${title}\n\n${text}\n` : `${text}\n`;
   fs.writeFileSync(fpath, body);
   await ensureIndexed();
-  return fname;
+  return `${target.label}/${fname}`;
 }
 
 export interface BrainAnswer {
@@ -247,9 +291,9 @@ export interface BrainAnswer {
   sources: string[];
 }
 
-/** RAG: 노트 검색 → 컨텍스트로 claude/codex 종합 답변(인용 포함). */
-export async function askBrain(question: string, k = 5): Promise<BrainAnswer> {
-  const hits = await searchNotes(question, k);
+/** RAG: 노트 검색 → 컨텍스트로 claude/codex 종합 답변(인용 포함). folder(라벨)로 한정 가능. */
+export async function askBrain(question: string, k = 5, folder?: string): Promise<BrainAnswer> {
+  const hits = await searchNotes(question, k, folder);
   if (!hits.length) return { answer: "관련 노트를 찾지 못했습니다.", sources: [] };
 
   const context = hits.map((h) => `[${h.path}]\n${h.text}`).join("\n\n---\n\n");
@@ -281,6 +325,12 @@ export async function askBrain(question: string, k = 5): Promise<BrainAnswer> {
   return { answer: j?.choices?.[0]?.message?.content ?? "(빈 응답)", sources };
 }
 
+/** 설정된 노트 폴더 목록(라벨+경로). whoami/검증용. */
+export function listFolders(): NoteFolder[] {
+  return FOLDERS.map((f) => ({ ...f }));
+}
+
+/** 노트 폴더 요약 문자열(label:dir, ...). */
 export function notesDir(): string {
-  return NOTES_DIR;
+  return FOLDERS.map((f) => `${f.label}:${f.dir}`).join(", ");
 }

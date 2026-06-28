@@ -8,7 +8,7 @@
 import os from "node:os";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { askBrain, capture, notesDir, searchNotes } from "./brain.js";
+import { askBrain, capture, listFolders, notesDir, searchNotes } from "./brain.js";
 
 export const GATEWAY_URL = (process.env.LOCALMIND_URL ?? "http://localhost:8787").replace(/\/$/, "");
 export const GATEWAY_KEY = process.env.LOCALMIND_API_KEY?.trim();
@@ -56,11 +56,14 @@ export function buildServer(): McpServer {
         "you are talking to before remember/recall/notes.",
       inputSchema: {},
     },
-    async () =>
-      textResult(
-        `instance: ${INSTANCE}\nmemory_user: ${MEMORY_USER}\nnotes_dir: ${notesDir()}\n` +
+    async () => {
+      const folders = listFolders().map((f) => `  - ${f.label}: ${f.dir}`).join("\n");
+      return textResult(
+        `instance: ${INSTANCE}\nmemory_user: ${MEMORY_USER}\n` +
+          `notes folders (label: path):\n${folders}\n` +
           `gateway: ${GATEWAY_URL}\nmemory: ${OPENMEMORY_URL}`,
-      ),
+      );
+    },
   );
 
   // ── ask: claude/codex CLI에 교차 질의 ────────────────────────────
@@ -152,16 +155,18 @@ export function buildServer(): McpServer {
     {
       title: "Capture note",
       description:
-        "Save a markdown note into this instance's second-brain notes folder (canonical) and index it. " +
-        "Use to persist knowledge, decisions, snippets, server/infra resource info.",
+        "Save a markdown note into a second-brain notes folder (canonical) and index it. " +
+        "Use to persist knowledge, decisions, snippets, resource info. " +
+        "folder picks which notes folder (label) to write to; default is the first. See whoami for labels.",
       inputSchema: {
         text: z.string().describe("Note body (markdown)"),
         title: z.string().optional().describe("Optional note title"),
+        folder: z.string().optional().describe("Target notes folder label (default: first folder)"),
       },
     },
-    async ({ text, title }) => {
+    async ({ text, title, folder }) => {
       try {
-        const file = await capture(text, title);
+        const file = await capture(text, title, folder);
         return textResult(`노트 저장: ${file}`);
       } catch (e) {
         return textResult(`capture_note 실패: ${(e as Error).message}`, true);
@@ -173,15 +178,18 @@ export function buildServer(): McpServer {
     "search_notes",
     {
       title: "Search notes",
-      description: "Semantically search this instance's second-brain notes. Returns matching snippets with paths.",
+      description:
+        "Semantically search second-brain notes. Returns matching snippets with [label/path]. " +
+        "folder limits the search to one notes folder (label); default searches all. See whoami for labels.",
       inputSchema: {
         query: z.string().describe("What to find in your notes"),
         limit: z.number().int().min(1).max(20).optional().describe("Max snippets (default 5)"),
+        folder: z.string().optional().describe("Limit to one notes folder label (default: all)"),
       },
     },
-    async ({ query, limit }) => {
+    async ({ query, limit, folder }) => {
       try {
-        const hits = await searchNotes(query, limit ?? 5);
+        const hits = await searchNotes(query, limit ?? 5, folder);
         if (!hits.length) return textResult("관련 노트 없음");
         return textResult(
           hits.map((h) => `(${h.score.toFixed(3)}) [${h.path}]\n${h.text.slice(0, 280)}`).join("\n\n"),
@@ -197,15 +205,17 @@ export function buildServer(): McpServer {
     {
       title: "Ask second-brain (RAG)",
       description:
-        "Answer a question grounded ONLY in this instance's second-brain notes (RAG). Cites source note paths.",
+        "Answer a question grounded ONLY in second-brain notes (RAG). Cites source note paths. " +
+        "folder limits retrieval to one notes folder (label); default uses all. See whoami for labels.",
       inputSchema: {
         question: z.string().describe("Question to answer from your notes"),
         k: z.number().int().min(1).max(20).optional().describe("Notes to retrieve (default 5)"),
+        folder: z.string().optional().describe("Limit to one notes folder label (default: all)"),
       },
     },
-    async ({ question, k }) => {
+    async ({ question, k, folder }) => {
       try {
-        const { answer, sources } = await askBrain(question, k ?? 5);
+        const { answer, sources } = await askBrain(question, k ?? 5, folder);
         const cite = sources.length ? `\n\n출처: ${sources.join(", ")}` : "";
         return textResult(answer + cite);
       } catch (e) {

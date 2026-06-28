@@ -16,10 +16,10 @@ repo 하나로 도는 완결형 로컬 AI 스택. 전부 로컬, 메터드 API 0
 - 세션 영속화, 함수 호출(tool_calls / tool_use)
 - **임베딩 게이트웨이** — LiteLLM + ollama(bge-m3)
 - **메모리** — OpenMemory(mem0) + Postgres/pgvector (소스 빌드 + 패치)
-- **second-brain** — `.md` 노트 RAG (capture_note/search_notes/ask_brain)
+- **second-brain** — `.md` 노트 RAG (capture_note/search_notes/ask_brain). **다중 노트 폴더**(쉼표 `NOTES_DIR`+라벨) + `folder` 스코프 검색
 - **MCP 서버(stdio)** — ask · remember/recall · 노트 · whoami 도구 (로컬 서브프로세스)
 - **시크릿 헬퍼** — `make init-env` / `token` / `secrets`
-- **백업** — `make memory-export` / `memory-import` (git 기반)
+- **백업** — `make memory-export`/`memory-import` + `make backup`/`backup-cron`(자동 백업, git 기반)
 - Docker(profiles: gateway/memory), CI
 
 ---
@@ -36,7 +36,7 @@ repo 하나로 도는 완결형 로컬 AI 스택. 전부 로컬, 메터드 API 0
 ## 다음 단계 (개인 경험 강화)
 
 ### 백업·복구
-- `memory-export` + 노트 push의 **자동 예약**(주기 백업) 가이드/헬퍼.
+- ✅ `make backup`(메모리 export + 노트 repo 커밋·푸시) + `make backup-cron`(스케줄 cron 한 줄).
 - 새 기기 복구를 한 흐름으로: 설치 → 노트 복원 → `memory-import` → 재인덱싱.
 
 ### 시크릿 보관 강화
@@ -44,7 +44,7 @@ repo 하나로 도는 완결형 로컬 AI 스택. 전부 로컬, 메터드 API 0
 - **OS 키체인**(macOS Keychain / libsecret) 연동 — 평문 `.env` 탈피(선택).
 
 ### second-brain
-- **다중 노트 폴더** 인덱싱(주제/프로젝트별) + 폴더 단위 검색 스코프.
+- ✅ **다중 노트 폴더** 인덱싱(쉼표 `NOTES_DIR`+라벨) + 폴더 스코프(`folder`) 검색·RAG.
 - 인덱싱 성능: GPU/전용 임베딩 서버(TEI/Infinity)로 `EMBEDDINGS_URL` 교체 가이드.
 
 ### 운영 편의

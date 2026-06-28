@@ -302,6 +302,26 @@ OPENMEMORY_USER=내이름 make memory-import FILE=~/brain/memory.md
 - import는 `infer:false`로 사실을 그대로 저장하고, **이미 있는 내용은 건너뜁니다**(여러 번 실행 안전).
 - 파생물(pgvector/`.brain-index.json`)은 백업 불필요 — 노트·메모리에서 재생성됩니다.
 
+### 자동 백업 (한 명령 + 스케줄)
+위 과정을 `make backup` 하나로 묶습니다 — **메모리 export → 노트 백업 repo에 커밋·푸시**.
+
+```bash
+# 1) 백업 repo 준비(최초 1회): BACKUP_DIR이 git repo여야 함
+git -C ~/localmind-brain init && git -C ~/localmind-brain remote add origin <내 private repo>
+
+# 2) 한 번에 백업 (BACKUP_DIR 기본값 ~/localmind-brain)
+make backup
+#   BACKUP_DIR을 바꾸려면:  make backup BACKUP_DIR=~/brain
+```
+- 변경 없으면 커밋 생략, remote 없으면 로컬 커밋만 — **여러 번 돌려도 안전**.
+- ⚠️ 백업 repo는 **반드시 Private**. `.env`(시크릿)는 `.gitignore`라 안 올라갑니다.
+
+**주기 자동 실행** — `make backup-cron`이 붙여넣을 cron 한 줄을 출력합니다.
+```bash
+make backup-cron        # 예: 0 3 * * * cd /…/localmind && make backup >> ~/localmind-backup.log 2>&1
+crontab -e              # 위 줄을 추가 (Linux). macOS는 cron 또는 launchd 모두 가능
+```
+
 ## MCP 서버 (도구로 사용)
 
 localmind의 능력을 **MCP 도구**로 노출해, MCP 호스트(Claude Desktop / Cursor / Cline 등)가 자기 모델로 돌면서 끌어 쓰게 합니다. (MCP는 호스트의 *모델을 바꾸는 게 아니라* 도구를 줍니다.)
@@ -358,7 +378,7 @@ Claude Desktop `claude_desktop_config.json` (Cursor `.cursor/mcp.json`, Cline MC
 | `OPENMEMORY_URL` | `http://localhost:8767` | remember/recall 대상 |
 | `OPENMEMORY_USER` | `localmind` | 메모리 소유자 id |
 | `MCP_DEFAULT_MODEL` | `sonnet` | ask / ask_brain 기본 모델 |
-| `NOTES_DIR` | `~/localmind-brain` | second-brain 노트 폴더(정본). 내 노트 경로로 지정 |
+| `NOTES_DIR` | `~/localmind-brain` | second-brain 노트 폴더(정본). **쉼표로 여러 폴더** 가능: `work=/notes/work,life=/notes/personal`(라벨 생략 시 폴더명). 검색/RAG는 기본 전체, 도구의 `folder`로 한정 |
 | `BRAIN_INDEX` | `<NOTES_DIR>/.brain-index.json` | 임베딩 인덱스 위치. git/싱크 볼트를 안 더럽히려면 밖으로 |
 | `EMBEDDINGS_URL` | `http://localhost:4000/v1` | 노트 임베딩(게이트웨이) |
 | `EMBEDDINGS_MODEL` | `text-embedding-3-small` | (게이트웨이가 bge-m3로 매핑) |

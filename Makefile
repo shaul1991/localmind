@@ -6,6 +6,8 @@ STACK   := --profile gateway --profile memory          # 로컬 스택(임베딩
 ALL     := $(STACK)                                     # 전체 = 로컬 스택(원격 없음)
 FILE    ?= memory-backup.md                             # 메모리 백업 파일
 SERVICE ?=                                              # logs 대상(비우면 전체)
+# 백업 repo(노트+메모리 덤프) — git repo여야 함. 인용 사용처라 trailing space 금지(주석은 윗줄에).
+BACKUP_DIR ?= $(HOME)/localmind-brain
 
 .DEFAULT_GOAL := help
 
@@ -70,6 +72,21 @@ memory-export: ## 메모리 → 마크다운 (make memory-export FILE=~/brain/me
 .PHONY: memory-import
 memory-import: ## 마크다운 → 메모리 복원(멱등) (make memory-import FILE=...)
 	npm run memory:import -- $(FILE)
+
+.PHONY: backup
+backup: ## 메모리 export + 노트 백업 repo 커밋·푸시 (BACKUP_DIR; 스케줄은 make backup-cron)
+	@npm run memory:export -- "$(BACKUP_DIR)/memory.md"
+	@git -C "$(BACKUP_DIR)" rev-parse --is-inside-work-tree >/dev/null 2>&1 || \
+		{ echo "✗ $(BACKUP_DIR) 는 git repo가 아닙니다 — git -C $(BACKUP_DIR) init && remote add origin <url> 후 다시"; exit 1; }
+	@git -C "$(BACKUP_DIR)" add -A; \
+	if git -C "$(BACKUP_DIR)" diff --cached --quiet; then echo "변경 없음 — 커밋 생략"; \
+	else git -C "$(BACKUP_DIR)" commit -q -m "localmind backup $$(date +%Y-%m-%dT%H:%M)" && echo "✓ 커밋"; fi; \
+	if git -C "$(BACKUP_DIR)" remote | grep -q .; then git -C "$(BACKUP_DIR)" push -q && echo "✓ push → $(BACKUP_DIR)"; \
+	else echo "ℹ remote 없음 — 로컬 커밋만(push 생략)"; fi
+
+.PHONY: backup-cron
+backup-cron: ## 매일 03:00 자동 백업 cron 한 줄 출력(crontab -e 에 붙여넣기)
+	@echo "0 3 * * * cd $(CURDIR) && make backup >> $$HOME/localmind-backup.log 2>&1"
 
 ##@ 시크릿/키(.env)
 .PHONY: init-env
