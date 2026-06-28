@@ -12,6 +12,8 @@
 - **second-brain** — 내 마크다운 노트에 대한 RAG
 - **MCP 도구** — Cursor/Claude Desktop/Cline에서 위 기능을 도구로 사용
 
+> 🧩 **처음 보는 용어가 많다면** — 게이트웨이·임베딩·RAG·MCP를 **딱 하나의 비유**(내 컴퓨터 안의 1인 비서실)로 5분 만에 풀어주는 입문서부터: 👉 [비유로 이해하기](docs/concepts.md)
+
 > **독립 실행 원칙**: 각 인스턴스는 **완전히 자립적**입니다. 그 머신의 로컬 스택
 > (gateway·임베딩·메모리·brain) + **그 머신 자신의 `claude`/`codex` 로그인** + localhost로만
 > 동작하며, **중앙 homeserver나 공유 계정에 의존하지 않습니다**(단일 장애점·ToS 회피).
