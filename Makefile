@@ -64,7 +64,7 @@ health: ## 엔드포인트 헬스체크
 smoke: ## 스모크 테스트(API + MCP + brain)
 	npm run smoke && npm run smoke:mcp && npm run smoke:brain
 
-##@ 메모리 백업(git)
+##@ 백업/복구(git)
 .PHONY: memory-export
 memory-export: ## 메모리 → 마크다운 (make memory-export FILE=~/brain/memory.md)
 	npm run memory:export -- $(FILE)
@@ -87,6 +87,41 @@ backup: ## 메모리 export + 노트 백업 repo 커밋·푸시 (BACKUP_DIR; 스
 .PHONY: backup-cron
 backup-cron: ## 매일 03:00 자동 백업 cron 한 줄 출력(crontab -e 에 붙여넣기)
 	@echo "0 3 * * * cd $(CURDIR) && make backup >> $$HOME/localmind-backup.log 2>&1"
+
+.PHONY: reindex
+reindex: ## second-brain 노트 (재)인덱싱 (임베딩 :4000 필요)
+	npm run reindex
+
+.PHONY: restore
+restore: ## 백업에서 복원: 노트 repo pull/clone → memory-import → 재인덱싱 (스택 떠 있어야 함)
+	@if git -C "$(BACKUP_DIR)" rev-parse --is-inside-work-tree >/dev/null 2>&1; then \
+		if git -C "$(BACKUP_DIR)" remote | grep -q .; then \
+			echo "→ 백업 repo pull: $(BACKUP_DIR)"; git -C "$(BACKUP_DIR)" pull --ff-only || echo "ℹ pull 생략/실패 — 로컬 상태로 진행"; \
+		else echo "ℹ $(BACKUP_DIR) remote 없음 — 로컬 노트로 진행"; fi; \
+	elif [ -n "$(RESTORE_REPO)" ]; then \
+		echo "→ 백업 repo clone: $(RESTORE_REPO) → $(BACKUP_DIR)"; git clone "$(RESTORE_REPO)" "$(BACKUP_DIR)"; \
+	else \
+		echo "✗ $(BACKUP_DIR) 가 git repo가 아닙니다 — 백업 repo url을 주세요: make restore RESTORE_REPO=<url>"; exit 1; \
+	fi
+	@if [ -f "$(BACKUP_DIR)/memory.md" ]; then \
+		echo "→ 메모리 복원"; npm run memory:import -- "$(BACKUP_DIR)/memory.md"; \
+	else echo "ℹ $(BACKUP_DIR)/memory.md 없음 — 메모리 복원 생략"; fi
+	@echo "→ 노트 재인덱싱"; NOTES_DIR="$${NOTES_DIR:-$(BACKUP_DIR)}" npm run reindex \
+		|| echo "ℹ 재인덱싱 실패(임베딩 :4000 미기동?) — 'make up' 후 'make reindex', 또는 첫 검색 때 자동 인덱싱"
+
+.PHONY: recover
+recover: ## 새 기기 원커맨드: 설치·빌드 → 기동 → 헬스 대기 → 복원 (RESTORE_REPO 권장)
+	@$(MAKE) install build
+	@$(MAKE) up
+	@echo "→ 스택 헬스 대기 (첫 기동은 모델 pull/빌드로 수 분 걸림)..."; \
+	ready=0; for i in $$(seq 1 120); do \
+		m=$$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8767/docs 2>/dev/null); \
+		g=$$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/health/liveliness 2>/dev/null); \
+		if [ "$$m" = "200" ] && [ "$$g" = "200" ]; then ready=1; echo "  ✓ ready (memory=$$m gateway=$$g)"; break; fi; \
+		echo "  대기 $$i/120 (memory=$$m gateway=$$g)"; sleep 5; \
+	done; \
+	if [ "$$ready" != "1" ]; then echo "✗ 스택 미준비 — 'make logs'로 확인 후 'make restore' 수동 실행"; exit 1; fi
+	@$(MAKE) restore
 
 ##@ 시크릿/키(.env)
 .PHONY: init-env

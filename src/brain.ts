@@ -325,6 +325,14 @@ export async function askBrain(question: string, k = 5, folder?: string): Promis
   return { answer: j?.choices?.[0]?.message?.content ?? "(빈 응답)", sources };
 }
 
+/** 모든 노트 폴더를 (재)인덱싱하고 통계를 돌려준다. 복구·대량추가 후 인덱스를 미리 데운다. */
+export async function reindex(): Promise<{ files: number; chunks: number }> {
+  const idx = await ensureIndexed();
+  let chunks = 0;
+  for (const fe of Object.values(idx.files)) chunks += fe.chunks.length;
+  return { files: Object.keys(idx.files).length, chunks };
+}
+
 /** 설정된 노트 폴더 목록(라벨+경로). whoami/검증용. */
 export function listFolders(): NoteFolder[] {
   return FOLDERS.map((f) => ({ ...f }));

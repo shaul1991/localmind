@@ -21,7 +21,8 @@
     "smoke:mcp": "tsx scripts/smoke-mcp.ts",
     "smoke:brain": "tsx scripts/smoke-brain.ts",
     "memory:export": "tsx scripts/memory-export.ts",
-    "memory:import": "tsx scripts/memory-import.ts"
+    "memory:import": "tsx scripts/memory-import.ts",
+    "reindex": "tsx scripts/reindex.ts"
   },
   "keywords": [
     "claude",

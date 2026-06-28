@@ -322,6 +322,18 @@ make backup-cron        # 예: 0 3 * * * cd /…/localmind && make backup >> ~/l
 crontab -e              # 위 줄을 추가 (Linux). macOS는 cron 또는 launchd 모두 가능
 ```
 
+### 새 기기 복구 (원커맨드)
+컴퓨터를 바꾸거나 고장 후, **백업 repo 하나로 통째 복구**합니다.
+
+```bash
+git clone https://github.com/shaul1991/localmind && cd localmind
+make recover RESTORE_REPO=<내 백업 repo url>
+#   = 설치·빌드 → 스택 기동 → 헬스 대기 → 노트 clone + 메모리 import + 재인덱싱
+```
+- 이미 스택이 떠 있고 데이터만 되돌릴 땐 `make restore RESTORE_REPO=<url>` (또는 BACKUP_DIR이 이미 그 repo면 인자 없이 `make restore`).
+- 복원 순서: **노트 repo pull/clone → `memory-import`(멱등) → 노트 재인덱싱**. 인덱스·DB는 파생이라 자동 재생성됩니다.
+- 다중 노트 폴더를 쓴다면 폴더별 repo를 각각 복원하고 `NOTES_DIR`를 그에 맞게 지정하세요.
+
 ## MCP 서버 (도구로 사용)
 
 localmind의 능력을 **MCP 도구**로 노출해, MCP 호스트(Claude Desktop / Cursor / Cline 등)가 자기 모델로 돌면서 끌어 쓰게 합니다. (MCP는 호스트의 *모델을 바꾸는 게 아니라* 도구를 줍니다.)
