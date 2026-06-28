@@ -2,9 +2,9 @@
 
 localmind의 진화 방향을 기록한다. 핵심 비전:
 
-> **지금은 개인용 MVP. 목표는 "개인 + 회사/팀 shared" 하이브리드** — 한 시스템을
-> 개인 공간으로도, 팀 공유 공간으로도 쓸 수 있게 한다. 팀 전환은 *재작성이 아니라
-> 덧붙이기(additive)* 가 되도록 지금 구조를 잡는다.
+> **개인 전용 로컬 AI 스택.** repo 하나로 **내 머신에서, 나 혼자** 쓰는 완결형 스택을
+> 만든다. 전부 로컬·localhost, 메터드 API 0원, 단일 사용자. **중앙 서버·공유 계정·
+> 원격 접속은 두지 않는다**(단일 장애점·ToS·데이터 유출 회피).
 
 ---
 
@@ -17,94 +17,56 @@ repo 하나로 도는 완결형 로컬 AI 스택. 전부 로컬, 메터드 API 0
 - **임베딩 게이트웨이** — LiteLLM + ollama(bge-m3)
 - **메모리** — OpenMemory(mem0) + Postgres/pgvector (소스 빌드 + 패치)
 - **second-brain** — `.md` 노트 RAG (capture_note/search_notes/ask_brain)
-- **MCP 서버** — ask · remember/recall · 노트 · whoami 도구 (stdio + **원격 HTTP/SSE**)
-- **인스턴스 격리** — `MCP_INSTANCE`로 디바이스/서버별 메모리·노트 분리
-- Docker(profiles: gateway/memory/mcp), CI
+- **MCP 서버(stdio)** — ask · remember/recall · 노트 · whoami 도구 (로컬 서브프로세스)
+- **시크릿 헬퍼** — `make init-env` / `token` / `secrets`
+- **백업** — `make memory-export` / `memory-import` (git 기반)
+- Docker(profiles: gateway/memory), CI
 
 ---
 
-## 목표 구조 (탈중앙 — 독립 인스턴스들)
+## 설계 원칙 (개인 전용)
 
-**중앙 homeserver/공유 계정 없음.** 멤버·서버마다 자립 인스턴스(그 머신의 CLI 로그인 +
-localhost 스택)를 돌리고, 공유는 *접속/동기화* 로만 한다.
-
-```
-member-A   : 자기 claude/codex 로그인 + 개인 메모리/노트   (localhost 스택)
-db-server  : 그 서버 로그인        + 서버 메모리/노트       (MCP_INSTANCE=db-server)
-app-server : 그 서버 로그인        + 서버 메모리/노트
-        │
-        └─ 교차 접속: 원격 MCP(URL+토큰) — 추론은 각 인스턴스의 "자기 계정"으로 수행
-        └─ 지식 공유: 공유 노트 git repo를 각자 인스턴스가 인덱싱(정본은 파일)
-```
-
-- **추론 의존 0**: 한 인스턴스가 다른 인스턴스의 계정을 쓰지 않는다 → 단일 장애점·ToS 회피.
-- 인스턴스 안에서 **스코프(personal | shared)** 로 개인/공유 메모리·노트를 나눈다:
-  `recall(query, scope=...)`, `search_notes(query, scope=...)`.
+- **localhost(루프백)에만 노출** — 발행 포트(8787/4000/8767)는 `127.0.0.1`에 바인딩. LAN 노출 없음.
+- **내 계정·내 데이터** — 추론은 내 CLI 로그인으로, 메모리·노트는 내 머신 로컬에만.
+- **파일이 정본, DB/인덱스는 파생** — 노트(.md)·메모리 export가 정본, pgvector·`.brain-index.json`은 재생성 가능.
+- **시크릿은 로컬·gitignore** — `.env`는 백업/커밋에서 제외. 키는 내 머신에만.
 
 ---
 
-## forward-compatibility (왜 지금 구조가 팀에 맞나)
+## 다음 단계 (개인 경험 강화)
 
-| 레이어 | 현재 원시값 | 개인 → 팀 전환 |
-|---|---|---|
-| 메모리(mem0) | `user_id` 스코핑 | 개인=`user_id:나`, 공유=`user_id:team-x`. **이미 분리 가능** |
-| 인증 | LiteLLM 게이트웨이 | LiteLLM **가상 키**(멤버별) — DB 모드만 켜면 됨 |
-| chat/임베딩 | 공유 HTTP 서비스 | 본질적으로 멀티유저, 인증만 얹으면 됨 |
-| 접근 | `0.0.0.0` + tailnet | 각 독립 인스턴스에 원격 MCP로 접속 가능(중앙 서버 아님) |
-| 노트(brain) | `NOTES_DIR` 단일 | 개인 폴더 + 공유 폴더 다중 소스 + 스코프 → 확장 필요 |
-| CLI 구독 | 인스턴스마다 자기 계정 | **탈중앙** — 멤버/서버가 각자 자기 로그인. 중앙 공유·풀링 불필요 |
+### 백업·복구
+- `memory-export` + 노트 push의 **자동 예약**(주기 백업) 가이드/헬퍼.
+- 새 기기 복구를 한 흐름으로: 설치 → 노트 복원 → `memory-import` → 재인덱싱.
 
-→ 대부분 이미 멀티인스턴스 독립 가능. 새로 만들 건 **① 네임스페이스(스코프) ② 가상 키 ③ 공유 노트 동기화**.
+### 시크릿 보관 강화
+- `make token`의 `.env` 직접 기록(`--write`) 옵션.
+- **OS 키체인**(macOS Keychain / libsecret) 연동 — 평문 `.env` 탈피(선택).
 
----
+### second-brain
+- **다중 노트 폴더** 인덱싱(주제/프로젝트별) + 폴더 단위 검색 스코프.
+- 인덱싱 성능: GPU/전용 임베딩 서버(TEI/Infinity)로 `EMBEDDINGS_URL` 교체 가이드.
 
-## 단계별 로드맵
-
-### Phase 1 — 멀티유저 기반 (네임스페이스/스코프)
-- 메모리·노트에 **scope(personal | shared)** 1급 도입. `user_id` 규약 정리(개인 vs `team:*`).
-- second-brain이 **다중 노트 소스**(개인 폴더 + 공유 repo)를 인덱싱하고 스코프로 검색.
-- MCP 도구에 `scope` 파라미터 추가.
-
-### Phase 2 — 팀 인증 (LiteLLM 가상 키)
-- LiteLLM 프록시 **DB 모드** 활성화 → 멤버별 키, 예산, per-user rate limit, 사용량 추적.
-- localmind/openmemory 인증을 게이트웨이 키로 통일.
-
-### Phase 3 — (탈중앙이므로 계정 풀링 불필요)
-- 권장 모델은 **멤버/서버가 각자 자기 CLI 로그인으로 독립 인스턴스** → 중앙 한도 공유·ToS 문제 자체가 없음.
-- 계정 풀링(라운드로빈)은 *굳이 단일 인스턴스를 여럿이 쓸 때만* 필요한 선택지 — 기본 방향 아님.
-
-### Phase 4 — 공유 second-brain + 원격 MCP
-- ✅ MCP **HTTP/SSE transport** 노출 → 원격 멤버가 URL+키로 접속(tailnet). ChatGPT 원격 connector 가능.
-- ✅ **인스턴스 격리**(`MCP_INSTANCE`) — 디바이스/서버별 메모리·노트 분리(인프라 운영).
-- (남음) 공유 노트 = git repo(팀 KB) 다중 소스 + 스코프, per-user 가상키 연동, LiteLLM 사용량 대시보드.
-
----
-
-## 유지 원칙 (팀 문을 막지 않도록)
-
-- 단일 유저를 **하드코딩하지 않기** — `user_id`/scope를 항상 명시적으로.
-- 인증은 **게이트웨이 레이어(LiteLLM)** 에 모으기 — 앱마다 흩지 않기.
-- 노트는 **파일 + git 정본** 유지 — 공유 repo만 추가하면 팀 지식됨.
-- 인덱스·DB는 **파생(disposable)** — 정본(노트/메모리 export)에서 재생성 가능하게.
+### 운영 편의
+- `make secrets`에 엔드포인트/모델 상태까지 통합 점검.
+- 메모리/노트 용량·통계 한눈에 보기.
 
 ---
 
 ## 백업 (git 기반)
 
-"파일이 정본, DB/인덱스는 파생" 철학 → GitHub(또는 사설 git) 백업이 자연스럽다.
+"파일이 정본, DB/인덱스는 파생" 철학 → **개인 git repo(GitHub Private 등)** 백업이 자연스럽다.
 
-- **노트(.md)** → git repo, `git push` = 백업. `.brain-index.json`은 `.gitignore`(파생).
-- **메모리(mem0)** → `npm run memory:export`로 마크다운 덤프 → git 커밋. 복원은 `memory:import`(멱등). ✅
+- **노트(.md)** → 개인 git repo, `git push` = 백업. `.brain-index.json`은 `.gitignore`(파생).
+- **메모리(mem0)** → `make memory-export`로 마크다운 덤프 → git 커밋. 복원은 `memory-import`(멱등). ✅
+- **시크릿** → `.env`는 **백업/커밋 금지**(gitignore 유지). 토큰은 `make token`으로 재발급 가능.
 - 복원: 노트/메모리 파일 → import → 인덱스/DB 재생성.
-
-> 개인 단계에선 개인 repo, 팀 단계에선 개인 repo + 공유 repo로 분리.
 
 ---
 
 ## 알려진 제약
 
-- **CLI 구독은 인스턴스마다 자기 것**: 탈중앙 원칙상 멤버/서버가 각자 자기 로그인을 쓴다.
-  → 중앙 계정 한도 공유·ToS 문제 없음. (한 인스턴스를 여럿이 가리키는 중앙 모델은 비권장 —
-  그 경우에만 한도·ToS가 문제 되니 피한다.)
+- **CLI 구독은 내 계정**: 추론은 내 `claude`/`codex` 로그인으로 수행. 약관상 회색지대이므로
+  **개인 용도·합리적 사용량** 권장(공유·재판매·대량 자동화 금지). 가장 보수적으로는 **백엔드만 정식 API로 교체** 가능.
 - **임베딩 throughput**: bge-m3 CPU가 바닥. 대량 인덱싱은 가벼운 모델/GPU/TEI로 `EMBEDDINGS_URL` 교체 권장.
 - **자동 카테고리화**: OpenAI 구조화 출력 의존이라 CLI 경로에선 비활성(메모리 기능엔 무관).

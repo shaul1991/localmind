@@ -7,7 +7,8 @@ services:
     image: localmind
     container_name: localmind
     ports:
-      - "8787:8787"
+      # 개인 전용 — 루프백에만 노출(같은 머신에서만 접근, LAN 노출 없음).
+      - "127.0.0.1:8787:8787"
     environment:
       - HOST=0.0.0.0
       - PORT=8787
@@ -22,39 +23,6 @@ services:
       - ${HOME}/.claude:/root/.claude
       - ${HOME}/.claude.json:/root/.claude.json
       - ${HOME}/.codex:/root/.codex
-    restart: unless-stopped
-
-  # ── opt: 원격 MCP (HTTP/SSE) (profile: mcp) ───────────────────
-  # URL 하나로 팀/원격 클라이언트(Claude Code/Cursor/ChatGPT 원격 connector)가 접속.
-  # 디바이스/서버별로 MCP_INSTANCE를 다르게 주면 메모리·노트가 인스턴스별로 격리된다.
-  # 네트워크 노출이므로 MCP_HTTP_TOKEN(.env)이 반드시 필요하다.
-  mcp-http:
-    profiles: ["mcp"]
-    build: .
-    image: localmind
-    container_name: localmind-mcp-http
-    command: ["node", "dist/mcp-http.js"]
-    ports:
-      - "8788:8788"
-    environment:
-      - MCP_HTTP_HOST=0.0.0.0
-      - MCP_HTTP_PORT=8788
-      # 토큰 강제는 앱(mcp-http)이 한다 — 없으면 컨테이너가 명확한 메시지로 기동 거부.
-      # compose `:?`는 프로파일 무관하게 보간돼 `make up`까지 막으므로 쓰지 않는다.
-      - MCP_HTTP_TOKEN=${MCP_HTTP_TOKEN:-}
-      - MCP_INSTANCE=${MCP_INSTANCE:-localmind}
-      - MCP_DEFAULT_MODEL=${MCP_DEFAULT_MODEL:-sonnet}
-      - LOCALMIND_URL=http://localmind:8787
-      - OPENMEMORY_URL=http://openmemory:8767
-      - EMBEDDINGS_URL=http://litellm:4000/v1
-      - EMBEDDINGS_KEY=${LITELLM_MASTER_KEY:-sk-local}
-      - NOTES_DIR=/notes
-      - BRAIN_INDEX=/data/brain-index.json
-    volumes:
-      - ${NOTES_DIR:-${HOME}/localmind-brain}:/notes
-      - mcp-brain:/data
-    depends_on:
-      - localmind
     restart: unless-stopped
 
   # ── opt: 임베딩 백엔드 (profile: gateway) ─────────────────────
@@ -89,7 +57,7 @@ services:
     container_name: localmind-litellm
     depends_on: [localmind, ollama]
     ports:
-      - "4000:4000"
+      - "127.0.0.1:4000:4000"
     volumes:
       - ./litellm.config.yaml:/app/config.yaml:ro
     command: ["--config", "/app/config.yaml", "--port", "4000"]
@@ -131,7 +99,8 @@ services:
         condition: service_started
     ports:
       # 호스트 8765는 다른 서비스가 쓸 수 있어 8767로 노출(컨테이너 내부는 8765).
-      - "${OPENMEMORY_PORT:-8767}:8765"
+      # 개인 전용 — 루프백에만 노출.
+      - "127.0.0.1:${OPENMEMORY_PORT:-8767}:8765"
     environment:
       # config.json이 env:API_KEY를 참조하므로 둘 다 세팅.
       - API_KEY=${LITELLM_MASTER_KEY:-sk-local}
@@ -201,4 +170,3 @@ services:
 volumes:
   ollama-data:
   mem0-pg:
-  mcp-brain:

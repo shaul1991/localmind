@@ -1,9 +1,9 @@
 # localmind 운영 커맨드. `make` 또는 `make help`로 목록 확인.
-# 설정값(MCP_HTTP_TOKEN, MCP_INSTANCE, NOTES_DIR 등)은 .env 에서 읽힌다(.env.example 참고).
+# 설정값(LITELLM_MASTER_KEY, OPENMEMORY_USER 등)은 .env 에서 읽힌다(.env.example 참고).
 
 COMPOSE := docker compose
-STACK   := --profile gateway --profile memory          # 기본 스택(임베딩+메모리)
-ALL     := --profile gateway --profile memory --profile mcp  # 원격 MCP 포함
+STACK   := --profile gateway --profile memory          # 로컬 스택(임베딩+메모리)
+ALL     := $(STACK)                                     # 전체 = 로컬 스택(원격 없음)
 FILE    ?= memory-backup.md                             # 메모리 백업 파일
 SERVICE ?=                                              # logs 대상(비우면 전체)
 
@@ -31,10 +31,6 @@ dev: ## API 서버 개발 모드(watch)
 up: ## 스택 기동(게이트웨이+메모리, 빌드 포함)
 	$(COMPOSE) $(STACK) up -d --build
 
-.PHONY: up-mcp
-up-mcp: ## 원격 MCP까지 기동(.env에 MCP_HTTP_TOKEN 필요)
-	$(COMPOSE) $(ALL) up -d --build
-
 .PHONY: down
 down: ## 스택 정지(볼륨/데이터 유지)
 	$(COMPOSE) $(ALL) down
@@ -61,7 +57,6 @@ health: ## 엔드포인트 헬스체크
 	@curl -s -o /dev/null -w "gateway     :8787  → %{http_code}\n" http://127.0.0.1:8787/v1/models || true
 	@curl -s -o /dev/null -w "embeddings  :4000  → %{http_code}\n" http://127.0.0.1:4000/health/liveliness || true
 	@curl -s -o /dev/null -w "memory      :8767  → %{http_code}\n" http://127.0.0.1:8767/docs || true
-	@curl -s -o /dev/null -w "remote-mcp  :8788  → %{http_code}\n" http://127.0.0.1:8788/health || true
 
 .PHONY: smoke
 smoke: ## 스모크 테스트(API + MCP + brain)
@@ -83,18 +78,17 @@ init-env: ## .env 없으면 .env.example에서 생성
 	else cp .env.example .env && echo ".env 생성 완료 — 값을 채우세요(토큰은 'make token')"; fi
 
 .PHONY: token
-token: ## 강한 랜덤 토큰 발급(MCP_HTTP_TOKEN/LOCALMIND_API_KEY용)
+token: ## 강한 랜덤 토큰 발급(LOCALMIND_API_KEY용)
 	@t=$$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'); \
 	echo "생성된 토큰:"; echo "  $$t"; echo; \
-	echo ".env 에 붙여넣기(택1):"; \
-	echo "  MCP_HTTP_TOKEN=$$t"; \
+	echo ".env 에 붙여넣기:"; \
 	echo "  LOCALMIND_API_KEY=$$t"
 
 .PHONY: secrets
 secrets: ## 시크릿 현황(마스킹) + 구독 인증 상태 점검
 	@test -f .env || { echo ".env 없음 — 'make init-env' 먼저 실행"; exit 1; }
 	@echo "── .env 시크릿 ──"
-	@for v in LOCALMIND_API_KEY LITELLM_MASTER_KEY MCP_HTTP_TOKEN; do \
+	@for v in LOCALMIND_API_KEY LITELLM_MASTER_KEY; do \
 		val=$$(grep -E "^$$v=" .env | head -1 | cut -d= -f2-); \
 		if [ -z "$$val" ]; then printf "  %-20s %s\n" "$$v" "✗ 미설정"; \
 		else printf "  %-20s %s\n" "$$v" "✓ 설정됨 (앞4: $$(printf %s "$$val" | cut -c1-4)…, 길이 $$(printf %s "$$val" | wc -c | tr -d ' '))"; fi; \

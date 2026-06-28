@@ -6,14 +6,12 @@
   "main": "dist/index.js",
   "bin": {
     "localmind": "dist/index.js",
-    "localmind-mcp": "dist/mcp.js",
-    "localmind-mcp-http": "dist/mcp-http.js"
+    "localmind-mcp": "dist/mcp.js"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "mcp": "tsx src/mcp.ts",
-    "mcp:http": "tsx src/mcp-http.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "smoke": "tsx scripts/smoke.ts",
@@ -21,7 +19,6 @@
     "smoke:tools": "tsx scripts/smoke-tools.ts",
     "smoke:anthropic:tools": "tsx scripts/smoke-anthropic-tools.ts",
     "smoke:mcp": "tsx scripts/smoke-mcp.ts",
-    "smoke:mcp:http": "tsx scripts/smoke-mcp-http.ts",
     "smoke:brain": "tsx scripts/smoke-brain.ts",
     "memory:export": "tsx scripts/memory-export.ts",
     "memory:import": "tsx scripts/memory-import.ts"

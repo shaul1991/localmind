@@ -41,9 +41,6 @@ env = { NOTES_DIR = "/내/노트/폴더", OPENMEMORY_USER = "내이름" }
 - **회상**: "배포 언제였지? `recall`해봐" → 의미로 찾아옴
 - **노트 적재**: "방금 결정한 캐싱 전략을 `capture_note`로 남겨줘"
 - **노트 RAG**: "내 노트 기준으로 우리 retrieval 원칙이 뭐야? `ask_brain`" → 출처 인용 답변
-- **정체 확인**: "`whoami`" → 지금 어느 인스턴스(서버)의 두뇌인지
+- **정체 확인**: "`whoami`" → 지금 어떤 메모리/노트(인스턴스)를 쓰는지
 
-> 같은 머신에 여러 노트 폴더/기억을 쓰고 싶으면 서버 항목을 복제하고 `NOTES_DIR`/`OPENMEMORY_USER`만 다르게.
-
-## 원격(URL)으로 붙이기
-다른 서버에 떠 있는 localmind에 붙으려면 [mcp-remote-infra.md](mcp-remote-infra.md) 참고.
+> 같은 머신에 여러 노트 폴더/기억을 쓰고 싶으면 항목을 복제하고 `NOTES_DIR`/`OPENMEMORY_USER`만 다르게.

@@ -15,11 +15,9 @@
 > 🧩 **처음 보는 용어가 많다면** — 게이트웨이·임베딩·RAG·MCP를 **딱 하나의 비유**(내 컴퓨터 안의 1인 비서실)로 5분 만에 풀어주는 입문서부터: 👉 [비유로 이해하기](docs/concepts.md)
 > ❓ **실사용자가 궁금해하는 것**(설치·Cursor 연동·백업·성능·약관 리스크)은 👉 [자주 묻는 질문(FAQ)](docs/faq.md)
 
-> **독립 실행 원칙**: 각 인스턴스는 **완전히 자립적**입니다. 그 머신의 로컬 스택
-> (gateway·임베딩·메모리·brain) + **그 머신 자신의 `claude`/`codex` 로그인** + localhost로만
-> 동작하며, **중앙 homeserver나 공유 계정에 의존하지 않습니다**(단일 장애점·ToS 회피).
-> 여러 명/여러 서버는 **각자 독립 인스턴스**로 돌리고, 필요하면 원격 MCP(URL+토큰)로
-> *접속*만 합니다 — 추론은 항상 각 인스턴스의 자기 계정으로. 진화 방향은 [ROADMAP.md](ROADMAP.md).
+> **개인 전용·독립 실행 원칙**: 이 스택은 **내 머신에서 나 혼자** 쓰는 용도입니다.
+> 로컬 스택(gateway·임베딩·메모리·brain) + **내 `claude`/`codex` 로그인** + **localhost(루프백)** 로만
+> 동작하며, **중앙 서버·공유 계정·원격 접속에 의존하지 않습니다**(단일 장애점·ToS 회피).
 
 ```
   HTTP API ┬─ /v1/chat/completions · /v1/messages   → claude/codex CLI
@@ -70,25 +68,17 @@ make health             # 엔드포인트 상태(:8787 / :4000 / :8767)
 
 > 더 가볍게: 채팅 API만 쓰려면 `docker compose up -d --build` (게이트웨이/메모리 프로파일 생략 — 이 경우만 raw).
 
-## 온보딩 (역할별)
+## 온보딩 (개인 전용)
 
-모든 인스턴스는 **각자 독립**으로 동작합니다(중앙 서버·공유 계정 의존 0). 역할에 맞는 경로만 따라가세요.
+이 스택은 **내 PC에서 나 혼자** 쓰는 용도입니다(중앙 서버·공유 계정·원격 접속 없음).
 
-**① 개인 — 내 PC에서 바로 쓰기**
+**내 PC에서 바로 쓰기**
 1. `git clone https://github.com/shaul1991/localmind && cd localmind`
 2. `make install build && make up` (전제: 호스트에 `claude`/`codex` 로그인)
 3. `make health`로 확인 → Cursor/Claude Desktop에 MCP 설정(아래 *MCP 서버* 섹션)
 4. `NOTES_DIR`를 내 노트 폴더로 가리키면 그 지식으로 바로 RAG
 
-**② 인프라 운영 — 서버별로 관리**
-- 서버마다 `MCP_INSTANCE=서버명`으로 **독립 인스턴스** → 그 서버의 자원/메모리/노트를 로컬에서 관리
-- `.env`에 `MCP_HTTP_TOKEN` 설정 후 `make up-mcp` → 노트북에서 서버별 원격 MCP로 접속 (아래 *디바이스/서버별 관리*)
-
-**③ 팀원 — 이미 떠 있는 서버에 붙기**
-- 운영자에게 받은 **URL + 토큰**을 클라이언트에 원격 MCP로 등록 (아래 *원격 MCP*)
-- 추론은 그 인스턴스의 계정으로 수행 — 내 코딩 구독(Cursor/Claude/Codex)은 그대로 따로 씀
-
-> 어떤 경로든 **메터드 API 0원**, 데이터는 그 인스턴스 로컬에만 둡니다.
+> **메터드 API 0원**, 데이터는 전부 내 머신 로컬에만 둡니다.
 
 📂 바로 따라 할 **케이스별 예제**는 [examples/](examples/) — API 대체·임베딩·메모리·second-brain·MCP까지.
 👥 **내 직군에선 어떻게?** → [직군별 유즈케이스](examples/use-cases.md) — 개발(백엔드·프론트·앱·게임), 데이터/ML, QA·아키텍트·인프라, 비개발(PM·라이터·보안·연구자), **콘텐츠 크리에이터**(AI 글작성·유튜브 대본/편집·썸네일·인플루언서) 등 **19개 페르소나**.
@@ -318,7 +308,7 @@ localmind의 능력을 **MCP 도구**로 노출해, MCP 호스트(Claude Desktop
 
 | 도구 | 설명 |
 |---|---|
-| `whoami` | 이 인스턴스(디바이스/서버) 식별 — 어느 서버의 메모리/노트인지 |
+| `whoami` | 이 인스턴스 식별 — 어떤 메모리/노트를 쓰는지 |
 | `ask` | claude/codex CLI에 교차 질의(다른 모델 상담) → localmind 경유 |
 | `remember` | 진화하는 기억에 사실 저장 (mem0: claude 추출 + bge-m3) |
 | `recall` | 의미 기반 회상 (mem0 벡터 검색) |
@@ -359,53 +349,10 @@ Claude Desktop `claude_desktop_config.json` (Cursor `.cursor/mcp.json`, Cline MC
 }
 ```
 
-### 원격 MCP (HTTP/SSE) — URL 하나로 팀/원격 접속
-stdio는 각자 로컬 서브프로세스라 "URL 공유"가 안 됩니다. 원격 서버(`dist/mcp-http.js`)는
-**URL 하나로** Claude Code / Cursor / **ChatGPT 원격 connector** 까지 접속하게 합니다.
-
-```bash
-# .env 에 MCP_HTTP_TOKEN(필수) + MCP_INSTANCE 설정 후
-make up-mcp   # = docker compose --profile gateway --profile memory --profile mcp up -d --build
-#  → http://<host>:8788/mcp  (Streamable HTTP),  http://<host>:8788/sse (레거시)
-```
-
-- `POST /mcp` — Streamable HTTP(현대 표준), `GET /sse`+`POST /messages` — 레거시 SSE, `GET /health`.
-- **인증 필수**: 네트워크 노출이므로 `MCP_HTTP_TOKEN` 없으면 기동 거부. 클라이언트는 `Authorization: Bearer <토큰>`.
-- tailnet 등 신뢰 네트워크에만 노출하세요(포트 8788).
-
-클라이언트 등록 예:
-```bash
-# Claude Code
-claude mcp add --transport http my-server https://<host>:8788/mcp --header "Authorization: Bearer <토큰>"
-```
-```jsonc
-// Cursor .cursor/mcp.json
-{ "mcpServers": { "my-server": {
-  "url": "http://<host>:8788/mcp",
-  "headers": { "Authorization": "Bearer <토큰>" }
-}}}
-```
-
-### 디바이스/서버별 관리 (인프라 운영)
-**한 인스턴스 = 한 디바이스/서버.** 서버마다 `MCP_INSTANCE`를 다르게 주면 그 서버의
-**메모리·노트가 인스턴스별로 격리**됩니다. 각 서버가 자기 자원 정보(스펙·설정·장애 이력)를
-로컬에서 관리하고, 클라이언트에선 서버별 원격 MCP를 각각 등록해 골라 씁니다.
-
-```
-db-server   : MCP_INSTANCE=db-server   → db-server의 메모리/노트  (http://db-server:8788/mcp)
-app-server-1: MCP_INSTANCE=app-server-1 → app-server-1의 메모리/노트
-```
-- **각 인스턴스는 독립**: 그 서버의 localmind + 그 서버의 CLI 로그인을 쓰므로, 한 서버가 다른 서버의 계정/스택에 의존하지 않습니다(중앙 의존 0).
-- 메모리 격리: `OPENMEMORY_USER`를 안 주면 `MCP_INSTANCE`가 곧 메모리 owner가 됩니다.
-- `whoami` 도구로 "지금 어느 서버의 두뇌인지" 즉시 확인.
-- 각 서버에서 `capture_note`로 그 서버의 자원/장애를 기록 → `ask_brain`으로 그 서버 한정 RAG.
-
 ### 환경변수 (MCP 서버)
 | 변수 | 기본값 | 설명 |
 |---|---|---|
-| `MCP_INSTANCE` | 호스트명 | 디바이스/서버 식별자(메모리 owner 기본값) — 서버별 격리 |
-| `MCP_HTTP_TOKEN` | (없음) | 원격 MCP Bearer 토큰. 네트워크 노출 시 필수 |
-| `MCP_HTTP_PORT` / `MCP_HTTP_HOST` | `8788` / `0.0.0.0` | 원격 MCP 바인딩 |
+| `MCP_INSTANCE` | 호스트명 | 인스턴스 식별자(`OPENMEMORY_USER` 미설정 시 메모리 owner 기본값) |
 | `LOCALMIND_URL` | `http://localhost:8787` | ask가 호출할 localmind |
 | `LOCALMIND_API_KEY` | (없음) | localmind 인증 시 |
 | `OPENMEMORY_URL` | `http://localhost:8767` | remember/recall 대상 |
@@ -422,11 +369,11 @@ app-server-1: MCP_INSTANCE=app-server-1 → app-server-1의 메모리/노트
 > - 더 가벼운 모델로 바꾸려면 **반드시 다국어 모델**(multilingual-e5, snowflake-arctic-embed2)을 — `nomic-embed-text` 등 **영어 전용 모델은 한국어 검색 품질이 크게 떨어집니다**.
 > - 모델 변경 시 벡터 차원이 달라지므로 `EMBEDDING_DIMS` 조정 + 재인덱싱 필요.
 
-검증: `make smoke`(MCP 포함 일괄) 또는 원격 MCP는 `npm run smoke:mcp:http`.
+검증: `make smoke`(MCP 포함 일괄).
 
 ## 사용 예시
 
-> 🧩 **케이스별 runnable 예제 모음 → [examples/](examples/)** — API 대체(Python/Node/Anthropic), 함수호출, 임베딩·의미검색, 메모리, second-brain, LangChain, MCP(Cursor/Claude/Codex·원격 인프라), 역할별 시나리오. 전부 실행·검증됨.
+> 🧩 **케이스별 runnable 예제 모음 → [examples/](examples/)** — API 대체(Python/Node/Anthropic), 함수호출, 임베딩·의미검색, 메모리, second-brain, LangChain, MCP(Cursor/Claude/Codex), 역할별 시나리오. 전부 실행·검증됨.
 
 ### curl
 
@@ -662,9 +609,8 @@ MODEL=sonnet npm run smoke:anthropic:tools   # Anthropic tool_use
 | 증상 | 원인 / 해결 |
 |---|---|
 | 채팅 호출이 실패/빈 응답 | 호스트에 `claude`/`codex`가 **로그인** 안 됨 → 호스트에서 한 번 `claude`(또는 `codex`) 실행해 로그인. 컨테이너는 `~/.claude`·`~/.codex`를 마운트해 재사용. |
-| `make up-mcp`가 바로 실패 | `.env`에 **`MCP_HTTP_TOKEN`** 미설정 (네트워크 노출 안전장치). 값을 채우고 다시. |
 | `make health`에서 일부 `000`/비정상 | 첫 기동은 모델 pull(bge-m3 ~1.2GB) + OpenMemory 소스 빌드로 **수 분** 걸림 → `make logs`로 진행 확인. 부하 중 임베딩이 멈추면 `make restart`. |
-| 포트 충돌(8787/4000/8767/8788) | 이미 쓰는 포트면 `.env`/compose에서 변경하거나 충돌 프로세스 정지. |
+| 포트 충돌(8787/4000/8767) | 이미 쓰는 포트면 `.env`/compose에서 변경하거나 충돌 프로세스 정지. |
 | 메모리 `User not found` | `user_id`는 **시드된 사용자**(`OPENMEMORY_USER`/`MCP_INSTANCE`)여야 함. 임의 id 불가. |
 | 노트 첫 인덱싱이 느림 | bge-m3 CPU 임베딩이 바닥(이후 증분이라 빠름). 급하면 GPU/TEI로 `EMBEDDINGS_URL` 교체. 한국어면 **다국어 모델만**(nomic 등 영어 전용 금지). |
 | 임베딩 모델 변경 후 차원 오류 | `EMBEDDING_DIMS` 맞추고 `make clean`(볼륨 초기화) 후 재기동. |

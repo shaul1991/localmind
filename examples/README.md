@@ -15,7 +15,6 @@ make health        # 200 확인
 | 채팅만(직접) | `http://localhost:8787/v1` | 기본 없음(`LOCALMIND_API_KEY` 설정 시 필요) |
 | Anthropic 메시지 | `http://localhost:8787` (`/v1/messages`) | 동일 |
 | 메모리(mem0) REST | `http://localhost:8767/api/v1` | 없음 |
-| 원격 MCP | `http://<host>:8788/mcp` | `MCP_HTTP_TOKEN` |
 
 > 모델명: `sonnet`·`opus`·`claude-*` → Claude · `gpt-5.5`·`codex:*` → Codex · `text-embedding-3-small`/`bge-m3` → 임베딩.
 
@@ -34,7 +33,6 @@ make health        # 200 확인
 | [workflow-youtube-script.py](workflow-youtube-script.py) | **끝-to-끝 워크플로우**: 유튜브 대본(보이스 기억→아웃라인→후킹→대본) |
 | [langchain-rag.py](langchain-rag.py) | LangChain의 LLM+임베딩을 localmind로 |
 | [mcp-clients.md](mcp-clients.md) | Cursor/Claude Desktop/Codex에 MCP 도구 붙이기 |
-| [mcp-remote-infra.md](mcp-remote-infra.md) | 서버별 원격 MCP로 인프라 운영 |
 | [use-cases.md](use-cases.md) | **직군별 유즈케이스(19개 페르소나)** — 내 직군 카드만 보면 됨 |
 
 ## 직군별 워크플로우 (끝-to-끝 실행)

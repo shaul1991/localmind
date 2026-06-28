@@ -64,10 +64,10 @@
 
 ## 🛠️ 인프라 / DevOps / SRE
 - **상황**: 서버마다 스펙·백업정책·장애 이력이 머릿속/흩어진 메모에 있다.
-- **활용**: 서버별 독립 인스턴스(`MCP_INSTANCE=서버명`). `capture_note`로 런북 적재, `remember`로 장애 기록, `ask_brain`으로 "이 서버 한정" RAG. 노트북에서 서버별 원격 MCP로 질의.
-- **워크플로우**: 서버별 인스턴스 기동(`MCP_INSTANCE`) → 스펙·런북을 `capture_note` → 장애 발생 시 원인·조치를 `remember` → 회고/온콜 때 `ask_brain`으로 그 서버만 출처와 함께 정리.
-- **효과**: 각 서버가 **자기 지식을 로컬에서** 보유. "이 서버 최근 장애 정리"를 출처와 함께 즉답.
-- **시작**: [mcp-remote-infra.md](mcp-remote-infra.md) · [memory.sh](memory.sh)
+- **활용**: 내 머신에서 `capture_note`로 런북 적재, `remember`로 장애 기록, `ask_brain`으로 서버별 RAG(노트 폴더로 구분). 전부 로컬.
+- **워크플로우**: 서버 스펙·런북을 `capture_note` → 장애 발생 시 원인·조치를 `remember` → 회고/온콜 때 `ask_brain`으로 출처와 함께 정리.
+- **효과**: 운영 지식을 **내 머신 로컬에서** 보유. "최근 장애 정리"를 출처와 함께 즉답.
+- **시작**: [memory.sh](memory.sh) · [brain-node.mjs](brain-node.mjs)
 
 ## 🤖 ML / 데이터 엔지니어
 - **상황**: RAG·분류·클러스터링 파이프라인이 임베딩 API 비용·레이트리밋에 묶여 있다.
@@ -156,7 +156,7 @@
 - **활용**: **모든 추론·임베딩이 로컬**이라 데이터가 인스턴스를 떠나지 않음(독립 실행). 로그 요약·이상 탐지 보조, 위협/대응 노트를 `remember`·`ask_brain`으로 축적.
 - **워크플로우**: 로그·이벤트를 로컬 chat에 → 이상 패턴 요약·분류 → 위협/대응 절차를 `remember` → 사후분석(포스트모템) 때 `ask_brain`으로 정리. 전 과정 데이터가 로컬 유지.
 - **효과**: 데이터 거버넌스 위험 ↓, 그러면서 LLM 보조 활용.
-- **시작**: [memory.sh](memory.sh) · [mcp-remote-infra.md](mcp-remote-infra.md)
+- **시작**: [memory.sh](memory.sh) · [brain-node.mjs](brain-node.mjs)
 
 ## 🧠 연구자 / 지식노동자
 - **상황**: 노트·논문·아이디어가 쌓이는데 연결·회상이 안 된다.

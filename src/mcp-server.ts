@@ -1,12 +1,7 @@
 /**
- * localmind MCP 서버 정의(도구 등록). stdio·HTTP 두 transport가 공유한다.
+ * localmind MCP 서버 정의(도구 등록). stdio transport로 로컬에서만 동작한다.
  *
  * 도구: ask · remember · recall · capture_note · search_notes · ask_brain · whoami
- *
- * 디바이스/서버별 관리:
- *   한 인스턴스 = 한 디바이스/서버. MCP_INSTANCE로 식별하고, 메모리(OPENMEMORY_USER)와
- *   노트(NOTES_DIR)가 그 디바이스에 로컬이라 자원 정보가 서버별로 격리된다.
- *   클라이언트는 whoami로 "지금 어느 서버의 두뇌인지" 확인할 수 있다.
  *
  * 이 모듈은 stdout에 아무것도 쓰지 않는다(stdio transport 전용).
  */
@@ -18,7 +13,7 @@ import { askBrain, capture, notesDir, searchNotes } from "./brain.js";
 export const GATEWAY_URL = (process.env.LOCALMIND_URL ?? "http://localhost:8787").replace(/\/$/, "");
 export const GATEWAY_KEY = process.env.LOCALMIND_API_KEY?.trim();
 export const OPENMEMORY_URL = (process.env.OPENMEMORY_URL ?? "http://localhost:8767").replace(/\/$/, "");
-// 디바이스/서버 식별자. 메모리 사용자 기본값으로도 쓰여 서버별 메모리가 자연히 분리된다.
+// 인스턴스 식별자. 메모리 사용자 기본값으로도 쓰인다(여러 노트 폴더/기억을 구분할 때).
 export const INSTANCE = (process.env.MCP_INSTANCE ?? process.env.OPENMEMORY_USER ?? os.hostname()).trim();
 export const MEMORY_USER = process.env.OPENMEMORY_USER ?? INSTANCE;
 export const DEFAULT_MODEL = process.env.MCP_DEFAULT_MODEL ?? "sonnet";
@@ -51,7 +46,7 @@ export function configSummary(): string {
 export function buildServer(): McpServer {
   const server = new McpServer({ name: `localmind:${INSTANCE}`, version: "0.2.0" });
 
-  // ── whoami: 이 인스턴스가 어느 디바이스/서버인지 ──────────────────
+  // ── whoami: 이 인스턴스가 어떤 메모리/노트를 쓰는지 ──────────────────
   server.registerTool(
     "whoami",
     {
