@@ -20,7 +20,7 @@
 - 참고: 기존 v1 인덱스(`.brain-index.json`)는 v2로 자동 1회 재인덱싱(시간 소요 가능)
 
 ### A2. 백업 자동화 (`make backup`) — 커밋 `be19bd0`
-- [ ] `~/localmind-brain` git init + **private** remote 설정
+- [ ] `~/.localmind`(기본 BACKUP_DIR) git init + **private** remote 설정
 - [ ] `make backup` → `memory.md` export + 커밋 + push 성공
 - [ ] 변경 없이 재실행 → "변경 없음 — 커밋 생략"(멱등)
 - [ ] `make backup-cron` 출력 한 줄 crontab 등록 → 다음 주기 로그 확인

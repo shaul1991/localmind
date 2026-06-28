@@ -26,14 +26,14 @@ function expandHome(p: string): string {
 //   라벨을 직접 주려면  NOTES_DIR="work=/notes/work,life=/notes/personal"
 // 라벨은 출처 표기(label/파일명)와 folder 스코프 필터에 쓰인다. 미지정 시 폴더명에서 자동.
 function parseFolders(): NoteFolder[] {
-  const raw = (process.env.NOTES_DIR ?? path.join(process.env.HOME ?? ".", "localmind-brain")).trim();
+  const raw = (process.env.NOTES_DIR ?? path.join(process.env.HOME ?? ".", ".localmind")).trim();
   const used = new Set<string>();
   const folders: NoteFolder[] = [];
   for (const spec of raw.split(",").map((s) => s.trim()).filter(Boolean)) {
     const eq = spec.indexOf("=");
     let label = eq > 0 ? spec.slice(0, eq).trim() : "";
     let dir = path.resolve(expandHome(eq > 0 ? spec.slice(eq + 1).trim() : spec));
-    if (!label) label = path.basename(dir) || "notes";
+    if (!label) label = path.basename(dir).replace(/^\.+/, "") || "notes"; // 선행 점 제거(.localmind→localmind)
     let uniq = label;
     for (let n = 2; used.has(uniq); n++) uniq = `${label}-${n}`; // 라벨 충돌 방지
     used.add(uniq);
@@ -41,7 +41,7 @@ function parseFolders(): NoteFolder[] {
   }
   return folders.length
     ? folders
-    : [{ label: "notes", dir: path.resolve(path.join(process.env.HOME ?? ".", "localmind-brain")) }];
+    : [{ label: "notes", dir: path.resolve(path.join(process.env.HOME ?? ".", ".localmind")) }];
 }
 
 const FOLDERS = parseFolders();

@@ -10,6 +10,7 @@ dist/
 .brain-index.json
 **/.brain-index.json
 brain-index.json
+.localmind/
 localmind-brain/
 memory-backup.md
 *-backup.md

@@ -307,9 +307,9 @@ OPENMEMORY_USER=내이름 make memory-import FILE=~/brain/memory.md
 
 ```bash
 # 1) 백업 repo 준비(최초 1회): BACKUP_DIR이 git repo여야 함
-git -C ~/localmind-brain init && git -C ~/localmind-brain remote add origin <내 private repo>
+git -C ~/.localmind init && git -C ~/.localmind remote add origin <내 private repo>
 
-# 2) 한 번에 백업 (BACKUP_DIR 기본값 ~/localmind-brain)
+# 2) 한 번에 백업 (BACKUP_DIR 기본값 ~/.localmind)
 make backup
 #   BACKUP_DIR을 바꾸려면:  make backup BACKUP_DIR=~/brain
 ```
@@ -390,7 +390,7 @@ Claude Desktop `claude_desktop_config.json` (Cursor `.cursor/mcp.json`, Cline MC
 | `OPENMEMORY_URL` | `http://localhost:8767` | remember/recall 대상 |
 | `OPENMEMORY_USER` | `localmind` | 메모리 소유자 id |
 | `MCP_DEFAULT_MODEL` | `sonnet` | ask / ask_brain 기본 모델 |
-| `NOTES_DIR` | `~/localmind-brain` | second-brain 노트 폴더(정본). **쉼표로 여러 폴더** 가능: `work=/notes/work,life=/notes/personal`(라벨 생략 시 폴더명). 검색/RAG는 기본 전체, 도구의 `folder`로 한정 |
+| `NOTES_DIR` | `~/.localmind` | second-brain 노트 폴더(정본). **쉼표로 여러 폴더** 가능: `work=/notes/work,life=/notes/personal`(라벨 생략 시 폴더명, 선행 점 제거). 검색/RAG는 기본 전체, 도구의 `folder`로 한정 |
 | `BRAIN_INDEX` | `<NOTES_DIR>/.brain-index.json` | 임베딩 인덱스 위치. git/싱크 볼트를 안 더럽히려면 밖으로 |
 | `EMBEDDINGS_URL` | `http://localhost:4000/v1` | 노트 임베딩(게이트웨이) |
 | `EMBEDDINGS_MODEL` | `text-embedding-3-small` | (게이트웨이가 bge-m3로 매핑) |
