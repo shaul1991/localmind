@@ -76,6 +76,33 @@ memory-export: ## 메모리 → 마크다운 (make memory-export FILE=~/brain/me
 memory-import: ## 마크다운 → 메모리 복원(멱등) (make memory-import FILE=...)
 	npm run memory:import -- $(FILE)
 
+##@ 시크릿/키(.env)
+.PHONY: init-env
+init-env: ## .env 없으면 .env.example에서 생성
+	@if [ -f .env ]; then echo ".env 이미 존재 — 건너뜀"; \
+	else cp .env.example .env && echo ".env 생성 완료 — 값을 채우세요(토큰은 'make token')"; fi
+
+.PHONY: token
+token: ## 강한 랜덤 토큰 발급(MCP_HTTP_TOKEN/LOCALMIND_API_KEY용)
+	@t=$$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'); \
+	echo "생성된 토큰:"; echo "  $$t"; echo; \
+	echo ".env 에 붙여넣기(택1):"; \
+	echo "  MCP_HTTP_TOKEN=$$t"; \
+	echo "  LOCALMIND_API_KEY=$$t"
+
+.PHONY: secrets
+secrets: ## 시크릿 현황(마스킹) + 구독 인증 상태 점검
+	@test -f .env || { echo ".env 없음 — 'make init-env' 먼저 실행"; exit 1; }
+	@echo "── .env 시크릿 ──"
+	@for v in LOCALMIND_API_KEY LITELLM_MASTER_KEY MCP_HTTP_TOKEN; do \
+		val=$$(grep -E "^$$v=" .env | head -1 | cut -d= -f2-); \
+		if [ -z "$$val" ]; then printf "  %-20s %s\n" "$$v" "✗ 미설정"; \
+		else printf "  %-20s %s\n" "$$v" "✓ 설정됨 (앞4: $$(printf %s "$$val" | cut -c1-4)…, 길이 $$(printf %s "$$val" | wc -c | tr -d ' '))"; fi; \
+	done
+	@echo "── 구독 인증(호스트 마운트) ──"
+	@test -e "$$HOME/.claude" && echo "  ~/.claude  ✓ 있음" || echo "  ~/.claude  ✗ 없음 (claude 로그인 필요)"
+	@test -e "$$HOME/.codex"  && echo "  ~/.codex   ✓ 있음" || echo "  ~/.codex   ✗ 없음 (codex 로그인 필요)"
+
 ##@ 도움말
 .PHONY: help
 help: ## 이 목록 표시
