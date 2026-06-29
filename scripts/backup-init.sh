@@ -108,9 +108,12 @@ if ( cd "$PROJECT_DIR" && npm run --silent memory:export -- "$BACKUP_DIR/memory.
 else
   warn "메모리 내보내기를 건너뜁니다(스택이 꺼져 있을 수 있어요 — 노트는 그대로 백업됩니다)."
 fi
-# 첫 커밋 전 git author identity 확인 — 신규 머신서 미설정이면 commit 이 실패한다.
-# (git -C <dir> config user.name 은 local→global 병합값을 읽으므로 전역 설정도 함께 인식)
-if ! git -C "$BACKUP_DIR" config user.name >/dev/null 2>&1 || ! git -C "$BACKUP_DIR" config user.email >/dev/null 2>&1; then
+# 첫 커밋 전 git identity 확인 — 신규 머신서 미설정이면 commit 이 실패한다.
+# git 자신의 해석(git var)으로 author·committer identity 가 모두 잡히는지 본다.
+# config·GIT_AUTHOR_*/GIT_COMMITTER_*·EMAIL·strict 모드를 git 과 동일하게 평가하므로
+# (필드를 직접 집계하지 않아) 짝 안 맞는 혼합 소스도 실제 commit 과 똑같이 걸러진다.
+if ! git -C "$BACKUP_DIR" var GIT_AUTHOR_IDENT >/dev/null 2>&1 \
+   || ! git -C "$BACKUP_DIR" var GIT_COMMITTER_IDENT >/dev/null 2>&1; then
   err "Git 사용자 정보가 없어요 — 'git config --global user.name \"이름\"' 와 'git config --global user.email \"메일주소\"' 설정 후 다시 시도해 주세요."
   exit 1
 fi
