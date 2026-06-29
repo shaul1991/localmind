@@ -11,6 +11,15 @@
 
 ## A. 검증 필요 — 구현 완료, 라이브 스택에서 확인
 
+> **라이브 검증 결과 (2026-06-29, codex 백엔드 / 가동 중 스택):**
+> - **A1 ✅** 다중 폴더·`folder` 스코프(전체/work/life)·capture(folder)·`label/파일` 출처 — 실데이터 통과
+> - **A2 ✅** `make backup`: memory-export(6건)+커밋+`.gitignore`(.brain-index.json)+멱등
+> - **A3 ✅(구성요소)** `make restore`: 로컬 pull + **memory-import 멱등(추가0/스킵6)** + reindex. *full `make recover` 래퍼는 가동 스택 재생성 부담으로 미실행*
+> - **A4 ✅** `reindex` 실데이터(3파일/3청크, 실임베딩 bge-m3)
+> - **A5 ⚠️ 부분** 스모크 회귀 없음 ✅ · 원격 제거(도구 7개·mcp-http 없음) ✅ · **루프백 바인딩은 코드만 적용, 런타임 미반영** — 44h 전 컨테이너라 현재 `0.0.0.0`(LAN 노출). **`make up` 재생성 필요**
+> - **A6 ✅** `make secrets` 인증 점검 정확(claude ✗/codex ✓)·`make token` 발급
+> - **#7(보너스) ✅** 루트 `memory.md`(백업덤프) 제외 / 하위 폴더 `memory.md` 노트 포함 — 실데이터 확인
+
 ### A1. 다중 노트 폴더 (folder 스코프) — 커밋 `be19bd0`
 - [ ] 두 폴더 지정 `NOTES_DIR="work=/tmp/w,life=/tmp/l"`, 각 폴더에 `.md` 1개씩
 - [ ] `make up` 후 `search_notes`(folder 미지정) → 두 폴더 결과 섞임, 출처가 `라벨/파일`
