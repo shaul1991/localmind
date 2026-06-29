@@ -72,8 +72,9 @@ if git -C "$BACKUP_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   if [ -n "$RESTORE_REPO" ]; then
     existing="$(git -C "$BACKUP_DIR" remote get-url origin 2>/dev/null || true)"
     if [ -n "$existing" ] && [ "$(repo_id "$existing")" != "$(repo_id "$RESTORE_REPO")" ]; then
-      err "$BACKUP_DIR 는 이미 다른 백업 저장소에 연결돼 있어요: $existing"
-      say "  요청한 저장소($RESTORE_REPO)로 복구하려면 다른 폴더를 쓰거나(예: $(b 'make recover BACKUP_DIR=~/.localmind-new RESTORE_REPO=...')) 기존 폴더를 비운 뒤 다시 시도해 주세요."
+      # raw URL은 https://user:token@host 형태로 자격증명을 담을 수 있어 출력 금지 — repo_id(owner/repo)만 노출.
+      err "$BACKUP_DIR 는 이미 다른 백업 저장소($(repo_id "$existing"))에 연결돼 있어요."
+      say "  요청한 저장소($(repo_id "$RESTORE_REPO"))로 복구하려면 다른 폴더를 쓰거나(예: $(b 'make recover BACKUP_DIR=~/.localmind-new RESTORE_REPO=...')) 기존 폴더를 비운 뒤 다시 시도해 주세요."
       exit 1
     fi
   fi
