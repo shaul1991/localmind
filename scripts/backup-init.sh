@@ -109,14 +109,11 @@ else
   warn "메모리 내보내기를 건너뜁니다(스택이 꺼져 있을 수 있어요 — 노트는 그대로 백업됩니다)."
 fi
 # 첫 커밋 전 git identity 확인 — 신규 머신서 미설정이면 commit 이 실패한다.
-# identity는 git config(local→global 병합) 또는 환경변수(GIT_AUTHOR_*/GIT_COMMITTER_*)로 올 수 있어
-# 둘 다 인정한다(환경변수만 준 사용자를 false positive로 막지 않도록).
-have_name=false; have_email=false
-git -C "$BACKUP_DIR" config user.name  >/dev/null 2>&1 && have_name=true
-git -C "$BACKUP_DIR" config user.email >/dev/null 2>&1 && have_email=true
-[ -n "${GIT_AUTHOR_NAME:-}${GIT_COMMITTER_NAME:-}" ]   && have_name=true
-[ -n "${GIT_AUTHOR_EMAIL:-}${GIT_COMMITTER_EMAIL:-}" ] && have_email=true
-if [ "$have_name" = false ] || [ "$have_email" = false ]; then
+# git 자신의 해석(git var)으로 author·committer identity 가 모두 잡히는지 본다.
+# config·GIT_AUTHOR_*/GIT_COMMITTER_*·EMAIL·strict 모드를 git 과 동일하게 평가하므로
+# (필드를 직접 집계하지 않아) 짝 안 맞는 혼합 소스도 실제 commit 과 똑같이 걸러진다.
+if ! git -C "$BACKUP_DIR" var GIT_AUTHOR_IDENT >/dev/null 2>&1 \
+   || ! git -C "$BACKUP_DIR" var GIT_COMMITTER_IDENT >/dev/null 2>&1; then
   err "Git 사용자 정보가 없어요 — 'git config --global user.name \"이름\"' 와 'git config --global user.email \"메일주소\"' 설정 후 다시 시도해 주세요."
   exit 1
 fi
