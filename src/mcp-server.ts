@@ -8,7 +8,7 @@
 import os from "node:os";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { askBrain, capture, listFolders, notesDir, searchNotes } from "./brain.js";
+import { askBrain, capture, deleteNote, listFolders, listNotes, notesDir, searchNotes } from "./brain.js";
 
 export const GATEWAY_URL = (process.env.LOCALMIND_URL ?? "http://localhost:8787").replace(/\/$/, "");
 export const GATEWAY_KEY = process.env.LOCALMIND_API_KEY?.trim();
@@ -220,6 +220,105 @@ export function buildServer(): McpServer {
         return textResult(answer + cite);
       } catch (e) {
         return textResult(`ask_brain 실패: ${(e as Error).message}`, true);
+      }
+    },
+  );
+
+  // ── 관리(열람·삭제): 쌓인 기억/노트를 대화로 보고 정리 ───────────────
+  server.registerTool(
+    "list_memories",
+    {
+      title: "List memories",
+      description:
+        "List stored memories for this user (most recent first) to review what's accumulated. " +
+        "Returns numbered items with content, id, date. Use this to find a memory's id before delete_memory. " +
+        "Unlike recall (semantic search), this lists everything.",
+      inputSchema: {
+        user_id: z.string().optional().describe(`Memory owner (default: ${MEMORY_USER})`),
+        limit: z.number().int().min(1).max(100).optional().describe("Max items (default 30)"),
+      },
+    },
+    async ({ user_id, limit }) => {
+      const u = user_id || MEMORY_USER;
+      const url = `${OPENMEMORY_URL}/api/v1/memories/?user_id=${encodeURIComponent(u)}&page=1&size=${limit ?? 30}&sort_column=created_at&sort_direction=desc`;
+      const res = await fetch(url);
+      if (!res.ok) return textResult(`list_memories 실패 (HTTP ${res.status}): ${(await res.text()).slice(0, 200)}`, true);
+      const j: any = await res.json();
+      const items: any[] = j.items ?? [];
+      if (!items.length) return textResult(`저장된 기억이 없습니다 (user=${u}).`);
+      const lines = items.map((m, i) => {
+        const date = typeof m.created_at === "number" ? ` (${new Date(m.created_at * 1000).toISOString().slice(0, 10)})` : "";
+        return `${i + 1}. ${String(m.content ?? "").trim()}  ⟨id:${m.id}⟩${date}`;
+      });
+      return textResult(`기억 ${items.length}개 (user=${u}):\n${lines.join("\n")}`);
+    },
+  );
+
+  server.registerTool(
+    "delete_memory",
+    {
+      title: "Delete memory",
+      description:
+        "Permanently delete ONE stored memory by its id (get the id from list_memories). " +
+        "Use when the user asks to remove/forget a specific memory. Cannot be undone.",
+      inputSchema: {
+        memory_id: z.string().describe("Memory id from list_memories"),
+        user_id: z.string().optional().describe(`Memory owner (default: ${MEMORY_USER})`),
+      },
+    },
+    async ({ memory_id, user_id }) => {
+      const u = user_id || MEMORY_USER;
+      const res = await fetch(`${OPENMEMORY_URL}/api/v1/memories/`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ memory_ids: [memory_id], user_id: u }),
+      });
+      if (!res.ok) return textResult(`delete_memory 실패 (HTTP ${res.status}): ${(await res.text()).slice(0, 200)}`, true);
+      return textResult(`기억 삭제됨: ${memory_id}`);
+    },
+  );
+
+  server.registerTool(
+    "list_notes",
+    {
+      title: "List notes",
+      description:
+        "List second-brain note files as 'label/filename' (optional folder label to limit). " +
+        "Use to see what notes exist before search_notes/delete_note.",
+      inputSchema: {
+        folder: z.string().optional().describe("Limit to one notes folder label (default: all)"),
+      },
+    },
+    async ({ folder }) => {
+      try {
+        const notes = listNotes(folder);
+        if (!notes.length) return textResult(folder ? `'${folder}' 폴더에 노트가 없습니다.` : "노트가 없습니다.");
+        return textResult(`노트 ${notes.length}개:\n${notes.map((n, i) => `${i + 1}. ${n.path}`).join("\n")}`);
+      } catch (e) {
+        return textResult(`list_notes 실패: ${(e as Error).message}`, true);
+      }
+    },
+  );
+
+  server.registerTool(
+    "delete_note",
+    {
+      title: "Delete note",
+      description:
+        "Permanently delete ONE second-brain note file by its 'label/filename' (from list_notes or search_notes), then reindex. " +
+        "Use when the user asks to remove a specific note. Deletes the file; cannot be undone.",
+      inputSchema: {
+        path: z.string().describe("Note path 'label/filename' from list_notes"),
+      },
+    },
+    async ({ path: notePath }) => {
+      try {
+        const ok = await deleteNote(notePath);
+        return ok
+          ? textResult(`노트 삭제: ${notePath}`)
+          : textResult(`삭제 실패: '${notePath}' 를 찾지 못했습니다(목록은 list_notes).`, true);
+      } catch (e) {
+        return textResult(`delete_note 실패: ${(e as Error).message}`, true);
       }
     },
   );
