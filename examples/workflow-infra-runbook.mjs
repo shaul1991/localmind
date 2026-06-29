@@ -1,7 +1,8 @@
 // 인프라/SRE 워크플로우 — 서버별 런북 적재 → 장애 기록 → 그 서버 한정 RAG.
-// 격리: NOTES_DIR(노트 폴더)로 노트가, OPENMEMORY_USER로 기억이 서버별로 나뉜다(SERVER는 표시용 라벨).
+// 노트는 NOTES_DIR(폴더)로 서버별 격리. 기억(remember)은 OPENMEMORY_USER로 나눌 수 있으나
+// 그 user가 스택에 시드돼 있어야 한다(미시드면 User not found) — 데모는 기본 시드 user 'localmind'로 기록.
 //   make up && make build
-//   SERVER=db-server NOTES_DIR=/srv/runbooks/db OPENMEMORY_USER=db-server node examples/workflow-infra-runbook.mjs
+//   SERVER=db-server NOTES_DIR=/srv/runbooks/db node examples/workflow-infra-runbook.mjs
 import { capture, askBrain, notesDir } from "../dist/brain.js";
 
 const SERVER = process.env.SERVER ?? "db-server";
