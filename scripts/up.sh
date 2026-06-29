@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# localmind 켜기 — 메모리·AI 엔진(Docker 스택)을 띄우는 비개발자용 단계별 가이드.
+# 호출: make up
+# 흐름: 준비물 점검(Docker·.env) → 시작 → 준비 대기(헬스). 터미널/비대화 모두 안전.
+set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+export COMPOSE_PROFILES="gateway,memory"
+
+b()    { printf '\033[1m%s\033[0m' "$1"; }
+say()  { printf '%s\n' "$*"; }
+ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
+warn() { printf '  \033[33m!\033[0m %s\n' "$*"; }
+err()  { printf '  \033[31m✗\033[0m %s\n' "$*"; }
+
+DC() { docker compose -f "$PROJECT_DIR/docker-compose.yml" "$@"; }
+
+say ""
+say "$(b 'localmind 켜기')를 시작합니다 — 메모리 저장소와 AI 엔진을 띄워요."
+say "총 3단계입니다. $(b '처음 켤 땐 AI 모델 내려받기로 몇 분') 걸릴 수 있어요(정상)."
+say ""
+
+# ── 1/3 : 준비물 점검 ───────────────────────────────────────────
+say "$(b '[1/3] 준비물 점검')"
+command -v docker >/dev/null 2>&1 || { err "Docker가 없어요. https://www.docker.com/products/docker-desktop 에서 설치 후 다시 실행해 주세요."; exit 1; }
+if ! docker info >/dev/null 2>&1; then
+  err "Docker가 아직 실행 중이 아니에요. $(b 'Docker Desktop')을 켠 뒤 다시 '$(b 'make up')'을 실행해 주세요."
+  exit 1
+fi
+ok "Docker 실행 중"
+if [ ! -f "$PROJECT_DIR/.env" ]; then
+  warn ".env(설정 파일)가 없어 예시에서 새로 만들어요."
+  cp "$PROJECT_DIR/.env.example" "$PROJECT_DIR/.env"
+  ok ".env 생성됨 — 기본값으로도 켜져요. (claude 연동 토큰 등은 'make secrets'로 점검)"
+else
+  ok ".env 있음"
+fi
+
+# ── 2/3 : 시작 ──────────────────────────────────────────────────
+say "$(b '[2/3] 엔진 시작')"
+say "  → 컨테이너를 빌드·시작하는 중... (처음엔 몇 분 걸려요. 기다려 주세요.)"
+DC up -d --build >/dev/null 2>&1 || { err "시작 실패 — '$(b 'make logs')'로 원인을 확인해 주세요."; exit 1; }
+ok "컨테이너 시작됨"
+
+# ── 3/3 : 준비 대기 ─────────────────────────────────────────────
+say "$(b '[3/3] 준비 상태 확인')"
+ready=0
+for i in $(seq 1 120); do
+  m="$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8767/docs 2>/dev/null || echo 000)"
+  g="$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/health/liveliness 2>/dev/null || echo 000)"
+  if [ "$m" = "200" ] && [ "$g" = "200" ]; then ready=1; break; fi
+  printf '\r  준비 중... %s/120 (메모리=%s AI엔진=%s)   ' "$i" "$m" "$g"
+  sleep 5
+done
+printf '\r%*s\r' 60 ''
+if [ "$ready" != "1" ]; then
+  warn "엔진이 아직 준비되지 않았어요(처음 모델 내려받기가 더 걸릴 수 있어요)."
+  say "  잠시 후 '$(b 'make health')'로 다시 확인하거나, '$(b 'make logs')'로 진행 상황을 보세요."
+  exit 1
+fi
+ok "준비 완료 (메모리 :8767 · AI :4000)"
+
+say ""
+say "$(b '🎉 localmind가 켜졌어요!')"
+say "  • 상태 확인     : $(b 'make health')"
+say "  • Claude 연동   : $(b 'make mcp-install')"
+say "  • 끄기          : $(b 'make down')   (데이터는 유지돼요)"
+say ""
