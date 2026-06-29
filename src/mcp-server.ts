@@ -13,9 +13,8 @@ import { askBrain, capture, deleteNote, listFolders, listNotes, notesDir, search
 export const GATEWAY_URL = (process.env.LOCALMIND_URL ?? "http://localhost:8787").replace(/\/$/, "");
 export const GATEWAY_KEY = process.env.LOCALMIND_API_KEY?.trim();
 export const OPENMEMORY_URL = (process.env.OPENMEMORY_URL ?? "http://localhost:8767").replace(/\/$/, "");
-// 인스턴스 식별자. 메모리 사용자 기본값으로도 쓰인다(여러 노트 폴더/기억을 구분할 때).
-export const INSTANCE = (process.env.MCP_INSTANCE ?? process.env.OPENMEMORY_USER ?? os.hostname()).trim();
-export const MEMORY_USER = process.env.OPENMEMORY_USER ?? INSTANCE;
+// 이 두뇌의 정체 = 메모리 사용자(OPENMEMORY_USER, 미설정 시 호스트명). whoami가 보고한다.
+export const MEMORY_USER = (process.env.OPENMEMORY_USER ?? os.hostname()).trim();
 export const DEFAULT_MODEL = process.env.MCP_DEFAULT_MODEL ?? "sonnet";
 
 function textResult(text: string, isError = false) {
@@ -39,27 +38,27 @@ async function postJson(url: string, body: unknown, headers: Record<string, stri
 }
 
 export function configSummary(): string {
-  return `instance=${INSTANCE}, gateway=${GATEWAY_URL}, memory=${OPENMEMORY_URL}, user=${MEMORY_USER}, notes=${notesDir()}`;
+  return `gateway=${GATEWAY_URL}, memory=${OPENMEMORY_URL}, user=${MEMORY_USER}, notes=${notesDir()}`;
 }
 
 /** 도구가 모두 등록된 새 McpServer를 만든다(HTTP stateless는 요청마다 새로 생성). */
 export function buildServer(): McpServer {
-  const server = new McpServer({ name: `localmind:${INSTANCE}`, version: "0.2.0" });
+  const server = new McpServer({ name: "localmind", version: "0.2.0" });
 
-  // ── whoami: 이 인스턴스가 어떤 메모리/노트를 쓰는지 ──────────────────
+  // ── whoami: 이 두뇌가 어떤 메모리·노트를 쓰는지 ──────────────────
   server.registerTool(
     "whoami",
     {
-      title: "Which localmind instance",
+      title: "Which brain (memory/notes)",
       description:
-        "Report this localmind instance identity (device/server). Use to know whose brain/memory " +
-        "you are talking to before remember/recall/notes.",
+        "Report which brain this is — the memory user and notes folder(s) in use. " +
+        "Use before remember/recall/notes to confirm you're on the right memory/notes.",
       inputSchema: {},
     },
     async () => {
       const folders = listFolders().map((f) => `  - ${f.label}: ${f.dir}`).join("\n");
       return textResult(
-        `instance: ${INSTANCE}\nmemory_user: ${MEMORY_USER}\n` +
+        `memory_user: ${MEMORY_USER}\n` +
           `notes folders (label: path):\n${folders}\n` +
           `gateway: ${GATEWAY_URL}\nmemory: ${OPENMEMORY_URL}`,
       );

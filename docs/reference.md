@@ -231,7 +231,6 @@ curl -X POST http://localhost:8767/api/v1/memories/filter -H "Content-Type: appl
 |---|---|---|
 | `OPENMEMORY_USER` | `localmind` | 메모리 소유자 id (스택 시드 값과 **일치해야** remember/recall 동작) |
 | `NOTES_DIR` | `~/.localmind` | second-brain 노트 폴더(정본). **쉼표로 여러 폴더**: `work=/notes/work,life=/notes/personal`(라벨 생략 시 폴더명). 검색/RAG는 기본 전체, 도구의 `folder`로 한정 |
-| `MCP_INSTANCE` | 호스트명 | 인스턴스 식별자(`OPENMEMORY_USER` 미설정 시 메모리 owner 기본값) |
 | `LOCALMIND_URL` | `http://localhost:8787` | ask가 호출할 localmind |
 | `LOCALMIND_API_KEY` | (없음) | localmind 인증 시 |
 | `OPENMEMORY_URL` | `http://localhost:8767` | remember/recall 대상 |
