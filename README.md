@@ -43,7 +43,9 @@
 ```bash
 git clone https://github.com/shaul1991/localmind && cd localmind
 make install build      # 의존성 + dist 빌드(로컬 MCP용)
-make up                 # Docker 스택 기동(게이트웨이+메모리)
+make init-env           # .env 생성
+make claude-token       # claude 구독 토큰 발급(브라우저 1회) → 출력값을 .env 의 CLAUDE_CODE_OAUTH_TOKEN 에 입력
+make up                 # Docker 스택 기동(게이트웨이+메모리). 토큰 입력 후 실행(env 주입)
 #   chat :8787 · 게이트웨이 :4000 · 메모리 :8767  (최초 빌드/모델 pull은 수 분)
 ```
 > 운영은 전부 **`make`** 로 일관됩니다: `make up`(기동) · `make health`(점검) · `make logs` · `make down`. 전체 목록은 `make help`. (아래 문서의 `docker compose --profile ...`는 make가 실행하는 내부 명령으로, 세분 제어가 필요할 때 참고)
@@ -56,16 +58,25 @@ curl http://localhost:8787/v1/chat/completions -H "Content-Type: application/jso
 OpenAI/Anthropic SDK는 `base_url`만 위 주소로 바꾸면 그대로 동작 → [사용 예시](#사용-예시).
 
 ### 3) MCP로 쓰기 (개인 두뇌)
-Cursor `.cursor/mcp.json` / Claude Desktop `claude_desktop_config.json` / Cline MCP 설정에:
+
+**Claude Code** — 한 줄로 등록(절대경로·시드 user 자동, `.env`의 `OPENMEMORY_USER` 사용):
+```bash
+make mcp-install                       # 기본 NOTES_DIR=~/.localmind
+make mcp-install NOTES_DIR=/내/노트/폴더  # 내 .md 노트 폴더로 RAG (쉼표로 여러 개 가능)
+# 등록 후 Claude Code 재시작 → localmind 도구 사용. 해제는 make mcp-uninstall
+```
+
+**Cursor `.cursor/mcp.json` / Claude Desktop / Cline** — `make mcp-config`로 채워진 JSON을 출력해 붙여넣기:
 ```json
 { "mcpServers": { "localmind": {
     "command": "node",
     "args": ["/절대경로/localmind/dist/mcp.js"],
-    "env": { "NOTES_DIR": "/내/노트/폴더", "OPENMEMORY_USER": "내이름" }
+    "env": { "NOTES_DIR": "/내/노트/폴더", "OPENMEMORY_USER": "localmind" }
 }}}
 ```
 → 호스트가 `ask`·`remember/recall`·`capture_note/search_notes/ask_brain` 도구를 갖습니다.
 `NOTES_DIR`를 기존 `.md` 노트 폴더(예: second-brain-mesh)로 가리키면 **그 지식으로 바로 RAG**.
+> `OPENMEMORY_USER`는 스택이 시드한 값(기본 `localmind`, `.env`)과 **반드시 일치**해야 `remember/recall`이 동작합니다(불일치 시 `User not found`).
 
 ### 4) 검증
 ```bash
