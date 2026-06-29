@@ -14,6 +14,7 @@
 
 > 🧩 **처음 보는 용어가 많다면** — 게이트웨이·임베딩·RAG·MCP를 **딱 하나의 비유**(내 컴퓨터 안의 1인 비서실)로 5분 만에 풀어주는 입문서부터: 👉 [비유로 이해하기](docs/concepts.md)
 > ❓ **실사용자가 궁금해하는 것**(설치·Cursor 연동·백업·성능·약관 리스크)은 👉 [자주 묻는 질문(FAQ)](docs/faq.md)
+> 📖 **설치 후 매일 어떻게 쓰나** — 캡처→활용→보기→정리를 채팅창에서: 👉 [사용법](docs/usage.md)
 
 > **개인 전용·독립 실행 원칙**: 이 스택은 **내 머신에서 나 혼자** 쓰는 용도입니다.
 > 로컬 스택(gateway·임베딩·메모리·brain) + **내 `claude`/`codex` 로그인** + **localhost(루프백)** 로만
@@ -94,10 +95,11 @@ make health             # 엔드포인트 상태(:8787 / :4000 / :8767)
 1. `git clone https://github.com/shaul1991/localmind && cd localmind`
 2. `make init-env && make claude-token` → 출력된 토큰을 `.env`의 `CLAUDE_CODE_OAUTH_TOKEN=`에 붙여넣기 (codex 쓰면 호스트에서 `codex` 로그인)
 3. `make install build && make up`
-4. `make health`로 확인 → Cursor/Claude Desktop에 MCP 설정(아래 *MCP 서버* 섹션)
-5. `NOTES_DIR`를 내 노트 폴더로 가리키면 그 지식으로 바로 RAG
+4. `make health`로 확인 → **`make mcp-install`** 로 Claude Code에 한 줄 등록 (Cursor/Claude Desktop은 아래 *MCP 서버* 섹션의 JSON)
+5. `make mcp-install NOTES_DIR=/내/노트폴더` → 내 `.md` 노트로 바로 RAG
 
 > **메터드 API 0원**, 데이터는 전부 내 머신 로컬에만 둡니다.
+> 설치 후 **매일 어떻게 쓰는지**는 👉 [사용법](docs/usage.md) — "기억해둬 / 찾아줘 / 다 보여줘 / 지워줘"를 채팅창에서.
 
 📂 바로 따라 할 **케이스별 예제**는 [examples/](examples/) — API 대체·임베딩·메모리·second-brain·MCP까지.
 👥 **내 직군에선 어떻게?** → [직군별 유즈케이스](examples/use-cases.md) — 개발(백엔드·프론트·앱·게임), 데이터/ML, QA·아키텍트·인프라, 비개발(PM·라이터·보안·연구자), **콘텐츠 크리에이터**(AI 글작성·유튜브 대본/편집·썸네일·인플루언서) 등 **19개 페르소나**.

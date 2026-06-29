@@ -118,8 +118,9 @@ localmind는 **이미 낸 월정액 구독(claude·codex)** 안에서 다 해결
 
 ## 다음 단계
 
-큰 그림이 잡혔다면, 이제 실제로 차려 봅니다 👉 [README의 Quickstart](../README.md#quickstart)
+큰 그림이 잡혔다면 👉 [README의 Quickstart](../README.md#quickstart)로 설치하고, 👉 [사용법](usage.md)으로 매일 씁니다.
 
-- **그냥 써보고 싶다** → `make up` 후 `base_url`만 바꿔 호출
-- **내 노트로 RAG 하고 싶다** → MCP 등록 + `NOTES_DIR`를 노트 폴더로
-- **내 직군에선 어떻게?** → [직군별 유즈케이스(19 페르소나)](../examples/use-cases.md)
+- **바로 써보기** → `make up` → (Claude Code면) `make mcp-install` → 채팅창에서 "기억해둬"/"찾아줘"
+- **내 노트로 RAG** → `make mcp-install NOTES_DIR=/내/노트폴더`
+- **쌓인 걸 보고 정리** → "내 기억 다 보여줘" / "이거 지워줘" (대화로)
+- **내 직군에선 어떻게?** → [직군별 유즈케이스](../examples/use-cases.md)

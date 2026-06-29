@@ -49,11 +49,11 @@
 **몰래 쌓는 구조가 아닙니다.** 적히는 모든 건 ① 내 컴퓨터 안에, ② 열어볼 수 있는 평문으로 남습니다.
 
 - 📁 **문서함** → 그냥 폴더 열어 파일로 확인·수정·삭제
-- 📒 **기억 메모** → 4가지로 확인:
-  1. **적는 순간 화면에 보임** (`remember` 도구 호출이 대화창에 표시)
-  2. **"다 보여줘"** 하면 목록 나열 (`recall`)
-  3. **읽는 파일로 export** (`make memory-export`)
-  4. **항목 삭제** 가능
+- 📒 **기억 메모** → 대화창에서 바로:
+  1. **적는 순간 화면에 보임** (`remember` 호출이 대화창에 표시)
+  2. **"내 기억 다 보여줘"** → 전체 목록 (`list_memories`)
+  3. **"이거 지워줘"** → 항목 삭제 (`delete_memory`)
+  4. **읽는 파일로 export** (`make memory-export`)
 
 > 신뢰를 "믿어주세요"가 아니라 **"직접 확인하세요"** 로 드리는 구조. 전부 로컬, 외부 전송 없음.
 
@@ -62,27 +62,24 @@
 ## 4. 시작하기 — 설치와 연동
 
 ### Q. 처음에 뭘 하면 되나요? (1회, 약 30분)
-> 아직 "버튼 하나" 앱이 아닙니다. 처음 한 번은 터미널 명령이 필요합니다.
+> 아직 "버튼 하나" 앱은 아니지만, `make` 명령이 **한 단계씩 안내**해줍니다.
 
-1. **준비물** — Docker 설치 + `claude`/`codex` CLI 로그인(이미 쓰는 구독 계정)
+1. **준비물** — Docker 설치. (claude를 쓰면 토큰 1회 발급, codex만 쓰면 호스트 로그인)
 2. **받아서 켜기**
    ```bash
-   git clone https://github.com/shaul1991/localmind
-   cd localmind
-   make install build && make up
+   git clone https://github.com/shaul1991/localmind && cd localmind
+   make install build
+   make claude-token   # claude 구독 토큰 발급(브라우저 1회) → 안내대로 .env에 입력 (codex만 쓰면 생략)
+   make up             # 스택 기동
    ```
-3. **앱에 연결** — Claude Desktop `claude_desktop_config.json` 또는 Cursor `.cursor/mcp.json`에:
-   ```json
-   { "mcpServers": { "localmind": {
-       "command": "node",
-       "args": ["/localmind_경로/dist/mcp.js"],
-       "env": { "NOTES_DIR": "/내/문서/폴더", "OPENMEMORY_USER": "내이름" }
-   }}}
+3. **앱에 연결** — Claude Code면 **원클릭** `make mcp-install`. Cursor/Claude Desktop이면 `make mcp-config`가 출력한 JSON을 설정에 붙여넣기.
+   ```bash
+   make mcp-install                       # 기본 노트 폴더 ~/.localmind
+   make mcp-install NOTES_DIR=/내/노트폴더  # 내 .md 노트로 바로 RAG
    ```
-   → 바꾸는 곳은 **`NOTES_DIR`(내 문서 폴더)**, **`OPENMEMORY_USER`(내 이름)** 둘뿐.
-4. 앱 재시작 → `ask`·`remember`·`recall`·`search_notes`·`ask_brain` 도구가 생김.
+4. 앱 재시작 → `ask`·`remember`/`recall`·`capture_note`/`search_notes`/`ask_brain`·`list_*`/`delete_*` 도구가 생김.
 
-이후 매일 하는 것: **그냥 대화.** 설치는 한 번뿐.
+이후 매일 하는 것: **그냥 대화.** 설치는 한 번뿐 — 자세한 사용은 👉 [사용법](usage.md).
 
 ### Q. Cursor에서도 되나요?
 **네.** 방식은 Claude Desktop과 동일, 설정 파일만 `.cursor/mcp.json`(또는 Settings → MCP)로 다를 뿐입니다.
@@ -119,6 +116,8 @@
 | 🗂️ 색인 / ⚙️ 앱 | 백업 불필요(노트에서 재생성 / 다시 clone) |
 
 복구: 새 컴퓨터에 설치 → 노트 복원 + `memory-import` → 색인 재생성 → 끝.
+
+> **한 줄 명령으로**: 백업은 `make backup`(메모리+노트를 내 private repo로 커밋·푸시, 자동은 `make backup-cron`), 복구는 새 기기에서 `make recover RESTORE_REPO=<내 백업 repo>`.
 
 ### Q. GitHub만으로 백업되나요?
 **네.** 노트·기억 둘 다 텍스트 파일이라 git에 딱 맞고, **변경 이력**까지 남습니다. 단:
