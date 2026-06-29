@@ -329,15 +329,20 @@ OPENMEMORY_USER=내이름 make memory-import FILE=~/brain/memory.md
 위 과정을 `make backup` 하나로 묶습니다 — **메모리 export → 노트 백업 repo에 커밋·푸시**.
 
 ```bash
-# 1) 백업 repo 준비(최초 1회): BACKUP_DIR이 git repo여야 함
-git -C ~/.localmind init && git -C ~/.localmind remote add origin <내 private repo>
+# 1) 백업 repo 준비(최초 1회) — gh CLI로 GitHub private repo 생성·연결·첫 백업까지 한 번에
+make backup-init
+#   repo 이름 바꾸려면:   make backup-init BACKUP_REPO=내이름/brain
+#   (gh 필요: brew install gh && gh auth login)
 
-# 2) 한 번에 백업 (BACKUP_DIR 기본값 ~/.localmind)
+# 2) 이후엔 한 번에 백업 (BACKUP_DIR 기본값 ~/.localmind)
 make backup
 #   BACKUP_DIR을 바꾸려면:  make backup BACKUP_DIR=~/brain
 ```
+- `make backup-init`은 **GitHub private repo를 자동 생성**(`gh repo create --private`)하고 origin 연결 후 첫 백업까지 수행 — 멱등(이미 연결돼 있으면 생성 생략).
 - 변경 없으면 커밋 생략, remote 없으면 로컬 커밋만 — **여러 번 돌려도 안전**.
-- ⚠️ 백업 repo는 **반드시 Private**. `.env`(시크릿)는 `.gitignore`라 안 올라갑니다.
+- ⚠️ 백업 repo는 **Private로 생성**됩니다. `.env`(시크릿)는 이 repo가 아닌 프로젝트 폴더에 있고 `.brain-index.json`(파생물)은 `.gitignore` 처리됩니다.
+
+> gh CLI 없이 수동으로 하려면: `git -C ~/.localmind init && git -C ~/.localmind remote add origin <private repo url>` 후 `make backup`.
 
 **주기 자동 실행** — `make backup-cron`이 붙여넣을 cron 한 줄을 출력합니다.
 ```bash
@@ -350,9 +355,11 @@ crontab -e              # 위 줄을 추가 (Linux). macOS는 cron 또는 launch
 
 ```bash
 git clone https://github.com/shaul1991/localmind && cd localmind
+make recover
+#   gh 로그인 상태면 내 백업 저장소를 자동으로 찾아요. 아니면:
 make recover RESTORE_REPO=<내 백업 repo url>
-#   = 설치·빌드 → 스택 기동 → 헬스 대기 → 노트 clone + 메모리 import + 재인덱싱
 ```
+- `make recover`는 **6단계를 한국어로 한 단계씩 안내**합니다 — 준비물 점검(Docker·.env) → 백업 내려받기 → 설치·빌드 → 스택 기동·대기 → 메모리 복원 → 노트 재인덱싱. (gh 로그인 시 백업 저장소 자동 탐색)
 - 이미 스택이 떠 있고 데이터만 되돌릴 땐 `make restore RESTORE_REPO=<url>` (또는 BACKUP_DIR이 이미 그 repo면 인자 없이 `make restore`).
 - 복원 순서: **노트 repo pull/clone → `memory-import`(멱등) → 노트 재인덱싱**. 인덱스·DB는 파생이라 자동 재생성됩니다.
 - 다중 노트 폴더를 쓴다면 폴더별 repo를 각각 복원하고 `NOTES_DIR`를 그에 맞게 지정하세요.

@@ -105,6 +105,7 @@ function listMarkdown(dir: string): string[] {
   }
   for (const e of entries) {
     if (e.name.startsWith(".")) continue; // 숨김 파일/디렉토리 제외(인덱스 포함)
+    if (e.name === "memory.md") continue; // 메모리 백업 덤프(make backup)는 노트가 아님 — 색인 제외
     const full = path.join(dir, e.name);
     if (e.isDirectory()) out.push(...listMarkdown(full));
     else if (e.name.toLowerCase().endsWith(".md")) out.push(full);
