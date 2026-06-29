@@ -23,7 +23,7 @@
   HTTP API ┬─ /v1/chat/completions · /v1/messages   → claude/codex CLI
            ├─ /v1/embeddings                         → bge-m3
            └─ OpenMemory REST                        → mem0 + pgvector
-  MCP ───── ask · remember/recall · capture_note/search_notes/ask_brain
+  MCP ───── ask · remember/recall · capture_note/search_notes/ask_brain · list/delete(기억·노트)
 ```
 
 ## Quickstart
@@ -382,8 +382,13 @@ localmind의 능력을 **MCP 도구**로 노출해, MCP 호스트(Claude Desktop
 | `capture_note` | second-brain: 마크다운 노트 저장 + 인덱싱 (정본은 `.md`) |
 | `search_notes` | second-brain: 내 노트 의미검색(원문·경로) |
 | `ask_brain` | second-brain: 내 노트만 근거로 RAG 답변(출처 인용) |
+| `list_memories` | 쌓인 기억 **전체 열람**(id·내용·날짜) — 둘러보기·삭제 전 id 확인 |
+| `delete_memory` | 기억 한 개 **삭제**(id로) |
+| `list_notes` | 노트 파일 **목록**(`label/파일`) |
+| `delete_note` | 노트 한 개 **삭제**(파일 + 재인덱싱) |
 
 > **두 종류의 기억**: `remember/recall`은 mem0의 *진화하는 사실 메모리*, `capture_note/search_notes/ask_brain`은 *내 마크다운 노트(정본) RAG* 입니다.
+> **보기·정리(대화로)**: `list_memories`·`delete_memory`·`list_notes`·`delete_note` — "내 기억 다 보여줘", "이거 지워줘"를 채팅창에서 바로. 별도 화면·CLI 불필요.
 
 ```
 MCP 호스트(Claude Desktop/Cursor/Cline)

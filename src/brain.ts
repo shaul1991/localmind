@@ -345,3 +345,27 @@ export function listFolders(): NoteFolder[] {
 export function notesDir(): string {
   return FOLDERS.map((f) => `${f.label}:${f.dir}`).join(", ");
 }
+
+/** 노트 파일 목록(label/파일경로). folder(라벨)로 한정 가능. 임베딩 불필요(스캔만). */
+export function listNotes(folder?: string): { folder: string; path: string }[] {
+  const out: { folder: string; path: string }[] = [];
+  for (const f of FOLDERS) {
+    if (folder && f.label !== folder) continue;
+    for (const full of listMarkdown(f.dir)) out.push({ folder: f.label, path: `${f.label}/${path.relative(f.dir, full)}` });
+  }
+  return out;
+}
+
+/** 'label/파일경로' 노트 한 개를 삭제하고 재인덱싱한다. 폴더 밖 경로는 거부. 반환: 삭제 성공 여부. */
+export async function deleteNote(qualified: string): Promise<boolean> {
+  const slash = qualified.indexOf("/");
+  if (slash < 0) return false;
+  const f = FOLDER_BY_LABEL.get(qualified.slice(0, slash));
+  if (!f) return false;
+  const full = path.resolve(f.dir, qualified.slice(slash + 1));
+  if (full !== f.dir && !full.startsWith(path.resolve(f.dir) + path.sep)) return false; // 폴더 밖 탈출 방지
+  if (!fs.existsSync(full) || !fs.statSync(full).isFile()) return false;
+  fs.unlinkSync(full);
+  await ensureIndexed();
+  return true;
+}
