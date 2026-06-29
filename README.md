@@ -30,7 +30,14 @@
 
 ### 0) 전제
 - Node.js ≥ 20, Docker
-- 호스트에 로그인된 `claude` / `codex` CLI
+- **claude 구독 토큰** — 호스트에서 `make claude-token`(= `claude setup-token`, 브라우저 1회) 발급 후
+  `.env`(`make init-env`)의 `CLAUDE_CODE_OAUTH_TOKEN=`에 붙여넣기. ~1년 장수명·자동 갱신 불필요.
+- codex 백엔드를 쓰면 호스트에 로그인된 `codex` CLI (인증 `~/.codex`를 마운트해 재사용)
+
+> 왜 토큰인가: `~/.claude.json`을 단일 파일로 bind-mount 하면 claude가 설정을 atomic rename으로
+> 교체할 때마다 마운트 inode가 끊겨 컨테이너에서 "config not found"가 되고, macOS는 토큰을 **Keychain**에
+> 저장해 파일 마운트만으로는 인증이 공유되지 않습니다. 헤드리스/컨테이너 정석인 `CLAUDE_CODE_OAUTH_TOKEN`이
+> 두 문제를 모두 해결합니다.
 
 ### 1) 설치 & 기동
 ```bash
@@ -74,9 +81,10 @@ make health             # 엔드포인트 상태(:8787 / :4000 / :8767)
 
 **내 PC에서 바로 쓰기**
 1. `git clone https://github.com/shaul1991/localmind && cd localmind`
-2. `make install build && make up` (전제: 호스트에 `claude`/`codex` 로그인)
-3. `make health`로 확인 → Cursor/Claude Desktop에 MCP 설정(아래 *MCP 서버* 섹션)
-4. `NOTES_DIR`를 내 노트 폴더로 가리키면 그 지식으로 바로 RAG
+2. `make init-env && make claude-token` → 출력된 토큰을 `.env`의 `CLAUDE_CODE_OAUTH_TOKEN=`에 붙여넣기 (codex 쓰면 호스트에서 `codex` 로그인)
+3. `make install build && make up`
+4. `make health`로 확인 → Cursor/Claude Desktop에 MCP 설정(아래 *MCP 서버* 섹션)
+5. `NOTES_DIR`를 내 노트 폴더로 가리키면 그 지식으로 바로 RAG
 
 > **메터드 API 0원**, 데이터는 전부 내 머신 로컬에만 둡니다.
 
@@ -121,8 +129,9 @@ CLI는 **순수 텍스트 생성기**로 동작합니다 — claude는 `--tools 
 ## 요구 사항
 
 - Node.js >= 20
-- 로그인된 `claude` CLI (`claude` 가 PATH에 있어야 함)
+- claude 백엔드: `CLAUDE_CODE_OAUTH_TOKEN`(`make claude-token`으로 발급) — Docker 기동 시 필요
 - 로그인된 `codex` CLI (codex 백엔드를 쓸 경우)
+- (비-Docker 로컬 실행 시) 호스트에 직접 로그인된 `claude` CLI도 가능
 
 ## 설치 및 실행
 
@@ -138,9 +147,12 @@ make build && npm start # 빌드 후 로컬 실행(비-Docker; npm start만 make
 
 ## Docker
 
-이미지에는 `claude`·`codex` CLI가 함께 설치됩니다. 인증은 **호스트의 CLI 인증 디렉토리를 볼륨 마운트**해 재사용합니다(별도 로그인 불필요).
+이미지에는 `claude`·`codex` CLI가 함께 설치됩니다. 인증은 백엔드별로 다릅니다:
+- **claude** — `.env`의 `CLAUDE_CODE_OAUTH_TOKEN`을 컨테이너에 주입(`make claude-token`으로 발급).
+- **codex** — 호스트 `~/.codex`(파일 기반 auth)를 디렉터리째 마운트해 재사용.
 
-> 전제: 호스트에서 `claude`/`codex`에 이미 로그인되어 있어야 합니다(`~/.claude`, `~/.codex`).
+> 전제: claude는 `make claude-token`으로 토큰을 발급해 `.env`에 넣고, codex는 호스트에서 미리 로그인(`~/.codex`).
+> (claude는 macOS Keychain·atomic-rename 문제로 `~/.claude` 파일 마운트를 쓰지 않습니다 — 위 *0) 전제* 참고.)
 
 ### docker compose
 
@@ -640,7 +652,7 @@ MODEL=sonnet npm run smoke:anthropic:tools   # Anthropic tool_use
 
 | 증상 | 원인 / 해결 |
 |---|---|
-| 채팅 호출이 실패/빈 응답 | 호스트에 `claude`/`codex`가 **로그인** 안 됨 → 호스트에서 한 번 `claude`(또는 `codex`) 실행해 로그인. 컨테이너는 `~/.claude`·`~/.codex`를 마운트해 재사용. |
+| 채팅 호출이 실패/빈 응답(claude `Not logged in`/`config not found`) | `.env`의 `CLAUDE_CODE_OAUTH_TOKEN` 미설정/만료 → `make claude-token`으로 재발급해 `.env`에 넣고 **`make up`**(컨테이너 recreate; `make restart`는 env 재주입 안 됨). `make secrets`로 설정 여부 확인. (codex는 호스트 `~/.codex` 로그인 필요) |
 | `make health`에서 일부 `000`/비정상 | 첫 기동은 모델 pull(bge-m3 ~1.2GB) + OpenMemory 소스 빌드로 **수 분** 걸림 → `make logs`로 진행 확인. 부하 중 임베딩이 멈추면 `make restart`. |
 | 포트 충돌(8787/4000/8767) | 이미 쓰는 포트면 `.env`/compose에서 변경하거나 충돌 프로세스 정지. |
 | 메모리 `User not found` | `user_id`는 **시드된 사용자**(`OPENMEMORY_USER`/`MCP_INSTANCE`)여야 함. 임의 id 불가. |

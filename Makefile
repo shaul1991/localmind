@@ -128,7 +128,16 @@ recover: ## 새 기기 원커맨드: 설치·빌드 → 기동 → 헬스 대기
 .PHONY: init-env
 init-env: ## .env 없으면 .env.example에서 생성
 	@if [ -f .env ]; then echo ".env 이미 존재 — 건너뜀"; \
-	else cp .env.example .env && echo ".env 생성 완료 — 값을 채우세요(토큰은 'make token')"; fi
+	else cp .env.example .env && echo ".env 생성 완료 — 값을 채우세요(API키 'make token', claude 인증 'make claude-token')"; fi
+
+.PHONY: claude-token
+claude-token: ## claude 구독 OAuth 토큰 발급(브라우저 1회) → .env 의 CLAUDE_CODE_OAUTH_TOKEN 에 붙여넣기
+	@command -v claude >/dev/null 2>&1 || { echo "✗ claude CLI 없음 — 호스트에 설치/로그인 후 다시"; exit 1; }
+	@echo "→ 브라우저로 1회 인증합니다. 출력된 토큰을 .env 에 넣으세요:"
+	@echo "    CLAUDE_CODE_OAUTH_TOKEN=<출력된 토큰>"
+	@echo "  이후 'make up' 으로 반영(컨테이너 recreate — restart는 env 재주입 안 됨). (~1년 장수명)"
+	@echo
+	@claude setup-token
 
 .PHONY: token
 token: ## 강한 랜덤 토큰 발급(LOCALMIND_API_KEY용)
@@ -141,14 +150,15 @@ token: ## 강한 랜덤 토큰 발급(LOCALMIND_API_KEY용)
 secrets: ## 시크릿 현황(마스킹) + 구독 인증 상태 점검
 	@test -f .env || { echo ".env 없음 — 'make init-env' 먼저 실행"; exit 1; }
 	@echo "── .env 시크릿 ──"
-	@for v in LOCALMIND_API_KEY LITELLM_MASTER_KEY; do \
+	@for v in LOCALMIND_API_KEY LITELLM_MASTER_KEY CLAUDE_CODE_OAUTH_TOKEN; do \
 		val=$$(grep -E "^$$v=" .env | head -1 | cut -d= -f2-); \
-		if [ -z "$$val" ]; then printf "  %-20s %s\n" "$$v" "✗ 미설정"; \
-		else printf "  %-20s %s\n" "$$v" "✓ 설정됨 (앞4: $$(printf %s "$$val" | cut -c1-4)…, 길이 $$(printf %s "$$val" | wc -c | tr -d ' '))"; fi; \
+		if [ -z "$$val" ]; then printf "  %-24s %s\n" "$$v" "✗ 미설정"; \
+		else printf "  %-24s %s\n" "$$v" "✓ 설정됨 (앞4: $$(printf %s "$$val" | cut -c1-4)…, 길이 $$(printf %s "$$val" | wc -c | tr -d ' '))"; fi; \
 	done
-	@echo "── 구독 인증(호스트 마운트) ──"
-	@test -e "$$HOME/.claude" && echo "  ~/.claude  ✓ 있음" || echo "  ~/.claude  ✗ 없음 (claude 로그인 필요)"
-	@test -e "$$HOME/.codex"  && echo "  ~/.codex   ✓ 있음" || echo "  ~/.codex   ✗ 없음 (codex 로그인 필요)"
+	@echo "── 구독 인증 ──"
+	@val=$$(grep -E "^CLAUDE_CODE_OAUTH_TOKEN=" .env | head -1 | cut -d= -f2-); \
+		test -n "$$val" && echo "  claude  ✓ 토큰 설정됨 (.env)" || echo "  claude  ✗ 토큰 없음 — 'make claude-token' 후 .env 에 입력"
+	@test -e "$$HOME/.codex" && echo "  codex   ✓ ~/.codex 있음(마운트)" || echo "  codex   ✗ ~/.codex 없음 (codex 로그인 필요)"
 
 ##@ 도움말
 .PHONY: help
