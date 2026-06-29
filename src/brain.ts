@@ -95,7 +95,7 @@ function saveIndex(idx: BrainIndex): void {
   fs.writeFileSync(INDEX_PATH, JSON.stringify(idx));
 }
 
-function listMarkdown(dir: string): string[] {
+function listMarkdown(dir: string, isRoot = true): string[] {
   const out: string[] = [];
   let entries: fs.Dirent[];
   try {
@@ -105,9 +105,11 @@ function listMarkdown(dir: string): string[] {
   }
   for (const e of entries) {
     if (e.name.startsWith(".")) continue; // 숨김 파일/디렉토리 제외(인덱스 포함)
-    if (e.name === "memory.md") continue; // 메모리 백업 덤프(make backup)는 노트가 아님 — 색인 제외
+    // 백업 덤프(make backup)는 노트 폴더 '루트'의 memory.md로 떨어진다 — 루트만 제외하고
+    // 하위 폴더의 memory.md 노트는 정상 색인한다.
+    if (isRoot && e.name === "memory.md") continue;
     const full = path.join(dir, e.name);
-    if (e.isDirectory()) out.push(...listMarkdown(full));
+    if (e.isDirectory()) out.push(...listMarkdown(full, false));
     else if (e.name.toLowerCase().endsWith(".md")) out.push(full);
   }
   return out;
