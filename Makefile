@@ -160,6 +160,30 @@ secrets: ## 시크릿 현황(마스킹) + 구독 인증 상태 점검
 		test -n "$$val" && echo "  claude  ✓ 토큰 설정됨 (.env)" || echo "  claude  ✗ 토큰 없음 — 'make claude-token' 후 .env 에 입력"
 	@test -e "$$HOME/.codex" && echo "  codex   ✓ ~/.codex 있음(마운트)" || echo "  codex   ✗ ~/.codex 없음 (codex 로그인 필요)"
 
+##@ MCP (Claude Code 연동)
+# RAG 노트 폴더. 덮어쓰기: make mcp-install NOTES_DIR=/my/notes (쉼표로 여러 개 가능)
+NOTES_DIR ?= $(HOME)/.localmind
+
+.PHONY: mcp-install
+mcp-install: ## localmind MCP를 Claude Code(user 스코프)에 등록 — 절대경로·시드 user 자동
+	@command -v claude >/dev/null 2>&1 || { echo "✗ claude CLI 없음 — 호스트에 설치 후 다시"; exit 1; }
+	@test -f "$(CURDIR)/dist/mcp.js" || { echo "✗ dist/mcp.js 없음 — 'make build' 먼저"; exit 1; }
+	@u=$$(grep -E "^OPENMEMORY_USER=" .env 2>/dev/null | head -1 | cut -d= -f2-); u=$${u:-localmind}; \
+	claude mcp remove localmind -s user >/dev/null 2>&1 || true; \
+	claude mcp add localmind -s user -e OPENMEMORY_USER=$$u -e NOTES_DIR=$(NOTES_DIR) -- node $(CURDIR)/dist/mcp.js >/dev/null \
+		&& echo "✓ Claude Code 등록 (user=$$u, NOTES_DIR=$(NOTES_DIR)) — Claude Code 재시작 후 localmind 도구 사용" \
+		|| { echo "✗ 등록 실패"; exit 1; }
+
+.PHONY: mcp-uninstall
+mcp-uninstall: ## Claude Code에서 localmind MCP 등록 해제
+	@claude mcp remove localmind -s user 2>/dev/null && echo "✓ 해제됨" || echo "ℹ 등록돼 있지 않음"
+
+.PHONY: mcp-config
+mcp-config: ## 다른 MCP 클라이언트(Cursor/Claude Desktop)용 설정 JSON 출력
+	@u=$$(grep -E "^OPENMEMORY_USER=" .env 2>/dev/null | head -1 | cut -d= -f2-); u=$${u:-localmind}; \
+	printf '{\n  "mcpServers": {\n    "localmind": {\n      "command": "node",\n      "args": ["%s/dist/mcp.js"],\n      "env": { "NOTES_DIR": "%s", "OPENMEMORY_USER": "%s" }\n    }\n  }\n}\n' \
+		"$(CURDIR)" "$(NOTES_DIR)" "$$u"
+
 ##@ 도움말
 .PHONY: help
 help: ## 이 목록 표시
