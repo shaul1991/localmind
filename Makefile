@@ -100,8 +100,8 @@ backup: ## 메모리 export + 노트 백업 repo 커밋·푸시 (BACKUP_DIR; 최
 	else echo "ℹ remote 없음 — 로컬 커밋만(push 생략)"; fi
 
 .PHONY: backup-cron
-backup-cron: ## 매일 03:00 자동 백업 cron 한 줄 출력(crontab -e 에 붙여넣기)
-	@echo "0 3 * * * cd $(CURDIR) && make backup >> $$HOME/localmind-backup.log 2>&1"
+backup-cron: ## 매일 자동 백업을 단계별로 crontab 에 등록(시간: HOUR=3 MIN=0, 미리보기: DRY_RUN=1)
+	@bash "$(CURDIR)/scripts/backup-cron.sh"
 
 .PHONY: reindex
 reindex: ## second-brain 노트 (재)인덱싱 (임베딩 :4000 필요)

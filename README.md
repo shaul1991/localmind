@@ -344,11 +344,16 @@ make backup
 
 > gh CLI 없이 수동으로 하려면: `git -C ~/.localmind init && git -C ~/.localmind remote add origin <private repo url>` 후 `make backup`.
 
-**주기 자동 실행** — `make backup-cron`이 붙여넣을 cron 한 줄을 출력합니다.
+**주기 자동 실행** — `make backup-cron`이 매일 자동 백업을 **crontab 에 바로 등록**합니다(시간을 물어보고, 멱등).
 ```bash
-make backup-cron        # 예: 0 3 * * * cd /…/localmind && make backup >> ~/localmind-backup.log 2>&1
-crontab -e              # 위 줄을 추가 (Linux). macOS는 cron 또는 launchd 모두 가능
+make backup-cron                 # 시각을 입력받아 등록 (기본 03:00)
+make backup-cron HOUR=21 MIN=30  # 시간 지정해서 등록
+DRY_RUN=1 make backup-cron       # 등록 없이 추가될 줄만 미리보기
 ```
+- cron 의 최소 PATH에서도 동작하도록 `npm`/`node`/`docker` 경로를 자동으로 넣어 줍니다.
+- 자동 백업은 localmind가 **켜져 있을 때**만 동작하고, 사전에 `make backup-init`이 되어 있어야 합니다.
+- 해제: `crontab -l | grep -v '# localmind-backup' | crontab -` · 기록: `tail -f ~/localmind-backup.log`
+- macOS는 cron 에 **전체 디스크 접근 권한**이 필요할 수 있습니다(시스템 설정 → 개인정보 보호).
 
 ### 새 기기 복구 (원커맨드)
 컴퓨터를 바꾸거나 고장 후, **백업 repo 하나로 통째 복구**합니다.
