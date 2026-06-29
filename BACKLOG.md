@@ -61,6 +61,11 @@
 - `make secrets`에 엔드포인트/모델 상태 통합 점검
 - 메모리/노트 용량·통계 한눈에 보기
 
+### B4. up.sh 헬스체크 하드닝 (PR #3 CodeRabbit, Minor)
+- `scripts/up.sh` 헬스 루프의 `curl`에 `--connect-timeout`/`--max-time` 추가(응답 지연 시 짧게 실패).
+- 현재도 `|| echo 000`으로 curl 부재·연결거부엔 무한 대기 안 함 → **Minor 하드닝**(보류 가능).
+- 원 코멘트: https://github.com/shaul1991/localmind/pull/3#discussion_r3489038453
+
 ---
 
 ## C. 보류 — 필요성 뚜렷해지면 도입

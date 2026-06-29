@@ -16,6 +16,9 @@ say()  { printf '%s\n' "$*"; }
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 warn() { printf '  \033[33m!\033[0m %s\n' "$*"; }
 err()  { printf '  \033[31m✗\033[0m %s\n' "$*"; }
+# repo URL을 owner/repo 로 정규화(스킴·호스트·user@·.git·끝슬래시 제거) → https↔ssh 같은 형식차를
+# 같은 repo로 보고, 진짜 다른 repo만 구분한다.
+repo_id() { printf '%s' "$1" | sed -E 's#^[a-zA-Z]+://[^/]+/##; s#^[^/@]+@[^:]+:##; s#/+$##; s#\.git$##'; }
 
 confirm() {  # 예/아니오. 비대화면 자동 "예".
   local prompt="$1" ans
@@ -64,6 +67,17 @@ fi
 say "$(b '[2/6] 백업 저장소 가져오기')"
 if git -C "$BACKUP_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   say "  이 컴퓨터에 이미 백업 폴더가 있어요: $BACKUP_DIR"
+  # RESTORE_REPO 를 명시했는데 기존 origin과 다른 저장소면 — 엉뚱한 백업을 silent하게
+  # 되살리지 않도록 중단한다(자동 재클론은 기존 데이터 손실 위험이라 하지 않음).
+  if [ -n "$RESTORE_REPO" ]; then
+    existing="$(git -C "$BACKUP_DIR" remote get-url origin 2>/dev/null || true)"
+    if [ -n "$existing" ] && [ "$(repo_id "$existing")" != "$(repo_id "$RESTORE_REPO")" ]; then
+      # raw URL은 https://user:token@host 형태로 자격증명을 담을 수 있어 출력 금지 — repo_id(owner/repo)만 노출.
+      err "$BACKUP_DIR 는 이미 다른 백업 저장소($(repo_id "$existing"))에 연결돼 있어요."
+      say "  요청한 저장소($(repo_id "$RESTORE_REPO"))로 복구하려면 다른 폴더를 쓰거나(예: $(b 'make recover BACKUP_DIR=~/.localmind-new RESTORE_REPO=...')) 기존 폴더를 비운 뒤 다시 시도해 주세요."
+      exit 1
+    fi
+  fi
   if git -C "$BACKUP_DIR" remote | grep -q .; then
     git -C "$BACKUP_DIR" pull --ff-only >/dev/null 2>&1 && ok "최신 백업으로 업데이트(pull)" || warn "pull 생략/실패 — 현재 로컬 상태로 진행"
   else
