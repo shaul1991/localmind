@@ -1,5 +1,6 @@
 // 인프라/SRE 워크플로우 — 서버별 런북 적재 → 장애 기록 → 그 서버 한정 RAG.
-// 서버마다 MCP_INSTANCE/OPENMEMORY_USER를 다르게 주면 인스턴스별로 격리된다.
+// 격리: NOTES_DIR(노트 폴더)로 노트가, OPENMEMORY_USER로 기억이 서버별로 나뉜다.
+//   (MCP_INSTANCE는 출력에 붙는 라벨일 뿐, 저장 격리는 NOTES_DIR/OPENMEMORY_USER가 담당)
 //   make up && make build
 //   MCP_INSTANCE=db-server NOTES_DIR=/srv/runbooks/db node examples/workflow-infra-runbook.mjs
 import { capture, askBrain, notesDir } from "../dist/brain.js";
