@@ -59,7 +59,7 @@ if [ -z "$TOKEN" ]; then
 fi
 if grep -qE '^CLAUDE_CODE_OAUTH_TOKEN=' "$ENV_FILE"; then
   tmp="$(mktemp)"
-  grep -vE '^CLAUDE_CODE_OAUTH_TOKEN=' "$ENV_FILE" > "$tmp"
+  grep -vE '^CLAUDE_CODE_OAUTH_TOKEN=' "$ENV_FILE" > "$tmp" || true  # 토큰 줄만 있을 때 grep exit 1 → set -e 중단 방지
   printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$TOKEN" >> "$tmp"
   mv "$tmp" "$ENV_FILE"
 else

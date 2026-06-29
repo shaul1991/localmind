@@ -50,7 +50,7 @@ fi
 
 # ── 2/3 : 설정 확인 ─────────────────────────────────────────────
 say "$(b '[2/3] 설정 확인')"
-USER_ID="$(grep -E "^OPENMEMORY_USER=" "$PROJECT_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2-)"
+USER_ID="$(grep -E "^OPENMEMORY_USER=" "$PROJECT_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2- || true)"  # .env 없음/매치 없음에 set -e 중단 방지 → 폴백 도달
 USER_ID="${USER_ID:-localmind}"
 ok "사용자 이름: $(b "$USER_ID")"
 ok "노트 폴더  : $(b "$NOTES_DIR")"
