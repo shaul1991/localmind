@@ -16,7 +16,7 @@
 > - **A2 ✅** `make backup`: memory-export(6건)+커밋+`.gitignore`(.brain-index.json)+멱등
 > - **A3 ✅(구성요소)** `make restore`: 로컬 pull + **memory-import 멱등(추가0/스킵6)** + reindex. *full `make recover` 래퍼는 가동 스택 재생성 부담으로 미실행*
 > - **A4 ✅** `reindex` 실데이터(3파일/3청크, 실임베딩 bge-m3)
-> - **A5 ⚠️ 부분** 스모크 회귀 없음 ✅ · 원격 제거(도구 7개·mcp-http 없음) ✅ · **루프백 바인딩은 코드만 적용, 런타임 미반영** — 44h 전 컨테이너라 현재 `0.0.0.0`(LAN 노출). **`make up` 재생성 필요**
+> - **A5 ✅** 스모크 회귀 없음 · 원격 제거(도구 7개·mcp-http 없음) · **루프백 적용**(`make up` 재생성 후 `127.0.0.1`만 바인딩, LAN IP `192.168.0.26:8787`→차단·localhost 200 확인)
 > - **A6 ✅** `make secrets` 인증 점검 정확(claude ✗/codex ✓)·`make token` 발급
 > - **#7(보너스) ✅** 루트 `memory.md`(백업덤프) 제외 / 하위 폴더 `memory.md` 노트 포함 — 실데이터 확인
 
