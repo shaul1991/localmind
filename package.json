@@ -22,7 +22,8 @@
     "smoke:brain": "tsx scripts/smoke-brain.ts",
     "memory:export": "tsx scripts/memory-export.ts",
     "memory:import": "tsx scripts/memory-import.ts",
-    "reindex": "tsx scripts/reindex.ts"
+    "reindex": "tsx scripts/reindex.ts",
+    "test": "node --import tsx/esm --test src/**/*.test.ts"
   },
   "keywords": [
     "claude",

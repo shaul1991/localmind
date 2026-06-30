@@ -270,8 +270,26 @@ export async function searchNotes(query: string, limit = 5, folder?: string): Pr
   return hits.slice(0, limit);
 }
 
-/** 노트를 새 마크다운 파일로 저장하고 인덱싱한다. folder(라벨)로 대상 폴더 선택(기본 첫 폴더). 생성된 'label/파일명' 반환. */
-export async function capture(text: string, title?: string, folder?: string): Promise<string> {
+export interface CaptureResult {
+  path: string;
+  validationStatus: "confirmed" | "unconfirmed" | "skipped";
+  retried: boolean;
+}
+
+/** 텍스트에서 재검색 쿼리를 추출한다. frontmatter/제목을 건너뛰고 첫 유효 줄 50자. 10자 미만이면 null. */
+export function extractSearchQuery(text: string): string | null {
+  const stripped = text.replace(/^---[\s\S]*?---\s*/m, ""); // frontmatter 제거
+  const first = stripped
+    .split("\n")
+    .map((l) => l.replace(/^#+\s*/, "").trim()) // 마크다운 헤딩 기호 제거
+    .find((l) => l.length > 0) ?? "";
+  const q = first.slice(0, 50);
+  return q.length >= 10 ? q : null;
+}
+
+/** 노트를 새 마크다운 파일로 저장하고 인덱싱한 뒤 인덱싱 검증 결과를 반환한다.
+ *  folder(라벨)로 대상 폴더 선택(기본 첫 폴더). */
+export async function capture(text: string, title?: string, folder?: string): Promise<CaptureResult> {
   ensureDirs();
   const target = (folder && FOLDER_BY_LABEL.get(folder)) || FOLDERS[0];
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
@@ -295,8 +313,51 @@ export async function capture(text: string, title?: string, folder?: string): Pr
   ].join("\n");
   const body = title ? `${frontmatter}# ${title}\n\n${text}\n` : `${frontmatter}${text}\n`;
   fs.writeFileSync(fpath, body);
+
+  const key = `${target.label}/${fname}`;
+
+  // 텍스트가 너무 짧으면 검증 생략
+  if (!extractSearchQuery(text)) {
+    await ensureIndexed();
+    return { path: key, validationStatus: "skipped", retried: false };
+  }
+
+  const VALIDATE_TIMEOUT_MS = Number(process.env.CAPTURE_VALIDATE_TIMEOUT_MS ?? 3000);
+
+  // 직접 인덱스 확인 (similarity search보다 정확하고 추가 임베딩 API 호출 없음)
+  const checkIndexed = (): boolean => {
+    try {
+      return !!loadIndex().files[key];
+    } catch {
+      return false;
+    }
+  };
+
   await ensureIndexed();
-  return `${target.label}/${fname}`;
+
+  let found = checkIndexed();
+  let retried = false;
+
+  if (!found) {
+    retried = true;
+    try {
+      await Promise.race([
+        ensureIndexed(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("validate-timeout")), VALIDATE_TIMEOUT_MS),
+        ),
+      ]);
+      found = checkIndexed();
+    } catch {
+      // 타임아웃 또는 재시도 실패 — 파일은 저장됐으므로 unconfirmed 반환
+    }
+  }
+
+  return {
+    path: key,
+    validationStatus: found ? "confirmed" : "unconfirmed",
+    retried,
+  };
 }
 
 export interface BrainAnswer {
@@ -336,6 +397,76 @@ export async function askBrain(question: string, k = 5, folder?: string): Promis
   }
   const j: any = await res.json();
   return { answer: j?.choices?.[0]?.message?.content ?? "(빈 응답)", sources };
+}
+
+/** 인덱스에서 단일 파일 항목을 제거하고 저장한다. 파일 삭제 이벤트 처리용. */
+export function removeFromIndex(key: string): void {
+  try {
+    const idx = loadIndex();
+    if (key in idx.files) {
+      delete idx.files[key];
+      saveIndex(idx);
+    }
+  } catch {
+    /* 인덱스 없음 — 무시 */
+  }
+}
+
+/** NOTES_DIR의 모든 폴더를 감시하고 .md 파일 변경 시 증분 reindex를 트리거한다.
+ *  stdout에는 아무것도 쓰지 않는다(MCP 프로토콜 전용). 모든 로그는 stderr. */
+export function watchNotes(): { close(): void } {
+  const debounceMap = new Map<string, ReturnType<typeof setTimeout>>();
+  const DEBOUNCE_MS = Number(process.env.WATCH_DEBOUNCE_MS ?? 500);
+  const watchers: fs.FSWatcher[] = [];
+
+  for (const f of FOLDERS) {
+    if (!fs.existsSync(f.dir)) continue;
+    try {
+      const watcher = fs.watch(f.dir, { recursive: true }, (_event, filename) => {
+        if (!filename) return;
+        const rel = path.normalize(filename); // 플랫폼 구분자 통일
+        if (!rel.toLowerCase().endsWith(".md")) return;
+
+        const fullPath = path.join(f.dir, rel);
+        const key = `${f.label}/${rel}`;
+
+        const existing = debounceMap.get(key);
+        if (existing) clearTimeout(existing);
+
+        const timer = setTimeout(async () => {
+          debounceMap.delete(key);
+          if (fs.existsSync(fullPath)) {
+            process.stderr.write(`[localmind-watcher] reindexing: ${key}\n`);
+            try {
+              await ensureIndexed();
+              process.stderr.write(`[localmind-watcher] done: ${key}\n`);
+            } catch (e) {
+              process.stderr.write(`[localmind-watcher] error: ${(e as Error).message}\n`);
+            }
+          } else {
+            process.stderr.write(`[localmind-watcher] removing: ${key}\n`);
+            removeFromIndex(key);
+          }
+        }, DEBOUNCE_MS);
+
+        debounceMap.set(key, timer);
+      });
+      watchers.push(watcher);
+    } catch (e) {
+      process.stderr.write(`[localmind-watcher] failed to watch ${f.dir}: ${(e as Error).message}\n`);
+    }
+  }
+
+  process.stderr.write(`[localmind-watcher] watching: ${FOLDERS.map((f) => f.dir).join(", ")}\n`);
+
+  return {
+    close() {
+      for (const timer of debounceMap.values()) clearTimeout(timer);
+      debounceMap.clear();
+      for (const w of watchers) w.close();
+      process.stderr.write("[localmind-watcher] stopped\n");
+    },
+  };
 }
 
 /** 모든 노트 폴더를 (재)인덱싱하고 통계를 돌려준다. 복구·대량추가 후 인덱스를 미리 데운다. */

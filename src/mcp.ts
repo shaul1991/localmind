@@ -10,12 +10,22 @@
  */
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { buildServer, configSummary } from "./mcp-server.js";
+import { watchNotes } from "./brain.js";
 
 async function main() {
   const server = buildServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
   process.stderr.write(`[localmind-mcp] ready (${configSummary()})\n`);
+
+  const watcher = watchNotes();
+
+  const shutdown = () => {
+    watcher.close();
+    process.exit(0);
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 }
 
 main().catch((e) => {

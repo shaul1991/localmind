@@ -166,8 +166,15 @@ export function buildServer(): McpServer {
     },
     async ({ text, title, folder }) => {
       try {
-        const file = await capture(text, title, folder);
-        return textResult(`노트 저장: ${file}`, false, "📝");
+        const { path: file, validationStatus, retried } = await capture(text, title, folder);
+        const statusLine =
+          validationStatus === "confirmed"
+            ? "✅ 인덱싱 확인됨"
+            : validationStatus === "unconfirmed"
+              ? `⚠️ 인덱싱 미확인 — 수동 \`make reindex\` 권장${retried ? " (재시도 후에도 미확인)" : ""}`
+              : "";
+        const msg = statusLine ? `노트 저장: ${file}\n${statusLine}` : `노트 저장: ${file}`;
+        return textResult(msg, false, "📝");
       } catch (e) {
         return textResult(`capture_note 실패: ${(e as Error).message}`, true, "📝");
       }
@@ -217,8 +224,10 @@ export function buildServer(): McpServer {
     async ({ question, k, folder }) => {
       try {
         const { answer, sources } = await askBrain(question, k ?? 5, folder);
-        const cite = sources.length ? `\n\n출처: ${sources.join(", ")}` : "";
-        return textResult(answer + cite, false, "🧠");
+        const footer = sources.length
+          ? `\n\n[출처: ${sources.join(", ")}]`
+          : "\n\n⚠️ 관련 노트 없음 — 모델 자체 지식 기반 답변";
+        return textResult(answer + footer, false, "🧠");
       } catch (e) {
         return textResult(`ask_brain 실패: ${(e as Error).message}`, true, "🧠");
       }
