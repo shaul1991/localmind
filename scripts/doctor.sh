@@ -59,10 +59,12 @@ if have ollama; then
   if http "http://localhost:11434/api/tags"; then host_ollama="✓ 가동 중 (:11434)"; else host_ollama="! 설치됨(미가동)"; fi
 fi
 
-# ── 현재 임베딩 라우팅 (litellm.config.yaml 기준) ──────────────
-# 기본은 ollama 컨테이너(=Docker, CPU). host.docker.internal 이면 호스트로 보내는 중.
+# ── 현재 임베딩 라우팅 ─────────────────────────────────────────
+# litellm.config.yaml(직접 하드코딩) 또는 .env(OLLAMA_API_BASE) 중 하나에
+# host.docker.internal 이 있으면 호스트 모드로 판정한다.
 route="docker"; route_label="Docker Ollama (litellm:4000 → ollama:11434)"
-if grep -q 'host.docker.internal' "$DIR/litellm.config.yaml" 2>/dev/null; then
+if grep -q 'host.docker.internal' "$DIR/litellm.config.yaml" 2>/dev/null || \
+   grep -q 'host.docker.internal' "$DIR/.env" 2>/dev/null; then
   route="host"; route_label="호스트 Ollama (litellm:4000 → host.docker.internal:11434)"
 fi
 
