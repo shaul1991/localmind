@@ -64,6 +64,10 @@ logs: ## 로그 follow (한 서비스만: make logs SERVICE=openmemory)
 	$(COMPOSE) $(ALL) logs -f $(SERVICE)
 
 ##@ 검증
+.PHONY: doctor
+doctor: ## 이 기기 진단: OS/GPU/임베딩 경로 점검 + 더 빠른 구성 안내(읽기 전용)
+	@bash "$(CURDIR)/scripts/doctor.sh"
+
 .PHONY: health
 health: ## 엔드포인트 헬스체크
 	@curl -s -o /dev/null -w "gateway     :8787  → %{http_code}\n" http://127.0.0.1:8787/v1/models || true
