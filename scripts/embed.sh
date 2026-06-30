@@ -17,6 +17,20 @@ have() { command -v "$1" >/dev/null 2>&1; }
 http() { curl -fsS -m 2 "$1" >/dev/null 2>&1; }
 gpu_present() { have nvidia-smi || ls /dev/nvidia0 >/dev/null 2>&1; }
 
+# 선택한 임베딩 라우팅을 .env에 기록 → 다음 'make up'도 같은 엔진을 유지한다.
+# (host는 맥이 host.docker.internal을 기본 해석하므로 .env 한 줄로 영속된다.
+#  gpu의 deploy override는 .env로 영속 안 됨 — 재기동 땐 make embed BACKEND=gpu, BACKLOG B2)
+persist_backend() {
+  local env="$DIR/.env" val="$1"
+  [ -f "$env" ] || return 0
+  if grep -q '^OLLAMA_API_BASE=' "$env" 2>/dev/null; then
+    sed -i.bak "s#^OLLAMA_API_BASE=.*#OLLAMA_API_BASE=$val#" "$env" && rm -f "$env.bak"
+  else
+    printf 'OLLAMA_API_BASE=%s\n' "$val" >> "$env"
+  fi
+  ok "선택을 .env에 기록 — 다음 'make up'도 이 엔진을 유지합니다."
+}
+
 BACKEND="${BACKEND:-auto}"
 DRY_RUN="${DRY_RUN:-}"
 OS="$(uname -s 2>/dev/null || echo unknown)"
@@ -86,6 +100,7 @@ if [ -n "$DRY_RUN" ]; then
 fi
 
 # ── 실제 (재)기동 ─────────────────────────────────────────────
+persist_backend "$OLLAMA_API_BASE"
 say "→ 컨테이너 (재)기동 중... (처음/이미지 갱신 시 몇 분)"
 if docker compose "${FILES[@]}" "${PROFILES[@]}" up -d --build; then
   ok "기동 완료"

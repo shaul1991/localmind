@@ -84,7 +84,8 @@
   - [x] **`os.environ/OLLAMA_API_BASE` 치환 실동작 + 기본 라우팅 회귀 없음** — litellm 재기동 후 임베딩 `dims=1024` 정상
   - [ ] 맥북(잔여): `brew install ollama && ollama serve && ollama pull bge-m3` → `make embed BACKEND=host` → `make reindex` 체감↑ · `make doctor` "최적"
   - [ ] Linux+GPU(잔여): toolkit 설치 후 `make embed BACKEND=gpu` → `nvidia-smi`에 ollama 프로세스 · 속도↑
-- 후속(잔여): host 모드에서 idle ollama 컨테이너까지 제외(profile 분리 — depends_on/STACK 회귀 주의)
+- 영속화(구현됨): `make embed`가 선택을 `.env`의 `OLLAMA_API_BASE`에 기록 → 다음 `make up`도 유지(맥 host는 `host.docker.internal` 기본 해석이라 한 줄로 영속). 온보딩은 `make setup`(점검→진단→embed→연결 점검 체크리스트).
+- 후속(잔여): ① host 모드에서 idle ollama 컨테이너까지 제외(profile 분리 — depends_on/STACK 회귀 주의) ② gpu 영속 — `make up` 재기동 시 GPU override 자동 적용(현재 `.env`는 `OLLAMA_API_BASE`만 영속, `deploy`는 미영속)
 
 **부수 — 인덱싱 자료구조 (필요해질 때, 측정 후):**
 - 검색 시 변경감지를 해시 대신 `mtime`+크기 1차 필터(노트 *파일 수*가 많을 때)

@@ -41,12 +41,17 @@
 ### 1) 설치 & 기동
 ```bash
 git clone https://github.com/shaul1991/localmind && cd localmind
+make setup              # 👈 처음이라면 이거 하나 — 준비물·진단·임베딩 켜기·연결 점검을 단계별 안내
+#                         (미리보기: make setup DRY_RUN=1 / 인증·MCP는 강제 없이 명령 제안 + 체크리스트)
+
+# ── 또는 직접 단계별로 ──
 make install build      # 의존성 + dist 빌드(로컬 MCP용)
 make init-env           # .env 생성
 make claude-token       # claude 구독 토큰 발급(브라우저 1회) → 출력값을 .env 의 CLAUDE_CODE_OAUTH_TOKEN 에 입력
-make up                 # Docker 스택 기동(게이트웨이+메모리). 토큰 입력 후 실행(env 주입)
+make embed              # 이 기기에 맞는 임베딩 엔진으로 기동(맥=Metal·NVIDIA=GPU·그 외 CPU). 일상 켜기는 make up
 #   chat :8787 · 게이트웨이 :4000 · 메모리 :8767  (최초 빌드/모델 pull은 수 분)
 ```
+> 처음 한 번은 **`make setup`**(디바이스 진단·최적 임베딩 적용·연결 점검까지), 이후 켜고 끄기는 **`make up`/`make down`**. 임베딩 엔진만 바꾸려면 **`make embed`**, 기기 진단은 **`make doctor`**.
 > 운영은 전부 **`make`** 로 일관됩니다: `make up`(기동) · `make health`(점검) · `make logs` · `make down`. 전체 목록은 `make help`. (`docker compose --profile ...`는 make가 실행하는 내부 명령 — 세분 제어는 [레퍼런스](docs/reference.md) 참고)
 
 ### 2) API로 쓰기 (base_url만 교체)

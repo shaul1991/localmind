@@ -32,8 +32,12 @@ dev: ## API 서버 개발 모드(watch)
 	npm run dev
 
 ##@ 스택 운영(Docker)
+.PHONY: setup
+setup: ## 처음 설정(최초 1회): 점검→진단→임베딩 켜기→연결 점검을 단계별 안내. 미리보기 DRY_RUN=1
+	@DRY_RUN="$(DRY_RUN)" bash "$(CURDIR)/scripts/setup.sh"
+
 .PHONY: up
-up: ## localmind 켜기를 단계별로 안내(준비물 점검→시작→준비 대기). 조용히 켜려면 make up-quiet
+up: ## localmind 켜기(일상). 처음이라면 'make setup' 먼저. 조용히 켜려면 make up-quiet
 	@bash "$(CURDIR)/scripts/up.sh"
 
 .PHONY: up-quiet
