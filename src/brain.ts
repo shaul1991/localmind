@@ -283,7 +283,17 @@ export async function capture(text: string, title?: string, folder?: string): Pr
       .replace(/\s+/g, "-") || "note";
   const fname = `${ts}-${slug}`.slice(0, 80) + ".md";
   const fpath = path.join(target.dir, fname);
-  const body = title ? `# ${title}\n\n${text}\n` : `${text}\n`;
+  const isoDate = new Date().toISOString().slice(0, 19);
+  const frontmatter = [
+    "---",
+    `title: "${(title ?? slug).replace(/"/g, "'")}"`,
+    `date: ${isoDate}`,
+    "tags: []",
+    "source: localmind",
+    "---",
+    "",
+  ].join("\n");
+  const body = title ? `${frontmatter}# ${title}\n\n${text}\n` : `${frontmatter}${text}\n`;
   fs.writeFileSync(fpath, body);
   await ensureIndexed();
   return `${target.label}/${fname}`;
