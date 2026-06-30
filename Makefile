@@ -55,8 +55,12 @@ down: ## localmind 끄기(메모리·노트 데이터는 그대로 유지)
 	@echo "✓ 꺼졌어요. 다시 켜려면 'make up'."
 
 .PHONY: clean
-clean: ## 완전 초기화: 정지 + 데이터 볼륨 삭제(메모리·모델·인덱스). 확인을 받고 진행
+clean: ## 완전 초기화: 정지 + 데이터 볼륨 삭제(메모리·모델·인덱스). 노트·.env는 보존. 확인을 받고 진행
 	@BACKUP_DIR="$(BACKUP_DIR)" bash "$(CURDIR)/scripts/clean.sh"
+
+.PHONY: purge
+purge: ## 완전 제거(로컬만·GitHub 백업 보존): 컨테이너·볼륨·이미지·MCP등록. 노트까지: NOTES=1 make purge
+	@NOTES="$(NOTES)" FORCE="$(FORCE)" BACKUP_DIR="$(BACKUP_DIR)" bash "$(CURDIR)/scripts/purge.sh"
 
 .PHONY: restart
 restart: ## localmind 다시 시작
