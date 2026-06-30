@@ -289,6 +289,8 @@ docker compose --profile gateway --profile memory up -d # + 메모리 (= make up
 
 ## 검증 (세분 스모크)
 
+`make doctor` — 이 기기의 임베딩 경로(CPU/GPU · 호스트/Docker)를 진단하고 더 빠른 구성을 안내(읽기 전용). 노트 색인이 느릴 때 먼저 확인.
+
 기본 묶음은 `make smoke`(API+MCP+brain). 백엔드·엔드포인트별 변형:
 ```bash
 make dev                                      # 다른 터미널에서 서버
