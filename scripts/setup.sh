@@ -80,12 +80,47 @@ DEC="cpu"
 if [ "$OS" = "Darwin" ] && [ "$ARCH" = "arm64" ]; then
   if curl -fsS -m 2 http://localhost:11434/api/tags >/dev/null 2>&1; then
     DEC="host"; ok "맥 + 호스트 Ollama 가동 → $(b 'Metal 가속(host)')으로 켭니다."
+    # brew services로 등록돼 있지 않으면 재시작 후 자동 기동 추천
+    if brew services list 2>/dev/null | grep -E '^ollama\s+none' >/dev/null 2>&1; then
+      warn "Ollama가 brew services에 등록되지 않아 재시작 후 자동 기동이 안 돼요."
+      cmd "brew services start ollama   # 재시작 후 자동 기동 등록"
+      if confirm "지금 brew services에 등록할까요?"; then
+        brew services start ollama && ok "등록 완료 — 이제 재시작 후에도 자동 기동됩니다." || warn "등록 실패 — 수동으로 위 명령을 실행해 주세요."
+      fi
+    fi
   else
-    DEC="cpu"
-    warn "맥북은 호스트 Ollama(Metal)로 임베딩이 10~50배 빨라지는데, 지금은 안 켜져 있어요."
-    say "  일단 기본(CPU)으로 시작할게요. 준비되면 아래로 가속할 수 있어요:"
-    cmd "brew install ollama && ollama serve && ollama pull bge-m3"
-    cmd "make embed BACKEND=host"
+    warn "맥북은 호스트 Ollama(Metal)로 임베딩이 10~50배 빨라져요 — 지금은 안 켜져 있어요."
+    if have ollama; then
+      say "  Ollama가 설치됐지만 실행 중이 아닙니다."
+      say "  $(b 'brew services start ollama')로 시작하면 재시작 후에도 자동 기동됩니다:"
+      cmd "brew services start ollama"
+      cmd "ollama pull bge-m3   # 모델이 없으면"
+      if confirm "지금 'brew services start ollama'를 실행할까요?"; then
+        brew services start ollama
+        printf '  Ollama 기동 대기 중'
+        for i in $(seq 1 20); do
+          curl -fsS -m 1 http://localhost:11434/api/tags >/dev/null 2>&1 && { printf '\n'; ok "Ollama 기동됨"; break; }
+          printf '.'; sleep 1
+        done
+        if ! curl -fsS -m 3 http://localhost:11434/api/tags 2>/dev/null | grep -q 'bge-m3'; then
+          warn "bge-m3 모델이 없어요."
+          if confirm "지금 받을까요?(수 분 소요)"; then ollama pull bge-m3 && ok "bge-m3 준비 완료"; fi
+        fi
+        DEC="host"
+      else
+        DEC="cpu"
+        say "  일단 CPU로 진행합니다. 나중에 아래로 가속 가능:"
+        cmd "brew services start ollama && ollama pull bge-m3 && make embed BACKEND=host"
+      fi
+    else
+      say "  Ollama가 설치되지 않았어요. 설치 후 brew services로 등록하면 재시작 후에도 자동 기동됩니다:"
+      cmd "brew install ollama"
+      cmd "brew services start ollama   # 재시작 후 자동 기동"
+      cmd "ollama pull bge-m3"
+      cmd "make embed BACKEND=host      # 설치 후 Metal 가속으로 전환"
+      DEC="cpu"
+      say "  일단 CPU로 시작합니다."
+    fi
   fi
 elif [ "$OS" = "Linux" ] && { have nvidia-smi || ls /dev/nvidia0 >/dev/null 2>&1; }; then
   DEC="gpu"; ok "Linux + NVIDIA → $(b 'GPU 가속(gpu)')으로 켭니다."

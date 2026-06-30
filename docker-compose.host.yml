@@ -8,6 +8,11 @@
 #   없고(추론을 안 함) 디스크의 bge-m3 모델만 호스트와 중복된다. 컨테이너까지 빼서 더
 #   가볍게 하는 건 BACKLOG(B2)로 미뤄둔다 — 단순성/회귀 위험을 우선.
 services:
+  # host 모드에서는 Docker Ollama가 idle이므로 프로파일을 덮어써서 기동 제외.
+  # make up / make embed BACKEND=host 어느 쪽에서도 재생성되지 않는다.
+  ollama:
+    profiles: ["_disabled"]
+
   litellm:
     environment:
       - OLLAMA_API_BASE=http://host.docker.internal:11434/v1
