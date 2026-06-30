@@ -17,8 +17,8 @@ export const OPENMEMORY_URL = (process.env.OPENMEMORY_URL ?? "http://localhost:8
 export const MEMORY_USER = (process.env.OPENMEMORY_USER ?? os.hostname()).trim();
 export const DEFAULT_MODEL = process.env.MCP_DEFAULT_MODEL ?? "sonnet";
 
-function textResult(text: string, isError = false) {
-  return { content: [{ type: "text" as const, text }], isError };
+function textResult(text: string, isError = false, emoji = "") {
+  return { content: [{ type: "text" as const, text: emoji ? `${emoji} ${text}` : text }], isError };
 }
 
 async function postJson(url: string, body: unknown, headers: Record<string, string> = {}) {
@@ -61,6 +61,7 @@ export function buildServer(): McpServer {
         `memory_user: ${MEMORY_USER}\n` +
           `notes folders (label: path):\n${folders}\n` +
           `gateway: ${GATEWAY_URL}\nmemory: ${OPENMEMORY_URL}`,
+        false, "🧠",
       );
     },
   );
@@ -91,9 +92,9 @@ export function buildServer(): McpServer {
         { model: model || DEFAULT_MODEL, messages, stream: false },
         headers,
       );
-      if (!r.ok) return textResult(`ask 실패 (HTTP ${r.status}): ${JSON.stringify(r.json)}`, true);
+      if (!r.ok) return textResult(`ask 실패 (HTTP ${r.status}): ${JSON.stringify(r.json)}`, true, "💬");
       const content = r.json?.choices?.[0]?.message?.content ?? "";
-      return textResult(content || "(빈 응답)");
+      return textResult(content || "(빈 응답)", false, "💬");
     },
   );
 
@@ -116,9 +117,9 @@ export function buildServer(): McpServer {
         text,
         infer: true,
       });
-      if (!r.ok) return textResult(`remember 실패 (HTTP ${r.status}): ${JSON.stringify(r.json)}`, true);
+      if (!r.ok) return textResult(`remember 실패 (HTTP ${r.status}): ${JSON.stringify(r.json)}`, true, "💾");
       const stored = r.json?.content ?? null;
-      return textResult(stored ? `저장됨: ${stored}` : "처리됨 (기존 기억과 중복이면 추가 안 될 수 있음)");
+      return textResult(stored ? `저장됨: ${stored}` : "처리됨 (기존 기억과 중복이면 추가 안 될 수 있음)", false, "💾");
     },
   );
 
@@ -141,10 +142,10 @@ export function buildServer(): McpServer {
         query,
         limit: limit ?? 5,
       });
-      if (!r.ok) return textResult(`recall 실패 (HTTP ${r.status}): ${JSON.stringify(r.json)}`, true);
+      if (!r.ok) return textResult(`recall 실패 (HTTP ${r.status}): ${JSON.stringify(r.json)}`, true, "💭");
       const results: { memory: string; score: number }[] = r.json?.results ?? [];
-      if (!results.length) return textResult("관련 기억 없음");
-      return textResult(results.map((m) => `(${(m.score ?? 0).toFixed(3)}) ${m.memory}`).join("\n"));
+      if (!results.length) return textResult("관련 기억 없음", false, "💭");
+      return textResult(results.map((m) => `(${(m.score ?? 0).toFixed(3)}) ${m.memory}`).join("\n"), false, "💭");
     },
   );
 
@@ -166,9 +167,9 @@ export function buildServer(): McpServer {
     async ({ text, title, folder }) => {
       try {
         const file = await capture(text, title, folder);
-        return textResult(`노트 저장: ${file}`);
+        return textResult(`노트 저장: ${file}`, false, "📝");
       } catch (e) {
-        return textResult(`capture_note 실패: ${(e as Error).message}`, true);
+        return textResult(`capture_note 실패: ${(e as Error).message}`, true, "📝");
       }
     },
   );
@@ -189,12 +190,13 @@ export function buildServer(): McpServer {
     async ({ query, limit, folder }) => {
       try {
         const hits = await searchNotes(query, limit ?? 5, folder);
-        if (!hits.length) return textResult("관련 노트 없음");
+        if (!hits.length) return textResult("관련 노트 없음", false, "🔍");
         return textResult(
           hits.map((h) => `(${h.score.toFixed(3)}) [${h.path}]\n${h.text.slice(0, 280)}`).join("\n\n"),
+          false, "🔍",
         );
       } catch (e) {
-        return textResult(`search_notes 실패: ${(e as Error).message}`, true);
+        return textResult(`search_notes 실패: ${(e as Error).message}`, true, "🔍");
       }
     },
   );
@@ -216,9 +218,9 @@ export function buildServer(): McpServer {
       try {
         const { answer, sources } = await askBrain(question, k ?? 5, folder);
         const cite = sources.length ? `\n\n출처: ${sources.join(", ")}` : "";
-        return textResult(answer + cite);
+        return textResult(answer + cite, false, "🧠");
       } catch (e) {
-        return textResult(`ask_brain 실패: ${(e as Error).message}`, true);
+        return textResult(`ask_brain 실패: ${(e as Error).message}`, true, "🧠");
       }
     },
   );
@@ -244,12 +246,12 @@ export function buildServer(): McpServer {
       if (!res.ok) return textResult(`list_memories 실패 (HTTP ${res.status}): ${(await res.text()).slice(0, 200)}`, true);
       const j: any = await res.json();
       const items: any[] = j.items ?? [];
-      if (!items.length) return textResult(`저장된 기억이 없습니다 (user=${u}).`);
+      if (!items.length) return textResult(`저장된 기억이 없습니다 (user=${u}).`, false, "📋");
       const lines = items.map((m, i) => {
         const date = typeof m.created_at === "number" ? ` (${new Date(m.created_at * 1000).toISOString().slice(0, 10)})` : "";
         return `${i + 1}. ${String(m.content ?? "").trim()}  ⟨id:${m.id}⟩${date}`;
       });
-      return textResult(`기억 ${items.length}개 (user=${u}):\n${lines.join("\n")}`);
+      return textResult(`기억 ${items.length}개 (user=${u}):\n${lines.join("\n")}`, false, "📋");
     },
   );
 
@@ -272,8 +274,8 @@ export function buildServer(): McpServer {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ memory_ids: [memory_id], user_id: u }),
       });
-      if (!res.ok) return textResult(`delete_memory 실패 (HTTP ${res.status}): ${(await res.text()).slice(0, 200)}`, true);
-      return textResult(`기억 삭제됨: ${memory_id}`);
+      if (!res.ok) return textResult(`delete_memory 실패 (HTTP ${res.status}): ${(await res.text()).slice(0, 200)}`, true, "🗑️");
+      return textResult(`기억 삭제됨: ${memory_id}`, false, "🗑️");
     },
   );
 
@@ -291,10 +293,10 @@ export function buildServer(): McpServer {
     async ({ folder }) => {
       try {
         const notes = listNotes(folder);
-        if (!notes.length) return textResult(folder ? `'${folder}' 폴더에 노트가 없습니다.` : "노트가 없습니다.");
-        return textResult(`노트 ${notes.length}개:\n${notes.map((n, i) => `${i + 1}. ${n.path}`).join("\n")}`);
+        if (!notes.length) return textResult(folder ? `'${folder}' 폴더에 노트가 없습니다.` : "노트가 없습니다.", false, "📋");
+        return textResult(`노트 ${notes.length}개:\n${notes.map((n, i) => `${i + 1}. ${n.path}`).join("\n")}`, false, "📋");
       } catch (e) {
-        return textResult(`list_notes 실패: ${(e as Error).message}`, true);
+        return textResult(`list_notes 실패: ${(e as Error).message}`, true, "📋");
       }
     },
   );
@@ -314,10 +316,10 @@ export function buildServer(): McpServer {
       try {
         const ok = await deleteNote(notePath);
         return ok
-          ? textResult(`노트 삭제: ${notePath}`)
-          : textResult(`삭제 실패: '${notePath}' 를 찾지 못했습니다(목록은 list_notes).`, true);
+          ? textResult(`노트 삭제: ${notePath}`, false, "🗑️")
+          : textResult(`삭제 실패: '${notePath}' 를 찾지 못했습니다(목록은 list_notes).`, true, "🗑️");
       } catch (e) {
-        return textResult(`delete_note 실패: ${(e as Error).message}`, true);
+        return textResult(`delete_note 실패: ${(e as Error).message}`, true, "🗑️");
       }
     },
   );
