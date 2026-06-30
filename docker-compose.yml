@@ -69,6 +69,9 @@ services:
     environment:
       # 소비자는 이 키를 Authorization: Bearer 로 보낸다. 변경 권장.
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-local}
+      # 임베딩 라우팅 대상. 기본 = Docker ollama. `make embed BACKEND=host` 가
+      # docker-compose.host.yml override로 host.docker.internal(맥 네이티브 Ollama·Metal)로 바꾼다.
+      - OLLAMA_API_BASE=${OLLAMA_API_BASE:-http://ollama:11434/v1}
     restart: unless-stopped
 
   # ── opt: 메모리 서비스 (profile: memory) — OpenMemory(mem0) ──

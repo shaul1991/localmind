@@ -104,12 +104,13 @@ if [ "$OS" = "Darwin" ] && [ "$accel" = "metal" ]; then
     say "  지금은 Docker 안에서 CPU로 돌아 가장 큰 장점을 못 쓰는 상태예요."
     say ""
     say "    1) $(b 'brew install ollama')        # 호스트에 네이티브 설치(또는 Ollama.app)"
-    say "    2) $(b 'ollama serve')               # 백그라운드로 유지"
-    say "    3) 임베딩을 호스트로 라우팅          # 아래 '다음 단계' 참고"
+    say "    2) $(b 'ollama serve')               # 새 터미널에 켜둔 채로"
+    say "    3) $(b 'ollama pull bge-m3')         # 임베딩 모델 받기"
+    say "    4) $(b 'make embed BACKEND=host')    # 임베딩을 호스트(Metal)로 전환"
   fi
 elif [ "$OS" = "Linux" ] && [ "$accel" = "cuda" ]; then
-  say "  NVIDIA GPU가 있습니다 — Docker에 GPU를 지정하면 임베딩이 가속됩니다."
-  say "  (compose에 GPU reservation + OLLAMA_NUM_PARALLEL 상향 — 아래 '다음 단계' 참고)"
+  say "  NVIDIA GPU가 있습니다 — $(b 'make embed BACKEND=gpu')로 Docker Ollama를 GPU 가속."
+  say "  (nvidia-container-toolkit 설치 전제)"
 elif [ "$OS" = "Linux" ]; then
   say "  이 서버엔 GPU가 없어 $(b 'CPU 임베딩이 현재로선 최선')입니다."
   say "  • 평소엔 변경된 노트만 색인하므로 느림이 거의 안 느껴집니다."
@@ -119,6 +120,7 @@ else
 fi
 
 head "[다음 단계]"
-say "  임베딩 백엔드 자동 전환($(b 'make up EMBED_BACKEND=host|gpu|cpu'))은 후속 작업입니다."
-say "  → BACKLOG의 '디바이스별 임베딩 백엔드' 항목 참고."
+say "  $(b 'make embed')                       # 이 기기에 맞는 엔진으로 전환(auto 감지)"
+say "  $(b 'make embed BACKEND=host|gpu|cpu')  # 강제 지정 · $(b 'DRY_RUN=1')로 미리보기"
+say "  $(b 'make reindex')                     # 전환 후 기존 노트 재색인"
 say ""

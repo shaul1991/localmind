@@ -1,0 +1,17 @@
+# 임베딩을 '호스트 네이티브 Ollama'로 라우팅하는 override (맥 Apple Silicon = Metal 가속).
+#   make embed BACKEND=host        # 맥에선 make embed(=auto)도 이 경로를 자동 선택
+#
+# 전제: 호스트에 Ollama를 네이티브로 설치·기동하고 모델을 받아둘 것.
+#   brew install ollama && ollama serve && ollama pull bge-m3
+#
+# 주의: Docker 안 ollama 컨테이너는 그대로 뜨지만 '미사용(idle)'이 된다 — RAM 부담은 거의
+#   없고(추론을 안 함) 디스크의 bge-m3 모델만 호스트와 중복된다. 컨테이너까지 빼서 더
+#   가볍게 하는 건 BACKLOG(B2)로 미뤄둔다 — 단순성/회귀 위험을 우선.
+services:
+  litellm:
+    environment:
+      - OLLAMA_API_BASE=http://host.docker.internal:11434/v1
+    extra_hosts:
+      # Linux Docker는 host.docker.internal이 기본 비활성 → host-gateway로 매핑해 호환.
+      # macOS/Windows Docker Desktop은 기본 지원하므로 이 줄은 무해하다.
+      - "host.docker.internal:host-gateway"

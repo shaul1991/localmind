@@ -73,19 +73,18 @@
 **1단계 — 진단 (완료):** `make doctor`(`scripts/doctor.sh`)가 OS/칩/GPU/호스트 Ollama/현재
 라우팅을 감지해 *현재·잠재력·권장*을 출력. 읽기 전용. → 세 분기(Linux CPU·macOS Metal·Linux CUDA) 출력 검증 완료.
 
-**2단계 — 자동 전환 (미구현):** `make up EMBED_BACKEND=auto|host|gpu|cpu`
-- `host`: ollama 컨테이너 제외 + litellm `api_base`를 `host.docker.internal:11434`로.
-  - compose override(`docker-compose.host.yml`) + litellm config의 `api_base` 분기
-    (LiteLLM `os.environ/VAR` 치환 가능 여부 확인). **Linux Docker는
-    `--add-host=host.docker.internal:host-gateway` 필요.**
-- `gpu`: compose에 `deploy.resources.reservations.devices`(nvidia) + `OLLAMA_NUM_PARALLEL` 상향.
-  nvidia-container-toolkit 전제.
-- `cpu`/`auto`: 현행(기본). `auto`는 doctor와 같은 감지로 host/gpu/cpu 자동 선택.
-- 검증/완료 기준:
-  - [ ] 맥북: `brew install ollama && ollama serve` → `make up EMBED_BACKEND=host` →
-        `make reindex` 시 임베딩이 `:11434`(호스트)로 가고 체감 속도↑, `make doctor`가 "최적" 표기
-  - [ ] Linux+GPU: toolkit 설치 후 `EMBED_BACKEND=gpu` → `nvidia-smi`에 ollama 프로세스, 속도↑
-  - [ ] 기본(auto/cpu) 회귀 없음 — `make smoke` 통과
+**2단계 — 자동 전환 (구현됨 · 실기기 실효 검증만 잔여):** `make embed [BACKEND=auto|host|gpu|cpu]` (`scripts/embed.sh`)
+- 구현: litellm `api_base` → `os.environ/OLLAMA_API_BASE` + override 파일로 분기.
+  - `host`: `docker-compose.host.yml` — litellm을 `host.docker.internal:11434`로 + `extra_hosts: host.docker.internal:host-gateway`(Linux 호환). **호스트 네이티브 Ollama 전제**(미가동 시 안내 후 중단). Docker ollama 컨테이너는 idle로 둠(완전 제외는 후순위).
+  - `gpu`: `docker-compose.gpu.yml` — ollama에 nvidia device reservation + `OLLAMA_NUM_PARALLEL=4`. toolkit 전제, GPU 미감지 시 cpu 폴백.
+  - `cpu`/`auto`: 기본. `auto`는 doctor와 같은 감지(macOS arm64→host · Linux+NVIDIA→gpu · 그 외 cpu).
+- 검증(2026-06-30, 이 환경 Linux/CPU):
+  - [x] override 병합 정합성 — host(`host.docker.internal`+`host-gateway`) / gpu(nvidia+`NUM_PARALLEL=4`), `docker compose config`
+  - [x] 분기 — auto→cpu · gpu(미감지)→cpu 폴백 · host(미가동)→안내·중단, DRY_RUN
+  - [x] **`os.environ/OLLAMA_API_BASE` 치환 실동작 + 기본 라우팅 회귀 없음** — litellm 재기동 후 임베딩 `dims=1024` 정상
+  - [ ] 맥북(잔여): `brew install ollama && ollama serve && ollama pull bge-m3` → `make embed BACKEND=host` → `make reindex` 체감↑ · `make doctor` "최적"
+  - [ ] Linux+GPU(잔여): toolkit 설치 후 `make embed BACKEND=gpu` → `nvidia-smi`에 ollama 프로세스 · 속도↑
+- 후속(잔여): host 모드에서 idle ollama 컨테이너까지 제외(profile 분리 — depends_on/STACK 회귀 주의)
 
 **부수 — 인덱싱 자료구조 (필요해질 때, 측정 후):**
 - 검색 시 변경감지를 해시 대신 `mtime`+크기 1차 필터(노트 *파일 수*가 많을 때)

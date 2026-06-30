@@ -241,6 +241,7 @@ curl -X POST http://localhost:8767/api/v1/memories/filter -H "Content-Type: appl
 | `BRAIN_BATCH` / `BRAIN_CONCURRENCY` / `BRAIN_CHUNK_SIZE` | `32` / `4` / `2000` | 인덱싱 튜닝 |
 
 **인덱싱 성능**: 첫 인덱싱은 노트 전체를 임베딩(증분·resumable이라 이후엔 변경분만). bge-m3 CPU가 바닥이라 더 빠르게:
+- **`make doctor`로 진단 → `make embed`로 전환**(기기 자동 감지): 맥(Apple Silicon)은 호스트 네이티브 Ollama로 빼 **Metal 가속**(`BACKEND=host`), Linux+NVIDIA는 **Docker GPU**(`BACKEND=gpu`). `make embed DRY_RUN=1`로 미리보기.
 - **bge-m3 + GPU/전용 임베딩 서버(TEI/Infinity)** 로 `EMBEDDINGS_URL` 교체(한국어 품질 유지·가속, 권장).
 - 더 가벼운 모델은 **반드시 다국어**(multilingual-e5, snowflake-arctic-embed2) — `nomic-embed-text` 등 영어 전용은 한국어 검색 품질↓.
 - 모델 변경 시 `EMBEDDING_DIMS` 조정 + 재인덱싱.
