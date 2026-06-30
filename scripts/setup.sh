@@ -155,3 +155,4 @@ cmd "make doctor      # 임베딩 경로 재확인"
 cmd "make health      # 엔진 상태"
 say "  노트 폴더: $(b "$NOTES_DIR")  — 여기에 .md를 넣거나 대화로 capture하면 쌓여요."
 say ""
+exit 0   # 모든 단계 통과 = 성공. (중간 점검의 비0이 새어 프롬프트에 ✗로 보이지 않도록 명시)

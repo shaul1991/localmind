@@ -112,3 +112,4 @@ fi
 say ""
 say "$(b '다음:')  $(b 'make reindex')   # 기존 노트를 새 엔진으로 재색인(가속 체감)"
 say "       $(b 'make doctor')    # 적용 결과 재확인"
+exit 0   # 기동 성공 = 0 (프롬프트 ✗ 방지)
