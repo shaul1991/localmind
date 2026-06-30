@@ -20,6 +20,8 @@
 > **개인 전용·독립 실행 원칙**: 이 스택은 **내 머신에서 나 혼자** 쓰는 용도입니다.
 > 로컬 스택(gateway·임베딩·메모리·brain) + **내 `claude`/`codex` 로그인** + **localhost(루프백)** 로만
 > 동작하며, **중앙 서버·공유 계정·원격 접속에 의존하지 않습니다**(단일 장애점·ToS 회피).
+>
+> 📜 **정책 근거**: 본인 구독으로 내 머신에서 나 혼자 쓰는 건 Anthropic 공식 terms의 *"ordinary, individual usage of Claude Code"* 범주라 허용됩니다 — 금지 대상은 *"타인을 대신해(on behalf of their users)"* 구독 자격증명으로 요청을 라우팅하는 경우입니다. **서비스화하거나 타인 요청을 내 구독으로 처리하면 API 키 인증으로 전환해야 합니다.** ([Claude Code Legal & compliance](https://code.claude.com/docs/en/legal-and-compliance))
 
 ```
   HTTP API ┬─ /v1/chat/completions · /v1/messages   → claude/codex CLI
