@@ -23,6 +23,7 @@
     "memory:export": "tsx scripts/memory-export.ts",
     "memory:import": "tsx scripts/memory-import.ts",
     "reindex": "tsx scripts/reindex.ts",
+    "init-sdd": "tsx scripts/init-sdd.ts",
     "test": "node --import tsx/esm --test src/**/*.test.ts"
   },
   "keywords": [

@@ -130,6 +130,11 @@ backup-cron: ## 매일 자동 백업을 단계별로 crontab 에 등록(시간: 
 reindex: ## second-brain 노트 (재)인덱싱 (임베딩 :4000 필요)
 	npm run reindex
 
+.PHONY: init-sdd
+init-sdd: ## SDD 작업 흐름(AGENTS.md+specs/)을 지정한 프로젝트에 심기 (DIR=<경로>; 기존 파일은 덮어쓰지 않음)
+	@if [ -z "$(DIR)" ]; then echo "✗ DIR을 지정하세요: make init-sdd DIR=<경로>"; exit 1; fi
+	@npm run --silent init-sdd -- "$(DIR)"
+
 .PHONY: restore
 restore: ## 백업에서 복원: 노트 repo pull/clone → memory-import → 재인덱싱 (스택 떠 있어야 함)
 	@if git -C "$(BACKUP_DIR)" rev-parse --is-inside-work-tree >/dev/null 2>&1; then \

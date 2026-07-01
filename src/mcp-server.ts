@@ -9,6 +9,7 @@ import os from "node:os";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { askBrain, capture, deleteNote, listFolders, listNotes, notesDir, searchNotes } from "./brain.js";
+import { formatScaffoldResult, scaffoldSdd } from "./scaffold.js";
 
 export const GATEWAY_URL = (process.env.LOCALMIND_URL ?? "http://localhost:8787").replace(/\/$/, "");
 export const GATEWAY_KEY = process.env.LOCALMIND_API_KEY?.trim();
@@ -329,6 +330,31 @@ export function buildServer(): McpServer {
           : textResult(`삭제 실패: '${notePath}' 를 찾지 못했습니다(목록은 list_notes).`, true, "🗑️");
       } catch (e) {
         return textResult(`delete_note 실패: ${(e as Error).message}`, true, "🗑️");
+      }
+    },
+  );
+
+  server.registerTool(
+    "scaffold_sdd",
+    {
+      title: "Scaffold SDD workflow",
+      description:
+        "Set up the SDD workflow (AGENTS.md rules + goal/spec/plan templates) in a target project " +
+        "directory, so any AI tool on any device follows the same flow. Never overwrites existing files.",
+      inputSchema: {
+        path: z.string().describe(
+          "Target project directory — MUST be an absolute path. localmind's MCP server is a " +
+            "long-running process, so its current working directory may not match the project " +
+            "you're editing; a relative path could silently write to the wrong location.",
+        ),
+      },
+    },
+    async ({ path: targetPath }) => {
+      try {
+        const result = scaffoldSdd(targetPath);
+        return textResult(formatScaffoldResult(result), false, "🧩");
+      } catch (e) {
+        return textResult(`scaffold_sdd 실패: ${(e as Error).message}`, true, "🧩");
       }
     },
   );
