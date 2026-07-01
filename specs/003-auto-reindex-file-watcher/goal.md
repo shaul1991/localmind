@@ -47,7 +47,7 @@ Loop 3(이벤트 기반 루프) — 파일 변경 이벤트가 자동으로 rein
 
 ## Stakeholders — 이해관계자
 
-- 단일 사용자(jihoonkim) — 외부 에디터(Obsidian)와 MCP 간 노트 동기화 자동화
+- 단일 사용자(설치한 개인 누구나 — 비개발자 포함) — 외부 에디터(Obsidian)와 MCP 간 노트 동기화 자동화
 
 ## Risks — 리스크
 

@@ -46,7 +46,7 @@ localmind의 `capture_note` 는 `.md` 파일 저장 + 임베딩 인덱싱까지 
 
 ## Stakeholders — 이해관계자
 
-- 단일 사용자(jihoonkim) — 개인 second-brain 신뢰성 향상
+- 단일 사용자(설치한 개인 누구나 — 비개발자 포함) — 개인 second-brain 신뢰성 향상
 
 ## Risks — 리스크
 

@@ -51,7 +51,7 @@
   When 출처를 구성하면,
   Then 해당 파일이 출처 목록에 1번만 나온다.
 
-- **AC-4 (엣지 — 경로 표시 형식)**: Given 절대 경로 `/Users/jihoonkim/.localmind/work/note.md` 가 히트 시,
+- **AC-4 (엣지 — 경로 표시 형식)**: Given 절대 경로 `/home/<user>/.localmind/work/note.md` 가 히트 시,
   When 출처를 구성하면,
   Then `폴더라벨/파일명` 형식(`work/note.md`)으로 표시된다(절대 경로 노출 없음).
 
