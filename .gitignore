@@ -5,6 +5,7 @@ dist/
 .env.local
 .env.*.local
 .DS_Store
+.idea/
 
 # 로컬 개인 데이터 — 절대 커밋 금지 (각 인스턴스 로컬에만 존재)
 .brain-index.json
