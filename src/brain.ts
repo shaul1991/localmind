@@ -60,19 +60,20 @@ const ANSWER_MODEL = process.env.MCP_DEFAULT_MODEL ?? "sonnet";
 
 const MAX_CHUNK = Math.max(400, Number(process.env.BRAIN_CHUNK_SIZE ?? 2000));
 
-const INDEX_VERSION = 2; // 1→2: 인덱스 키를 'label/rel'로 namespacing + folder 태그
+const INDEX_VERSION = 3; // 2→3: FileEntry에 linksOut(위키링크 추출 결과) 추가
 
 interface IndexedChunk {
   path: string;
   text: string;
   vector: number[];
 }
-interface FileEntry {
+export interface FileEntry {
   hash: string;
   folder: string;
   chunks: IndexedChunk[];
+  linksOut: string[]; // 본문 [[위키링크]]에서 추출한 원본 타겟 문자열(미해결 포함)
 }
-interface BrainIndex {
+export interface BrainIndex {
   version: number;
   files: Record<string, FileEntry>;
 }
@@ -132,6 +133,36 @@ function chunkText(text: string): string[] {
   return chunks;
 }
 
+/** 텍스트에서 위키링크([[target]], [[target|alias]])의 target을 추출한다. 표시 텍스트(alias)는 버린다. */
+export function extractLinks(text: string): string[] {
+  const links: string[] = [];
+  const re = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    const target = m[1].trim();
+    if (target) links.push(target);
+  }
+  return links;
+}
+
+// 대소문자 무시 비교용. macOS/Windows는 파일시스템이 기본적으로 대소문자를 구분하지
+// 않고 Obsidian 자체도 링크 해석 시 대소문자를 구분하지 않으므로, [[Note-B]]가 실제
+// 파일 note-b.md를 가리켜도 해석돼야 한다(self-review에서 발견).
+function basenameNoExt(p: string): string {
+  return path.basename(p).replace(/\.md$/i, "").toLowerCase();
+}
+
+/** 위키링크 target을 인덱스의 실제 노트 키('label/relpath')로 해석한다(basename 매칭,
+ *  대소문자 구분 없음). fromFolder(같은 폴더)를 우선하고, 없으면 전체 vault에서 첫 매칭.
+ *  없으면 null(미해결). */
+export function resolveLink(target: string, fromFolder: string, idx: BrainIndex): string | null {
+  const targetBase = basenameNoExt(target);
+  const keys = Object.keys(idx.files);
+  const sameFolder = keys.find((k) => idx.files[k].folder === fromFolder && basenameNoExt(k) === targetBase);
+  if (sameFolder) return sameFolder;
+  return keys.find((k) => basenameNoExt(k) === targetBase) ?? null;
+}
+
 function sha(s: string): string {
   return crypto.createHash("sha256").update(s).digest("hex");
 }
@@ -185,7 +216,7 @@ async function ensureIndexed(): Promise<BrainIndex> {
   const idx = loadIndex();
   const seen = new Set<string>();
 
-  const pending: { key: string; folder: string; hash: string; chunks: string[] }[] = [];
+  const pending: { key: string; folder: string; hash: string; chunks: string[]; linksOut: string[] }[] = [];
   for (const f of FOLDERS) {
     for (const full of listMarkdown(f.dir)) {
       const key = `${f.label}/${path.relative(f.dir, full)}`;
@@ -193,7 +224,7 @@ async function ensureIndexed(): Promise<BrainIndex> {
       const text = fs.readFileSync(full, "utf8");
       const h = sha(text);
       if (idx.files[key]?.hash === h) continue; // 변경 없음
-      pending.push({ key, folder: f.label, hash: h, chunks: chunkText(text) });
+      pending.push({ key, folder: f.label, hash: h, chunks: chunkText(text), linksOut: extractLinks(text) });
     }
   }
 
@@ -204,7 +235,8 @@ async function ensureIndexed(): Promise<BrainIndex> {
     for (const p of pending) {
       vecs.set(p.key, new Array(p.chunks.length));
       remaining.set(p.key, p.chunks.length);
-      if (p.chunks.length === 0) idx.files[p.key] = { hash: p.hash, folder: p.folder, chunks: [] }; // 빈 파일 즉시 커밋
+      // 빈 파일 즉시 커밋(청크 없어도 링크는 추출·저장)
+      if (p.chunks.length === 0) idx.files[p.key] = { hash: p.hash, folder: p.folder, chunks: [], linksOut: p.linksOut };
     }
 
     type Ref = { key: string; ci: number; text: string };
@@ -233,6 +265,7 @@ async function ensureIndexed(): Promise<BrainIndex> {
               hash: p.hash,
               folder: p.folder,
               chunks: p.chunks.map((c, k) => ({ path: r.key, text: c, vector: vecs.get(r.key)![k]! })),
+              linksOut: p.linksOut,
             };
           }
         }
@@ -397,6 +430,41 @@ export async function askBrain(question: string, k = 5, folder?: string): Promis
   }
   const j: any = await res.json();
   return { answer: j?.choices?.[0]?.message?.content ?? "(빈 응답)", sources };
+}
+
+export interface ResolvedLink {
+  /** resolved:true면 해석된 노트 키('label/relpath'), false면 원본 위키링크 타겟 문자열. */
+  target: string;
+  resolved: boolean;
+}
+export interface NoteLinks {
+  outgoing: ResolvedLink[];
+  incoming: string[];
+}
+
+/** 노트의 1-hop 위키링크 관계(outgoing/incoming)를 조회한다. 노트가 없으면 null. */
+export async function noteLinks(notePath: string): Promise<NoteLinks | null> {
+  const idx = await ensureIndexed();
+  const entry = idx.files[notePath];
+  if (!entry) return null;
+
+  const outgoing: ResolvedLink[] = entry.linksOut.map((raw) => {
+    const resolved = resolveLink(raw, entry.folder, idx);
+    return resolved ? { target: resolved, resolved: true } : { target: raw, resolved: false };
+  });
+
+  const incoming: string[] = [];
+  for (const [key, fe] of Object.entries(idx.files)) {
+    if (key === notePath) continue;
+    for (const raw of fe.linksOut) {
+      if (resolveLink(raw, fe.folder, idx) === notePath) {
+        incoming.push(key);
+        break;
+      }
+    }
+  }
+
+  return { outgoing, incoming };
 }
 
 /** 인덱스에서 단일 파일 항목을 제거하고 저장한다. 파일 삭제 이벤트 처리용. */

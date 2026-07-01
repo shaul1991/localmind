@@ -1,14 +1,15 @@
 /**
  * localmind MCP 서버 정의(도구 등록). stdio transport로 로컬에서만 동작한다.
  *
- * 도구: ask · remember · recall · capture_note · search_notes · ask_brain · whoami
+ * 도구: ask · remember · recall · capture_note · search_notes · ask_brain · note_links ·
+ *       scaffold_sdd · whoami
  *
  * 이 모듈은 stdout에 아무것도 쓰지 않는다(stdio transport 전용).
  */
 import os from "node:os";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { askBrain, capture, deleteNote, listFolders, listNotes, notesDir, searchNotes } from "./brain.js";
+import { askBrain, capture, deleteNote, listFolders, listNotes, noteLinks, notesDir, searchNotes } from "./brain.js";
 import { formatScaffoldResult, scaffoldSdd } from "./scaffold.js";
 
 export const GATEWAY_URL = (process.env.LOCALMIND_URL ?? "http://localhost:8787").replace(/\/$/, "");
@@ -231,6 +232,39 @@ export function buildServer(): McpServer {
         return textResult(answer + footer, false, "🧠");
       } catch (e) {
         return textResult(`ask_brain 실패: ${(e as Error).message}`, true, "🧠");
+      }
+    },
+  );
+
+  server.registerTool(
+    "note_links",
+    {
+      title: "Note links (wiki-link graph)",
+      description:
+        "Show 1-hop wiki-link relations for a note: outgoing [[links]] it makes and incoming " +
+        "backlinks from other notes. Only explicit [[wiki-links]] count (not semantic similarity) — " +
+        "returns note paths only, no note body. path is 'label/filename' from list_notes/search_notes.",
+      inputSchema: {
+        path: z.string().describe("Note path 'label/filename' from list_notes"),
+      },
+    },
+    async ({ path: notePath }) => {
+      try {
+        const result = await noteLinks(notePath);
+        if (!result) return textResult(`노트를 찾을 수 없음: '${notePath}' (목록은 list_notes)`, true, "🔗");
+        if (!result.outgoing.length && !result.incoming.length) return textResult("연결된 노트 없음", false, "🔗");
+
+        const parts: string[] = [];
+        if (result.outgoing.length) {
+          const lines = result.outgoing.map((l) => (l.resolved ? `  - ${l.target}` : `  - (미해결) ${l.target}`));
+          parts.push(`→ 나가는 링크:\n${lines.join("\n")}`);
+        }
+        if (result.incoming.length) {
+          parts.push(`← 들어오는 링크(backlink):\n${result.incoming.map((p) => `  - ${p}`).join("\n")}`);
+        }
+        return textResult(parts.join("\n\n"), false, "🔗");
+      } catch (e) {
+        return textResult(`note_links 실패: ${(e as Error).message}`, true, "🔗");
       }
     },
   );
