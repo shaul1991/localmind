@@ -55,6 +55,15 @@
 - [ ] `make secrets`의 구독 인증 점검이 실제 `~/.claude`·`~/.codex` 유무를 정확히 반영
 - (로컬 파싱·토큰 발급은 확인됨)
 
+### A7. 개인 설정 파일 백업/복원(`BACKUP_EXTRA_FILES`) — specs/006-config-backup-sync
+> 순수 로직(경로 검증·상대경로 미러링·충돌 보존)은 `scripts/backup-extras.test.sh`·
+> `scripts/restore-extras.test.sh`로 자동 검증됨(임시 디렉토리, 라이브 스택 불필요).
+> 아래는 실제 `make backup`/`make restore` 전체 흐름(git commit/push/pull 포함) 확인.
+- [ ] `make backup BACKUP_EXTRA_FILES="~/.claude/CLAUDE.md"` → 백업 repo의 `extras/.claude/CLAUDE.md`로 커밋·푸시됨
+- [ ] 다른 기기(또는 다른 `HOME`)에서 `make restore` → `~/.claude/CLAUDE.md`로 정상 복원
+- [ ] 복원 대상에 이미 다른 내용의 파일이 있을 때 `.bak-<타임스탬프>` 보존 확인
+- [ ] `BACKUP_EXTRA_FILES` 미지정 시 기존 `make backup`/`make restore` 동작에 회귀 없음
+
 ---
 
 ## B. 진행 백로그 — 미구현 (다음 로드맵)
