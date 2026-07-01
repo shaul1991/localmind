@@ -10,7 +10,7 @@ export function createModelsHandler(config: Config) {
     const created = 1700000000;
     const ids = [
       // claude 계열
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
       "claude-opus-4-8",
       "claude-haiku-4-5",
       "sonnet",
