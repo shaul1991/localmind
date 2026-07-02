@@ -77,8 +77,10 @@
 
 ### A9. 노트 저장소 연결 라이브 검증 — specs/012-notes-repo-connect
 > 순수 로직(파싱·URL/라벨 검증·clone/pull·조립·마스킹·비실행 .env 읽기·FR-17)은
-> `scripts/notes-connect.test.sh`·`scripts/read-env.test.sh`로 자동 검증됨(로컬 bare repo, 네트워크 불필요).
-> 아래는 실제 GitHub 비공개 repo + 실제 `claude mcp` 등록·setup 대화 흐름(AC-20~22).
+> `scripts/notes-connect.test.sh`(25)·`scripts/read-env.test.sh`(9)로 자동 검증됨(로컬 bare repo, 네트워크 불필요).
+> ✅ **부분 라이브 (2026-07-02, 격리 환경):** 실제 `make notes-connect` 진입점 end-to-end 확인 —
+> 로컬 bare repo 2개 clone + NOTES_DIR 조립 + 등록 핸드오프 정상, 실제 ~/.claude.json 무손상.
+> 아래는 SSH 키·claude 인증이 필요해 사용자 터미널에서 확인(실제 GitHub repo + 실제 claude mcp 등록·setup 흐름).
 - [ ] 실제 `NOTES_REPOS="라벨=git@github.com:..."`로 `make notes-connect` → clone + `claude mcp list`에 다폴더 등록 확인
 - [ ] 이미 등록된 상태에서 `NOTES_REPOS` 추가 후 `make setup` → 이미 등록됐어도 notes-connect 재연결 제안됨 (AC-20)
 - [ ] `NOTES_REPOS` 미설정(빈 값) `make setup` → 기존 단일 폴더 mcp-install 경로 유지, 회귀 없음 (AC-21)
