@@ -25,6 +25,7 @@ import {
   watchNotes,
   extractLinks,
   resolveLink,
+  moveToTrash,
   type BrainIndex,
 } from "./brain.js";
 
@@ -443,5 +444,51 @@ describe("인덱스 캐시·원자성·동시성 (009)", () => {
       process.stdout.write(JSON.stringify({ fileCount: Object.keys(after.files).length }));
     `);
     assert.equal(r.fileCount, 0);
+  });
+});
+
+// ── moveToTrash (soft-delete) 단위 테스트 — specs/011 트랙 B ────────────────
+// 순수 fs 연산이라 임베딩/인덱싱 없이 검증한다(deleteNote는 이 위에 ensureIndexed만 얹음).
+describe("moveToTrash (soft-delete)", () => {
+  function tmpFolder(): string {
+    return fs.mkdtempSync(path.join(os.tmpdir(), "lm-trash-"));
+  }
+
+  it("AC-5(파일): 원위치에서 사라지고 .trash/로 이동한다", () => {
+    const dir = tmpFolder();
+    const note = path.join(dir, "note.md");
+    fs.writeFileSync(note, "hello");
+    const dest = moveToTrash(note, dir);
+    assert.ok(!fs.existsSync(note), "원위치에서 사라짐");
+    assert.equal(dest, path.join(dir, ".trash", "note.md"));
+    assert.equal(fs.readFileSync(dest, "utf8"), "hello", "내용 보존(복구 가능)");
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("AC-9: 하위폴더 상대경로가 .trash/sub/note.md로 보존된다", () => {
+    const dir = tmpFolder();
+    fs.mkdirSync(path.join(dir, "sub"), { recursive: true });
+    const note = path.join(dir, "sub", "note.md");
+    fs.writeFileSync(note, "x");
+    const dest = moveToTrash(note, dir);
+    assert.equal(dest, path.join(dir, ".trash", "sub", "note.md"));
+    assert.ok(fs.existsSync(dest));
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("AC-7: 같은 이름을 두 번 삭제해도 휴지통에 둘 다 보존(덮어쓰기 없음)", () => {
+    const dir = tmpFolder();
+    const note = path.join(dir, "note.md");
+    fs.writeFileSync(note, "first");
+    const d1 = moveToTrash(note, dir);
+    fs.writeFileSync(note, "second"); // 재생성
+    const d2 = moveToTrash(note, dir);
+    assert.notEqual(d1, d2, "두 목적지가 다름");
+    assert.ok(fs.existsSync(d1) && fs.existsSync(d2), "둘 다 존재");
+    const trashFiles = fs.readdirSync(path.join(dir, ".trash"));
+    assert.equal(trashFiles.length, 2, "휴지통에 2개");
+    assert.equal(fs.readFileSync(d1, "utf8"), "first");
+    assert.equal(fs.readFileSync(d2, "utf8"), "second");
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });

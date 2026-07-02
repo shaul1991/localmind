@@ -350,8 +350,10 @@ export function buildServer(): McpServer {
     {
       title: "Delete note",
       description:
-        "Permanently delete ONE second-brain note file by its 'label/filename' (from list_notes or search_notes), then reindex. " +
-        "Use when the user asks to remove a specific note. Deletes the file; cannot be undone.",
+        "Move ONE second-brain note to the trash by its 'label/filename' (from list_notes or search_notes), then reindex. " +
+        "Use when the user asks to remove a specific note. This is a soft-delete: the file is moved to the folder's " +
+        ".trash/ (excluded from search) and can be recovered by moving it back; it is NOT permanently erased. " +
+        "Emptying the trash is a human-only action (make trash-empty).",
       inputSchema: {
         path: z.string().describe("Note path 'label/filename' from list_notes"),
       },
@@ -360,7 +362,12 @@ export function buildServer(): McpServer {
       try {
         const ok = await deleteNote(notePath);
         return ok
-          ? textResult(`노트 삭제: ${notePath}`, false, "🗑️")
+          ? textResult(
+              `휴지통으로 이동: ${notePath}\n복구하려면 파일을 원위치로 옮기세요(검색에서 즉시 제외됨). ` +
+                `완전 삭제는 사람이 'make trash-empty'로만 할 수 있습니다.`,
+              false,
+              "🗑️",
+            )
           : textResult(`삭제 실패: '${notePath}' 를 찾지 못했습니다(목록은 list_notes).`, true, "🗑️");
       } catch (e) {
         return textResult(`delete_note 실패: ${(e as Error).message}`, true, "🗑️");

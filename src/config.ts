@@ -26,6 +26,25 @@ export interface Config {
   sessionMode: SessionMode;
   sessionTtlMs: number;
   sessionMax: number;
+  /**
+   * Host 헤더 허용 목록(DNS rebinding 차단). null이면 검증 끔(LOCALMIND_ALLOWED_HOSTS="*").
+   * 기본 목록 + LOCALMIND_ALLOWED_HOSTS(콤마) 추가분. 포트는 비교 시 제거된다.
+   */
+  allowedHosts: string[] | null;
+}
+
+/**
+ * Host 허용 목록을 구성한다. LOCALMIND_ALLOWED_HOSTS는 기본 목록에 **추가**된다(교체 아님) —
+ * 사용자가 컨테이너 서비스명(localmind)을 빠뜨려 내부 litellm 호출이 차단되는 footgun 방지.
+ * "*" 단독이면 null(검증 끔 — 리버스 프록시 등 고급 구성용).
+ */
+function parseAllowedHosts(): string[] | null {
+  const DEFAULTS = ["localhost", "127.0.0.1", "[::1]", "localmind", "host.docker.internal"];
+  const raw = process.env.LOCALMIND_ALLOWED_HOSTS?.trim() ?? "";
+  if (raw === "*") return null;
+  const extra = raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : [];
+  // 대소문자 무시 비교를 위해 소문자로 정규화(호스트명은 case-insensitive).
+  return [...DEFAULTS, ...extra].map((h) => h.toLowerCase());
 }
 
 function num(name: string, fallback: number): number {
@@ -62,5 +81,6 @@ export function loadConfig(): Config {
       : "auto") as SessionMode,
     sessionTtlMs: num("SESSION_TTL_MS", 3_600_000),
     sessionMax: num("SESSION_MAX", 1000),
+    allowedHosts: parseAllowedHosts(),
   };
 }

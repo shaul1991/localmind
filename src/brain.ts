@@ -639,6 +639,29 @@ export function listNotes(folder?: string): { folder: string; path: string }[] {
 }
 
 /** 'label/파일경로' 노트 한 개를 삭제하고 재인덱싱한다. 폴더 밖 경로는 거부. 반환: 삭제 성공 여부. */
+/**
+ * 노트를 폴더의 `.trash/` 하위로 **상대경로를 보존해** 이동한다(soft-delete, specs/011 FR-4).
+ * - `label/sub/note.md` → `<folderDir>/.trash/sub/note.md` (AC-9: 하위폴더 경로 보존)
+ * - 같은 위치에 파일이 있으면 타임스탬프(+카운터) 접미로 충돌을 피한다(AC-7: 덮어쓰기 없음)
+ * `.trash/`는 숨김 폴더라 listMarkdown이 인덱싱에서 자동 제외한다(검색 미노출).
+ * 순수 fs 연산 — 인덱싱과 분리해 단위 테스트 가능. 이동한 목적지 절대경로를 반환.
+ */
+export function moveToTrash(full: string, folderDir: string): string {
+  const rel = path.relative(folderDir, full); // 폴더 내 상대경로 보존
+  const trashDir = path.join(folderDir, ".trash");
+  let dest = path.join(trashDir, rel);
+  if (fs.existsSync(dest)) {
+    const ext = path.extname(dest);
+    const base = dest.slice(0, dest.length - ext.length);
+    dest = `${base}-${Date.now()}${ext}`;
+    let n = 1;
+    while (fs.existsSync(dest)) dest = `${base}-${Date.now()}-${n++}${ext}`;
+  }
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.renameSync(full, dest);
+  return dest;
+}
+
 export async function deleteNote(qualified: string): Promise<boolean> {
   const slash = qualified.indexOf("/");
   if (slash < 0) return false;
@@ -647,7 +670,7 @@ export async function deleteNote(qualified: string): Promise<boolean> {
   const full = path.resolve(f.dir, qualified.slice(slash + 1));
   if (full !== f.dir && !full.startsWith(path.resolve(f.dir) + path.sep)) return false; // 폴더 밖 탈출 방지
   if (!fs.existsSync(full) || !fs.statSync(full).isFile()) return false;
-  fs.unlinkSync(full);
+  moveToTrash(full, f.dir); // 영구 삭제 대신 휴지통 이동(soft-delete)
   await ensureIndexed();
   return true;
 }

@@ -22,6 +22,7 @@ function cfg(sessionMode: SessionMode): Config {
     sessionMode,
     sessionTtlMs: 3_600_000,
     sessionMax: 1000,
+    allowedHosts: null,
   };
 }
 
