@@ -699,9 +699,14 @@ describe("쿼리 로그 (004)", () => {
     try {
       const r = runQueryLogProbe(dir, `
         await m.searchNotes("아무것도 없는 주제");
-        // 로깅은 fire-and-forget(비동기 append) — 파일 반영을 잠시 대기
-        for (let i = 0; i < 100 && !fsx.existsSync(process.env.QUERY_LOG); i++) await new Promise((r) => setTimeout(r, 20));
-        const lines = fsx.readFileSync(process.env.QUERY_LOG, "utf8").trim().split("\\n").map(JSON.parse);
+        // 로깅은 fire-and-forget(비동기 append) — 파일 '존재'가 아니라 '내용'을 기다린다.
+        // appendFile은 open(생성) 후 write라, 그 사이에 읽으면 빈 파일이다(CI에서 발현된 경합).
+        const ready = () => {
+          try { return fsx.readFileSync(process.env.QUERY_LOG, "utf8").trim().length > 0; }
+          catch { return false; }
+        };
+        for (let i = 0; i < 100 && !ready(); i++) await new Promise((r) => setTimeout(r, 20));
+        const lines = fsx.readFileSync(process.env.QUERY_LOG, "utf8").trim().split("\\n").filter(Boolean).map(JSON.parse);
         process.stdout.write(JSON.stringify(lines));
       `);
       const rec = r.find((x: any) => x.tool === "search_notes");
@@ -727,7 +732,7 @@ describe("쿼리 로그 (004)", () => {
           catch { return false; }
         };
         for (let i = 0; i < 100 && !enough(); i++) await new Promise((r) => setTimeout(r, 20));
-        const lines = fsx.readFileSync(process.env.QUERY_LOG, "utf8").trim().split("\\n").map(JSON.parse);
+        const lines = fsx.readFileSync(process.env.QUERY_LOG, "utf8").trim().split("\\n").filter(Boolean).map(JSON.parse);
         process.stdout.write(JSON.stringify(lines));
       `);
       const cap = r.find((x: any) => x.tool === "capture_note");
@@ -753,7 +758,7 @@ describe("쿼리 로그 (004)", () => {
           catch { return false; }
         };
         for (let i = 0; i < 100 && !enough(); i++) await new Promise((r) => setTimeout(r, 20));
-        const lines = fsx.readFileSync(process.env.QUERY_LOG, "utf8").trim().split("\\n").map(JSON.parse);
+        const lines = fsx.readFileSync(process.env.QUERY_LOG, "utf8").trim().split("\\n").filter(Boolean).map(JSON.parse);
         process.stdout.write(JSON.stringify({ lines, sources: ans.sources }));
       `);
       const ask = r.lines.filter((x: any) => x.tool === "ask_brain");
