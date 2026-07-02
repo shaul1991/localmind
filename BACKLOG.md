@@ -163,7 +163,9 @@
   - [x] override 병합 정합성 — host(`host.docker.internal`+`host-gateway`) / gpu(nvidia+`NUM_PARALLEL=4`), `docker compose config`
   - [x] 분기 — auto→cpu · gpu(미감지)→cpu 폴백 · host(미가동)→안내·중단, DRY_RUN
   - [x] **`os.environ/OLLAMA_API_BASE` 치환 실동작 + 기본 라우팅 회귀 없음** — litellm 재기동 후 임베딩 `dims=1024` 정상
-  - [ ] 맥북(잔여): `brew install ollama && ollama serve && ollama pull bge-m3` → `make embed BACKEND=host` → `make reindex` 체감↑ · `make doctor` "최적"
+  - [x] 맥북: `make embed BACKEND=host` 적용(2026-07-03) → 실 vault 1,079파일/8,277청크
+        재색인 **~15분**(Docker CPU 추정 수 시간 대비) · `make doctor` "✓ 최적 구성" 확인 ·
+        `.env` `OLLAMA_API_BASE=host.docker.internal` 영속
   - [ ] Linux+GPU(잔여): toolkit 설치 후 `make embed BACKEND=gpu` → `nvidia-smi`에 ollama 프로세스 · 속도↑
 - 영속화(구현됨): `make embed`가 선택을 `.env`의 `OLLAMA_API_BASE`에 기록 → 다음 `make up`도 유지(맥 host는 `host.docker.internal` 기본 해석이라 한 줄로 영속). 온보딩은 `make setup`(점검→진단→embed→연결 점검 체크리스트).
 - 후속(잔여): ① host 모드에서 idle ollama 컨테이너까지 제외(profile 분리 — depends_on/STACK 회귀 주의) ② gpu 영속 — `make up` 재기동 시 GPU override 자동 적용(현재 `.env`는 `OLLAMA_API_BASE`만 영속, `deploy`는 미영속)
