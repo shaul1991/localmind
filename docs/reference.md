@@ -109,7 +109,7 @@ OpenAI/Anthropic API는 stateless라 보통 매 요청마다 전체 히스토리
 ```bash
 curl http://127.0.0.1:8787/v1/chat/completions -H "Content-Type: application/json" \
   -H "x-localmind-session: my-convo-1" \
-  -d '{"model":"sonnet","messages":[{"role":"user","content":"내 이름은 지훈이야"}]}'
+  -d '{"model":"sonnet","messages":[{"role":"user","content":"내 이름은 <내이름>이야"}]}'
 ```
 
 **auto 모드 주의점**

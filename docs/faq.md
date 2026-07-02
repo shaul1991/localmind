@@ -68,10 +68,9 @@
 2. **받아서 켜기**
    ```bash
    git clone https://github.com/shaul1991/localmind && cd localmind
-   make install build
-   make claude-token   # claude 구독 토큰 발급(브라우저 1회) → 안내대로 .env에 입력 (codex만 쓰면 생략)
-   make up             # 스택 기동
+   make setup   # 준비물 점검 → 설치·빌드 → 토큰 안내 → 기기에 맞는 임베딩으로 기동 → 연결 점검까지 한 단계씩 안내
    ```
+   이후 매일 켜고 끄기는 `make up` / `make down`.
 3. **앱에 연결** — Claude Code면 **원클릭** `make mcp-install`. Cursor/Claude Desktop이면 `make mcp-config`가 출력한 JSON을 설정에 붙여넣기.
    ```bash
    make mcp-install                       # 기본 노트 폴더 ~/.localmind

@@ -2,6 +2,32 @@
 
 localmind의 주요 변경 이력. 최신이 위.
 
+## 2026-07 — SDD 스펙 사이클 (specs 001~012): second-brain 품질 + 공급망·보안 하드닝
+
+이 사이클의 핵심: 작업 흐름을 **SDD(goal→spec→plan→/goal→self-review)로 명문화**하고,
+그 흐름으로 second-brain 품질(loop engineering)·CI·공급망·로컬 보안을 스펙 단위로 다졌다.
+
+### SDD 작업 흐름
+- **SDD 규약 명문화** — `AGENTS.md`/`CLAUDE.md`에 specs 폴더 규약·`/goal {NNN}` 처리·self-review 필수화. (`76c1908`, `6f180e4`)
+- **`scaffold_sdd`** — SDD 작업 흐름(AGENTS.md 규약 + goal/spec/plan 템플릿)을 어느 프로젝트·AI 도구에든 심는 MCP 도구 + `make init-sdd`. (specs/007, `eec63f9`)
+- **모델 역할 배치 규약** — 실패 파장×난이도 기준 모델 티어 배치를 AGENTS.md에 추가. (`a0be9c6`)
+
+### second-brain 품질 (loop engineering)
+- **캡처 검증 루프** — `capture_note` 저장 직후 색인·검색 가능 여부를 자체 검증. (specs/001, `e770062`)
+- **`ask_brain` 출처 추적** — 답변에 사용된 노트 출처(sources)를 구조적으로 반환. (specs/002, `e770062`)
+- **자동 재색인 파일 워처** — 노트 폴더 변경 감지 → 색인 자동 갱신. (specs/003, `e770062`)
+- **노트 링크 그래프** — 위키링크(`[[...]]`) 기반 1-hop 연결 조회 `note_links` 도구. (specs/005, `0a830d5`)
+
+### 백업 / 노트 연결
+- **개인 설정 파일 선택 백업/복원** — `BACKUP_EXTRA_FILES`로 `$HOME` 하위 파일을 백업 repo `extras/`에 포함(충돌 시 `.bak-*` 보존). (specs/006, `b409f8b`)
+- **노트 git 저장소 연결** — `.env`에 `NOTES_REPOS` 선언 → `make notes-connect`가 clone/pull·`NOTES_DIR` 조립·MCP 등록까지, `make setup` 통합. (specs/012, `14712bb`)
+
+### 품질 / 성능 / 보안
+- **CI 테스트 게이트** — Node 20/22/24 매트릭스에서 typecheck + 단위 테스트 + 셸 테스트 + 빌드 + Docker 빌드. (specs/008, `d0054f4`)
+- **인덱스 내구성·성능** — 인덱스 캐싱(mtime+size)·원자적 쓰기(temp+rename)·single-flight. (specs/009, `f26689d`)
+- **공급망 아티팩트 버전 고정** — node·claude·codex·ollama·litellm 고정 + 가변 태그 회귀 가드(`pinning.test.sh`). 라이브 재빌드 검증 완료. (specs/010, `507feeb`)
+- **로컬 보안 하드닝** — Host 헤더 검증(DNS rebinding 차단, `/health` 예외) + 노트 soft-delete 휴지통(`.trash/`, `make trash-list`/`trash-empty`). (specs/011, `e150103`)
+
 ## 2026-06 — 개인 전용 정착 + 백업/복구 + 대화형 관리
 
 이 사이클의 핵심: **"개인 1인 전용"으로 방향을 굳히고**, 비개발자도 쓸 수 있게

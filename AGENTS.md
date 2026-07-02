@@ -10,8 +10,8 @@
 - `spec.md` — 무엇을(what): FR(각 FR은 goal 항목을 지지), Acceptance Criteria(Given-When-Then, 테스트와 1:1 매핑), Open questions
 - `plan.md` — 어떻게(how): 도메인 경계, 영향 모듈, 단계, 테스트 전략
 
-번호는 3자리(`001`, `002`, ...), 슬러그는 kebab-case. 다음 사용 가능 번호는 기존 `specs/`
-폴더의 최댓값 + 1이다(현재 최신: `005-note-link-graph` → 다음은 `006`).
+번호는 3자리(`001`, `002`, ...), 슬러그는 kebab-case. 다음 사용 가능 번호는 **작업 시점에
+`specs/` 폴더를 조회한 최댓값 + 1**이다 — 문서에 적힌 예시가 아니라 실제 폴더 목록이 기준.
 
 ## `/goal {NNN}` 처리 방법
 

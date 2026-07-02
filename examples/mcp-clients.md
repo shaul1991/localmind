@@ -1,7 +1,8 @@
 # MCP 도구로 쓰기 — Cursor / Claude Desktop / Codex
 
-localmind를 MCP 서버로 붙이면, 각 클라이언트가 **자기 모델로 코딩하면서** localmind의 도구
-(`ask`·`remember`·`recall`·`capture_note`·`search_notes`·`ask_brain`·`whoami`)를 끌어 씁니다.
+localmind를 MCP 서버로 붙이면, 각 클라이언트가 **자기 모델로 코딩하면서** localmind의 도구 13개
+(`whoami`·`ask`·`remember`/`recall`·`capture_note`/`search_notes`/`ask_brain`/`note_links`·
+`list_memories`/`delete_memory`·`list_notes`/`delete_note`·`scaffold_sdd`)를 끌어 씁니다.
 
 전제: `make up` (스택 기동) + `make build` (`dist/mcp.js` 생성).
 

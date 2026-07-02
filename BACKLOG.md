@@ -21,38 +21,37 @@
 > - **#7(보너스) ✅** 루트 `memory.md`(백업덤프) 제외 / 하위 폴더 `memory.md` 노트 포함 — 실데이터 확인
 
 ### A1. 다중 노트 폴더 (folder 스코프) — 커밋 `be19bd0`
-- [ ] 두 폴더 지정 `NOTES_DIR="work=/tmp/w,life=/tmp/l"`, 각 폴더에 `.md` 1개씩
-- [ ] `make up` 후 `search_notes`(folder 미지정) → 두 폴더 결과 섞임, 출처가 `라벨/파일`
-- [ ] `search_notes`/`ask_brain`에 `folder:"work"` → work 노트만
-- [ ] `capture_note` `folder:"life"` → life 폴더에 `.md` 생성
-- [ ] `whoami` → 폴더 목록(라벨:경로) 표시
+- [x] 두 폴더 지정 `NOTES_DIR="work=/tmp/w,life=/tmp/l"`, 각 폴더에 `.md` 1개씩
+- [x] `make up` 후 `search_notes`(folder 미지정) → 두 폴더 결과 섞임, 출처가 `라벨/파일`
+- [x] `search_notes`/`ask_brain`에 `folder:"work"` → work 노트만
+- [x] `capture_note` `folder:"life"` → life 폴더에 `.md` 생성
+- [ ] `whoami` → 폴더 목록(라벨:경로) 표시 *(2026-06-29 검증 노트에 미기재 — 잔여)*
 - 참고: 기존 v1 인덱스(`.brain-index.json`)는 v2로 자동 1회 재인덱싱(시간 소요 가능)
 
 ### A2. 백업 자동화 (`make backup`) — 커밋 `be19bd0`
-- [ ] `~/.localmind`(기본 BACKUP_DIR) git init + **private** remote 설정
-- [ ] `make backup` → `memory.md` export + 커밋 + push 성공
-- [ ] 변경 없이 재실행 → "변경 없음 — 커밋 생략"(멱등)
+- [ ] `~/.localmind`(기본 BACKUP_DIR) git init + **private** remote 설정 *(remote/private 여부는 검증 노트에 미기재 — 잔여)*
+- [ ] `make backup` → `memory.md` export + 커밋 + push 성공 *(export·커밋은 확인, push는 미기재 — 잔여)*
+- [x] 변경 없이 재실행 → "변경 없음 — 커밋 생략"(멱등)
 - [ ] `make backup-cron` 출력 한 줄 crontab 등록 → 다음 주기 로그 확인
 - ⚠️ 백업 repo는 Private. `.env`는 `.gitignore`라 안 올라가는지 확인
 
 ### A3. 새 기기 복구 (`make recover` / `restore`) — 커밋 `41fcbf2`
-- [ ] private repo로 `make restore RESTORE_REPO=<url>` → clone + memory-import + reindex
-- [ ] memory-import 멱등(재실행 시 "기존 스킵")
+- [x] private repo로 `make restore RESTORE_REPO=<url>` → clone + memory-import + reindex *(로컬 pull 기준 구성요소 확인)*
+- [x] memory-import 멱등(재실행 시 "기존 스킵") *(추가0/스킵6 확인)*
 - [ ] 깨끗한 환경에서 `make recover RESTORE_REPO=<url>` 전 과정(설치→기동→헬스대기→복원)
 - [ ] 복구 후 `make smoke` 통과 + 노트/기억 동일
 
 ### A4. reindex 실데이터 — 커밋 `41fcbf2`
-- [ ] 노트 있는 폴더로 `make reindex` → 파일/청크 수 출력, 임베딩 :4000 호출 성공
-- (현재 빈 폴더 0건만 확인 — 실제 임베딩 경로 미검증)
+- [x] 노트 있는 폴더로 `make reindex` → 파일/청크 수 출력, 임베딩 :4000 호출 성공 *(2026-06-29 실데이터 3파일/3청크·실임베딩 확인)*
 
 ### A5. 개인 전용 전환(원격 제거 + 루프백) — 커밋 `46d0f1a`
-- [ ] `make up` 정상 + `make smoke`(API/MCP/brain) 통과 — `mcp-http` 제거 후 회귀 없음
-- [ ] 포트가 `127.0.0.1`에만 바인딩: 같은 머신 `curl localhost:8787` OK,
+- [x] `make up` 정상 + `make smoke`(API/MCP/brain) 통과 — `mcp-http` 제거 후 회귀 없음
+- [x] 포트가 `127.0.0.1`에만 바인딩: 같은 머신 `curl localhost:8787` OK,
       다른 기기/LAN IP로는 접근 불가 확인
-- [ ] Cursor / Claude Desktop stdio MCP 정상 동작
+- [ ] Cursor / Claude Desktop stdio MCP 정상 동작 *(2026-06-29 검증 노트에 미기재 — 잔여)*
 
 ### A6. 시크릿 헬퍼 — 커밋 `8f99187`
-- [ ] `make secrets`의 구독 인증 점검이 실제 `~/.claude`·`~/.codex` 유무를 정확히 반영
+- [x] `make secrets`의 구독 인증 점검이 실제 `~/.claude`·`~/.codex` 유무를 정확히 반영 *(claude ✗/codex ✓ 교차 확인)*
 - (로컬 파싱·토큰 발급은 확인됨)
 
 ### A7. 개인 설정 파일 백업/복원(`BACKUP_EXTRA_FILES`) — specs/006-config-backup-sync
@@ -140,6 +139,11 @@
 - 갱신 절차는 각 파일의 고정 지점 옆 주석 참조(신버전 확인 명령 → 값 교체 → `make up` 검증).
 - 강한 고정 후속: claude install.sh 바이너리 직접 다운로드+체크섬(현재는 버전 인자로 1차 고정),
   이미지 digest 갱신 자동화 검토.
+
+### B6. 실패 질의 분석 — specs/004-failure-query-analysis (미구현)
+- goal/spec/plan 문서는 완비됐으나 **구현 착수 전**(질의 로그·리포트 관련 코드 0건).
+- 2026-07-03 리뷰에서 BACKLOG 미등재 고아 스펙으로 발견되어 추적 복원. 착수 시 `/goal 004`,
+  폐기 결정 시 spec 폴더에 폐기 사유를 남기고 이 항목을 지운다.
 
 ---
 
