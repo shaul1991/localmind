@@ -62,6 +62,39 @@ const ANSWER_MODEL = process.env.MCP_DEFAULT_MODEL ?? "sonnet";
 
 const MAX_CHUNK = Math.max(400, Number(process.env.BRAIN_CHUNK_SIZE ?? 2000));
 
+// ── specs/004: 쿼리 로그 (관측 레이어 — 실패 질의 분석의 데이터원) ─────────
+// 개인 쿼리 패턴이 담기므로 로컬 전용(.gitignore + 백업 시드 제외). 분석: make query-report.
+const QUERY_LOG_PATH =
+  process.env.QUERY_LOG ?? path.join(process.env.HOME ?? ".", ".localmind", "query-log.jsonl");
+
+interface QueryLogRecord {
+  ts: string;
+  tool: "search_notes" | "ask_brain" | "capture_note";
+  query: string;
+  hitCount: number;
+  success: boolean;
+  folder?: string | null;
+  captureValidation?: string | null;
+  sources?: string[];
+}
+
+/** fire-and-forget 로깅 — 기록 실패가 검색·캡처 응답을 절대 막지 않는다(004 FR-2).
+ *  stdout은 MCP 프로토콜 전용이므로 오류는 stderr에만 남긴다. */
+let queryLogDirReady = false; // mkdir은 첫 호출에만 — 매 검색마다 동기 FS 호출 방지(D-5)
+function logQuery(rec: QueryLogRecord): void {
+  try {
+    if (!queryLogDirReady) {
+      fs.mkdirSync(path.dirname(QUERY_LOG_PATH), { recursive: true });
+      queryLogDirReady = true;
+    }
+    fs.appendFile(QUERY_LOG_PATH, JSON.stringify(rec) + "\n", (err) => {
+      if (err) process.stderr.write(`[localmind-brain] 쿼리 로그 기록 실패(무시): ${err.message}\n`);
+    });
+  } catch (e) {
+    process.stderr.write(`[localmind-brain] 쿼리 로그 기록 실패(무시): ${(e as Error).message}\n`);
+  }
+}
+
 const INDEX_VERSION = 4; // 3→4: 임베딩 메타(embeddingModel·dims) 기록 + 청크 분할 방식 변경(specs/013)
 
 interface IndexedChunk {
@@ -572,6 +605,21 @@ export interface NoteHit {
 
 /** 노트 의미검색. folder(라벨)를 주면 그 폴더로 한정. */
 export async function searchNotes(query: string, limit = 5, folder?: string): Promise<NoteHit[]> {
+  const out = await searchNotesInternal(query, limit, folder);
+  logQuery({
+    ts: new Date().toISOString(),
+    tool: "search_notes",
+    query,
+    hitCount: out.length,
+    success: out.length > 0,
+    folder: folder ?? null,
+  });
+  return out;
+}
+
+/** 로깅 없는 내부 검색 — askBrain이 경유한다. 위임 호출까지 기록하면 ask 1회가
+ *  레코드 2건이 되어 리포트 빈도가 2배 왜곡된다(004 self-review D-1). */
+async function searchNotesInternal(query: string, limit: number, folder?: string): Promise<NoteHit[]> {
   let idx = await ensureIndexed();
   const [qv] = await embed([query]);
   // 차원 불일치 = 같은 모델명으로 다른 모델이 라우팅됐다는 뜻 — NaN 코사인으로 조용히
@@ -658,7 +706,9 @@ export async function capture(text: string, title?: string, folder?: string): Pr
   // 텍스트가 너무 짧으면 검증 생략
   if (!extractSearchQuery(text)) {
     await ensureIndexed();
-    return { path: key, validationStatus: "skipped", retried: false };
+    const skipped: CaptureResult = { path: key, validationStatus: "skipped", retried: false };
+    logCapture(skipped, title ?? text.slice(0, 50), target.label);
+    return skipped;
   }
 
   const VALIDATE_TIMEOUT_MS = Number(process.env.CAPTURE_VALIDATE_TIMEOUT_MS ?? 3000);
@@ -692,11 +742,26 @@ export async function capture(text: string, title?: string, folder?: string): Pr
     }
   }
 
-  return {
+  const result: CaptureResult = {
     path: key,
     validationStatus: found ? "confirmed" : "unconfirmed",
     retried,
   };
+  logCapture(result, title ?? text.slice(0, 50), target.label);
+  return result;
+}
+
+/** capture 이벤트 로깅(004 확정안: search/ask와 연결하지 않는 별도 레코드). */
+function logCapture(result: CaptureResult, query: string, folder: string): void {
+  logQuery({
+    ts: new Date().toISOString(),
+    tool: "capture_note",
+    query,
+    hitCount: 0,
+    success: result.validationStatus === "confirmed",
+    folder,
+    captureValidation: result.validationStatus,
+  });
 }
 
 export interface BrainAnswer {
@@ -706,11 +771,25 @@ export interface BrainAnswer {
 
 /** RAG: 노트 검색 → 컨텍스트로 claude/codex 종합 답변(인용 포함). folder(라벨)로 한정 가능. */
 export async function askBrain(question: string, k = 5, folder?: string): Promise<BrainAnswer> {
-  const hits = await searchNotes(question, k, folder);
-  if (!hits.length) return { answer: "관련 노트를 찾지 못했습니다.", sources: [] };
+  const hits = await searchNotesInternal(question, k, folder); // 내부 경유 — 이중 기록 방지(D-1)
+  const logAsk = (sources: string[]) =>
+    logQuery({
+      ts: new Date().toISOString(),
+      tool: "ask_brain",
+      query: question,
+      hitCount: hits.length,
+      success: sources.length > 0,
+      folder: folder ?? null,
+      sources,
+    });
+  if (!hits.length) {
+    logAsk([]);
+    return { answer: "관련 노트를 찾지 못했습니다.", sources: [] };
+  }
 
   const context = hits.map((h) => `[${h.path}]\n${h.text}`).join("\n\n---\n\n");
   const sources = [...new Set(hits.map((h) => h.path))];
+  logAsk(sources);
 
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (GATEWAY_KEY) headers.Authorization = `Bearer ${GATEWAY_KEY}`;

@@ -122,6 +122,14 @@
 - [ ] 실기기 `make recover` 전 과정에서 extras 복원 확인 (AC-4 라이브 — A3·A7 잔여와 함께)
 - [ ] `make backup-cron`(커스텀 BACKUP_DIR) 실제 등록 → 다음 주기 로그에 변수 반영 확인 (AC-10 라이브)
 
+### A13. 실패 질의 분석 라이브 검증 — specs/004-failure-query-analysis
+> 순수 로직(기록·fire-and-forget·리포트·--clean)은 단위(임베딩 스텁 프로브 3) +
+> `query-report.test.sh`(12)로 자동 검증됨. 아래는 실사용 데이터가 쌓인 뒤 확인.
+- [ ] MCP 실사용(search_notes/ask_brain/capture) 후 `~/.localmind/query-log.jsonl`에 레코드 축적 확인
+- [ ] 20건 이상 쌓인 뒤 `make query-report` → 성공률·실패 키워드·노트 갭·제안이 실데이터로 유의미한지
+- [ ] `make backup` 실행 후 백업 repo 커밋에 query-log.jsonl 미포함 확인(개인 쿼리 패턴 보호)
+- 참고: 리포트 제안이 유의미해지려면 수 주 사용 필요 — goal의 "데이터가 쌓여야 가치" 전제.
+
 ---
 
 ## B. 진행 백로그 — 미구현 (다음 로드맵)
@@ -176,10 +184,9 @@
 - 강한 고정 후속: claude install.sh 바이너리 직접 다운로드+체크섬(현재는 버전 인자로 1차 고정),
   이미지 digest 갱신 자동화 검토.
 
-### B6. 실패 질의 분석 — specs/004-failure-query-analysis (미구현)
-- goal/spec/plan 문서는 완비됐으나 **구현 착수 전**(질의 로그·리포트 관련 코드 0건).
-- 2026-07-03 리뷰에서 BACKLOG 미등재 고아 스펙으로 발견되어 추적 복원. 착수 시 `/goal 004`,
-  폐기 결정 시 spec 폴더에 폐기 사유를 남기고 이 항목을 지운다.
+### ~~B6. 실패 질의 분석~~ — specs/004 **구현 완료 (2026-07-03)** → 검증은 A13
+- 2026-07-03 문서 재검(Context를 013 이후 기준으로 갱신) 후 구현: 쿼리 로그(JSONL,
+  로컬 전용) + `make query-report`/`query-log-clean`. 라이브 확인 항목은 A13.
 
 ---
 

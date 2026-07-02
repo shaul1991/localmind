@@ -239,6 +239,7 @@ curl -X POST http://localhost:8767/api/v1/memories/filter -H "Content-Type: appl
 | `EMBEDDINGS_URL` | `http://localhost:4000/v1` | 노트 임베딩(게이트웨이) |
 | `EMBEDDINGS_MODEL` | `text-embedding-3-small` | (게이트웨이가 bge-m3로 매핑) |
 | `BRAIN_BATCH` / `BRAIN_CONCURRENCY` / `BRAIN_CHUNK_SIZE` | `32` / `4` / `2000` | 인덱싱 튜닝 |
+| `QUERY_LOG` | `~/.localmind/query-log.jsonl` | 검색 품질 로그(로컬 전용 — 커밋·백업 제외). 분석: `make query-report`, 정리: `make query-log-clean` |
 
 **인덱싱 성능**: 첫 인덱싱은 노트 전체를 임베딩(증분·resumable이라 이후엔 변경분만). bge-m3 CPU가 바닥이라 더 빠르게:
 - **`make doctor`로 진단 → `make embed`로 전환**(기기 자동 감지): 맥(Apple Silicon)은 호스트 네이티브 Ollama로 빼 **Metal 가속**(`BACKEND=host`), Linux+NVIDIA는 **Docker GPU**(`BACKEND=gpu`). `make embed DRY_RUN=1`로 미리보기.

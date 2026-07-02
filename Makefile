@@ -124,6 +124,14 @@ reindex: ## second-brain 노트 (재)인덱싱 (임베딩 :4000 필요)
 	@k=$$(grep -E '^LITELLM_MASTER_KEY=' .env 2>/dev/null | head -1 | cut -d= -f2-); \
 	LITELLM_MASTER_KEY="$$k" npm run reindex
 
+.PHONY: query-report
+query-report: ## second-brain 검색 품질 리포트(실패 쿼리 분석 — 로그는 로컬 전용)
+	@npm run --silent query-report
+
+.PHONY: query-log-clean
+query-log-clean: ## 쿼리 로그에서 30일 이전 항목 정리
+	@npm run --silent query-report -- --clean
+
 .PHONY: trash-list
 trash-list: ## 휴지통(.trash/) 확인 — soft-delete된 노트 목록 (NOTES_DIR)
 	@NOTES_DIR="$(NOTES_DIR)" bash "$(CURDIR)/scripts/trash.sh" list

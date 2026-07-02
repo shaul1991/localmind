@@ -647,6 +647,167 @@ describe("deleteNote — 대상 제한 (013 AC-9)", () => {
   });
 });
 
+// ── specs/004 — 쿼리 로그 (FR-1·2·3, AC-1·2·3) ─────────────────────────────
+// searchNotes는 쿼리 임베딩이 필요하므로, 프로브 안에서 임시 HTTP 임베딩 스텁을 띄워
+// 외부 서버 없이 검증한다(고정 벡터 반환 — 유사도 값은 무관, 로깅 경로만 확인).
+
+function runQueryLogProbe(notesDir: string, body: string): any {
+  const script = [
+    `const http = require("node:http");`,
+    `const fsx = require("node:fs");`,
+    `const srv = http.createServer((req, res) => {`,
+    `  let raw = ""; req.on("data", (c) => (raw += c));`,
+    `  req.on("end", () => {`,
+    `    res.setHeader("content-type", "application/json");`,
+    `    if ((req.url || "").includes("chat/completions")) {`,
+    `      res.end(JSON.stringify({ choices: [{ message: { content: "노트 기반 답변 [notes/x.md]" } }] }));`,
+    `      return;`,
+    `    }`,
+    `    const n = (JSON.parse(raw).input || []).length;`,
+    `    res.end(JSON.stringify({ data: Array.from({ length: n }, (_, i) => ({ index: i, embedding: [1, 0, 0, 0] })) }));`,
+    `  });`,
+    `});`,
+    `srv.listen(0, async () => {`,
+    `  const base = "http://127.0.0.1:" + srv.address().port;`,
+    `  process.env.EMBEDDINGS_URL = base + "/v1";`,
+    `  process.env.LOCALMIND_URL = base; // ask_brain 종합(gateway)도 스텁으로`,
+    `  const m = await import(${JSON.stringify(BRAIN_JS)});`,
+    `  try {`,
+    body,
+    `  } catch (e) { console.error(e); process.exit(1); }`,
+    `  srv.close();`,
+    `});`,
+  ].join("\n");
+  const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      NOTES_DIR: `notes=${notesDir}`,
+      BRAIN_INDEX: path.join(notesDir, ".brain-index.json"),
+      QUERY_LOG: path.join(notesDir, "query-log.jsonl"),
+      EMBEDDINGS_KEY: "test-key",
+      EMBED_RETRIES: "1",
+    },
+  });
+  return JSON.parse(out);
+}
+
+describe("쿼리 로그 (004)", () => {
+  it("AC-1: 히트 없는 검색이 hitCount:0, success:false로 기록된다", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lm-qlog-ac1-"));
+    try {
+      const r = runQueryLogProbe(dir, `
+        await m.searchNotes("아무것도 없는 주제");
+        // 로깅은 fire-and-forget(비동기 append) — 파일 반영을 잠시 대기
+        for (let i = 0; i < 100 && !fsx.existsSync(process.env.QUERY_LOG); i++) await new Promise((r) => setTimeout(r, 20));
+        const lines = fsx.readFileSync(process.env.QUERY_LOG, "utf8").trim().split("\\n").map(JSON.parse);
+        process.stdout.write(JSON.stringify(lines));
+      `);
+      const rec = r.find((x: any) => x.tool === "search_notes");
+      assert.ok(rec, "search_notes 레코드가 있어야 한다");
+      assert.equal(rec.hitCount, 0);
+      assert.equal(rec.success, false);
+      assert.equal(rec.query, "아무것도 없는 주제");
+      assert.ok(typeof rec.ts === "string" && !Number.isNaN(Date.parse(rec.ts)));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-1(보강): capture는 validationStatus와 함께, 히트 있는 검색은 success:true로 기록된다", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lm-qlog-ac2-"));
+    try {
+      const r = runQueryLogProbe(dir, `
+        await m.capture("백업 절차를 정리한 노트 본문입니다. 자세한 단계는 다음과 같습니다.", "백업 절차");
+        await m.searchNotes("백업 절차");
+        // 로깅은 fire-and-forget(비동기 append) — 레코드 2건 반영을 잠시 대기
+        const enough = () => {
+          try { return fsx.readFileSync(process.env.QUERY_LOG, "utf8").trim().split("\\n").length >= 2; }
+          catch { return false; }
+        };
+        for (let i = 0; i < 100 && !enough(); i++) await new Promise((r) => setTimeout(r, 20));
+        const lines = fsx.readFileSync(process.env.QUERY_LOG, "utf8").trim().split("\\n").map(JSON.parse);
+        process.stdout.write(JSON.stringify(lines));
+      `);
+      const cap = r.find((x: any) => x.tool === "capture_note");
+      assert.ok(cap, "capture_note 레코드");
+      assert.equal(cap.captureValidation, "confirmed");
+      const srch = r.find((x: any) => x.tool === "search_notes");
+      assert.ok(srch, "search_notes 레코드");
+      assert.equal(srch.success, true);
+      assert.ok(srch.hitCount >= 1);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-2: ask_brain이 sources·success와 함께 기록되고, 1회 호출은 레코드 1건이다(D-1 이중 기록 방지)", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lm-qlog-ask-"));
+    try {
+      const r = runQueryLogProbe(dir, `
+        await m.capture("백업 절차를 정리한 노트 본문입니다. 자세한 단계는 다음과 같습니다.", "백업 절차");
+        const ans = await m.askBrain("백업 절차가 뭐지?");
+        const enough = () => {
+          try { return fsx.readFileSync(process.env.QUERY_LOG, "utf8").trim().split("\\n").length >= 2; }
+          catch { return false; }
+        };
+        for (let i = 0; i < 100 && !enough(); i++) await new Promise((r) => setTimeout(r, 20));
+        const lines = fsx.readFileSync(process.env.QUERY_LOG, "utf8").trim().split("\\n").map(JSON.parse);
+        process.stdout.write(JSON.stringify({ lines, sources: ans.sources }));
+      `);
+      const ask = r.lines.filter((x: any) => x.tool === "ask_brain");
+      assert.equal(ask.length, 1, "ask_brain 레코드는 1건");
+      assert.equal(ask[0].success, true);
+      assert.ok(Array.isArray(ask[0].sources) && ask[0].sources.length >= 1, "sources가 기록된다");
+      // D-1: askBrain 경유 검색은 search_notes 레코드를 만들지 않는다(이중 기록·빈도 왜곡 방지)
+      const search = r.lines.filter((x: any) => x.tool === "search_notes");
+      assert.equal(search.length, 0, "위임 검색이 search_notes로 중복 기록되면 안 된다");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-3: 로그 기록이 실패해도(쓰기 불가 경로) 검색 응답은 정상 반환된다(fire-and-forget)", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lm-qlog-ac3-"));
+    try {
+      const script = [
+        `const http = require("node:http");`,
+        `const srv = http.createServer((req, res) => {`,
+        `  let raw = ""; req.on("data", (c) => (raw += c));`,
+        `  req.on("end", () => {`,
+        `    const n = (JSON.parse(raw).input || []).length;`,
+        `    res.setHeader("content-type", "application/json");`,
+        `    res.end(JSON.stringify({ data: Array.from({ length: n }, (_, i) => ({ index: i, embedding: [1, 0, 0, 0] })) }));`,
+        `  });`,
+        `});`,
+        `srv.listen(0, async () => {`,
+        `  process.env.EMBEDDINGS_URL = "http://127.0.0.1:" + srv.address().port + "/v1";`,
+        `  const m = await import(${JSON.stringify(BRAIN_JS)});`,
+        `  const hits = await m.searchNotes("정상 동작 확인");`,
+        `  process.stdout.write(JSON.stringify({ ok: Array.isArray(hits) }));`,
+        `  srv.close();`,
+        `});`,
+      ].join("\n");
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          NOTES_DIR: `notes=${dir}`,
+          BRAIN_INDEX: path.join(dir, ".brain-index.json"),
+          QUERY_LOG: "/dev/null/불가능한/경로/query-log.jsonl", // 쓰기 불가
+          EMBEDDINGS_KEY: "test-key",
+          EMBED_RETRIES: "1",
+        },
+      });
+      assert.equal(JSON.parse(out).ok, true, "로그 실패가 검색을 막으면 안 된다");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 // ── specs/013 트랙 B — 다중 프로세스 인덱스 안전 (FR-6, AC-11·12) ───────────
 
 describe("인덱스 다중 프로세스 안전 (013)", () => {
