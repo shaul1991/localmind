@@ -5,12 +5,14 @@ on:
     branches: [main, master]
   pull_request:
 
-# 참고: 스모크 테스트(npm run smoke*)는 인증된 claude/codex CLI가 필요하므로
-# CI에서는 실행하지 않는다. 타입체크·빌드·Docker 이미지 빌드만 검증한다.
+# 참고:
+# - 단위 테스트(npm test)와 셸 테스트(scripts/*.test.sh)는 외부 의존 없이 실행되므로 CI에서 검증한다.
+# - 통합 테스트(LOCALMIND_INTEGRATION=1)와 스모크 테스트(npm run smoke*)는 인증된 claude/codex
+#   CLI·임베딩 서버가 필요하므로 CI에서는 실행하지 않는다(로컬 전용).
 
 jobs:
   build:
-    name: typecheck & build (node ${{ matrix.node }})
+    name: typecheck, test & build (node ${{ matrix.node }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -24,6 +26,14 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - run: npm test
+      - name: shell tests
+        run: |
+          shopt -s nullglob   # 매치되는 *.test.sh가 없으면 리터럴 glob이 아니라 빈 목록으로 (거짓 실패 방지)
+          for t in scripts/*.test.sh; do
+            echo "── $t ──"
+            bash "$t" || exit 1
+          done
       - run: npm run build
 
   docker:
