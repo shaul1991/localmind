@@ -113,7 +113,7 @@ backup: ## 메모리 export + 노트 백업 repo 커밋·푸시 (BACKUP_DIR; 최
 	@npm run memory:export -- "$(BACKUP_DIR)/memory.md"
 	@git -C "$(BACKUP_DIR)" rev-parse --is-inside-work-tree >/dev/null 2>&1 || \
 		{ echo "✗ $(BACKUP_DIR) 는 git repo가 아닙니다 — git -C $(BACKUP_DIR) init && remote add origin <url> 후 다시"; exit 1; }
-	@for p in '.brain-index.json' '.brain-index.json.tmp'; do \
+	@for p in '.brain-index.json' '.brain-index.json.tmp' '.trash/'; do \
 		grep -qxF "$$p" "$(BACKUP_DIR)/.gitignore" 2>/dev/null || echo "$$p" >> "$(BACKUP_DIR)/.gitignore"; \
 	done
 	@BACKUP_DIR="$(BACKUP_DIR)" BACKUP_EXTRA_FILES="$(BACKUP_EXTRA_FILES)" \
@@ -131,6 +131,14 @@ backup-cron: ## 매일 자동 백업을 단계별로 crontab 에 등록(시간: 
 .PHONY: reindex
 reindex: ## second-brain 노트 (재)인덱싱 (임베딩 :4000 필요)
 	npm run reindex
+
+.PHONY: trash-list
+trash-list: ## 휴지통(.trash/) 확인 — soft-delete된 노트 목록 (NOTES_DIR)
+	@NOTES_DIR="$(NOTES_DIR)" bash "$(CURDIR)/scripts/trash.sh" list
+
+.PHONY: trash-empty
+trash-empty: ## 휴지통 완전 비우기(비가역) — 실행 전 확인. 비대화 시 FORCE=1 (NOTES_DIR)
+	@NOTES_DIR="$(NOTES_DIR)" FORCE="$(FORCE)" bash "$(CURDIR)/scripts/trash.sh" empty
 
 .PHONY: init-sdd
 init-sdd: ## SDD 작업 흐름(AGENTS.md+specs/)을 지정한 프로젝트에 심기 (DIR=<경로>; 기존 파일은 덮어쓰지 않음)
@@ -197,6 +205,10 @@ NOTES_DIR ?= $(HOME)/.localmind
 .PHONY: mcp-install
 mcp-install: ## localmind를 Claude Code에 단계별로 연결(준비물 점검→설정 확인→등록). 노트 폴더: NOTES_DIR=
 	@NOTES_DIR="$(NOTES_DIR)" bash "$(CURDIR)/scripts/mcp-install.sh"
+
+.PHONY: notes-connect
+notes-connect: ## 노트 git 저장소를 받아와 Claude Code에 연결. 목록: NOTES_REPOS="라벨=URL,...", 위치: NOTES_REPOS_DIR=
+	@NOTES_REPOS="$(NOTES_REPOS)" NOTES_REPOS_DIR="$(NOTES_REPOS_DIR)" bash "$(CURDIR)/scripts/notes-connect.sh"
 
 .PHONY: mcp-uninstall
 mcp-uninstall: ## Claude Code에서 localmind MCP 등록 해제

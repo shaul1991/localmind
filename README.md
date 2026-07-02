@@ -21,6 +21,11 @@
 > 로컬 스택(gateway·임베딩·메모리·brain) + **내 `claude`/`codex` 로그인** + **localhost(루프백)** 로만
 > 동작하며, **중앙 서버·공유 계정·원격 접속에 의존하지 않습니다**(단일 장애점·ToS 회피).
 >
+> 🔒 **공유 머신 주의**: 여러 사람이 쓰는 컴퓨터·회사 노트북 등 신뢰할 수 없는 프로세스가
+> 있는 환경이면 `.env`의 `LOCALMIND_API_KEY`를 설정하세요 — 루프백 안쪽이라도 같은 머신의
+> 다른 프로세스는 무인증으로 구독을 소비할 수 있습니다. (Host 헤더 검증은 기본 활성 — DNS
+> rebinding 차단.)
+>
 > 📜 **정책 근거**: 본인 구독으로 내 머신에서 나 혼자 쓰는 건 Anthropic 공식 terms의 *"ordinary, individual usage of Claude Code"* 범주라 허용됩니다 — 금지 대상은 *"타인을 대신해(on behalf of their users)"* 구독 자격증명으로 요청을 라우팅하는 경우입니다. **서비스화하거나 타인 요청을 내 구독으로 처리하면 API 키 인증으로 전환해야 합니다.** ([Claude Code Legal & compliance](https://code.claude.com/docs/en/legal-and-compliance))
 
 ```
@@ -173,6 +178,19 @@ make recover RESTORE_REPO=<내 백업 repo url>
 - 이미 스택이 떠 있고 데이터만 되돌릴 땐 `make restore RESTORE_REPO=<url>` (또는 BACKUP_DIR이 이미 그 repo면 인자 없이 `make restore`).
 - 복원 순서: **노트 repo pull/clone → `memory-import`(멱등) → 노트 재인덱싱**. 인덱스·DB는 파생이라 자동 재생성됩니다.
 - 다중 노트 폴더를 쓴다면 폴더별 repo를 각각 복원하고 `NOTES_DIR`를 그에 맞게 지정하세요.
+
+### 노트를 git 저장소로 쓸 때 — `make notes-connect`
+노트를 GitHub 등 git 저장소로 관리한다면, 저장소 목록만 선언하면 새 기기 연결이 한 번에 끝납니다.
+
+```bash
+# .env 에 저장소 목록 선언(형식: "라벨=URL,...")
+#   NOTES_REPOS="work=git@github.com:<user>/work-notes.git,life=https://github.com/<user>/life-notes.git"
+make notes-connect        # 각 저장소 clone(있으면 pull) → NOTES_DIR 조립 → Claude Code 등록
+```
+- **새 기기 흐름**: `git clone localmind` → `.env` 복원(또는 `NOTES_REPOS` 한 줄 입력) → `make notes-connect`. `make setup`도 `NOTES_REPOS`가 있으면 이 연결을 함께 제안합니다.
+- 저장소는 `NOTES_REPOS_DIR`(기본 `~/localmind-notes`) 아래 `<라벨>/`에 clone됩니다.
+- ⚠️ **등록 덮어쓰기**: `notes-connect`는 MCP 등록을 통째로 재작성합니다 — 수동으로만 추가했던 폴더는 사라지니 `NOTES_REPOS`로 옮기세요.
+- ⚠️ **자격증명**: 비공개 저장소는 SSH 키나 git credential helper를 쓰세요(토큰을 URL에 박지 말 것). 인증이 없으면 해당 저장소만 실패로 건너뛰고 나머지는 정상 연결됩니다.
 
 ## MCP 서버 (도구로 사용)
 

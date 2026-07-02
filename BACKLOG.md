@@ -64,6 +64,27 @@
 - [ ] 복원 대상에 이미 다른 내용의 파일이 있을 때 `.bak-<타임스탬프>` 보존 확인
 - [ ] `BACKUP_EXTRA_FILES` 미지정 시 기존 `make backup`/`make restore` 동작에 회귀 없음
 
+### A8. 공급망 고정 라이브 검증 — specs/010-supply-chain-pinning
+> 정적 회귀 가드(가변 태그 0건·고정 지점 존재)는 `scripts/pinning.test.sh`로 자동 검증됨.
+> 아래 AC-2·AC-3은 실제 재빌드가 필요해 라이브(호스트+네트워크)에서 확인한다.
+> (구현 환경에서 레지스트리 네트워크가 막혀 이 세션에선 미실행 — 고정 버전은 현재 가동
+> 버전과 동일하게 선정해 회귀 위험은 낮으나, 빌드 성공 자체는 아래로 확인해야 한다.)
+- [ ] `docker compose build --no-cache` 성공(node:24.18.0-slim 존재, `@openai/codex@0.142.4`
+      존재, `install.sh | bash -s -- 2.1.196`이 지정 버전 설치) — **AC-3**
+- [ ] `make up` → `make health` → `make smoke` 회귀 없이 통과 — **AC-2**
+- [ ] 컨테이너 내 `claude --version`=2.1.196 · `codex --version`=0.142.4 확인 — **AC-3**
+- [ ] (선택) ollama digest를 `ollama/ollama:0.30.11` 태그로 교체(호스트에서 태그 존재 확인 시 — spec 1차 선호 형태)
+
+### A9. 노트 저장소 연결 라이브 검증 — specs/012-notes-repo-connect
+> 순수 로직(파싱·URL/라벨 검증·clone/pull·조립·마스킹·비실행 .env 읽기·FR-17)은
+> `scripts/notes-connect.test.sh`·`scripts/read-env.test.sh`로 자동 검증됨(로컬 bare repo, 네트워크 불필요).
+> 아래는 실제 GitHub 비공개 repo + 실제 `claude mcp` 등록·setup 대화 흐름(AC-20~22).
+- [ ] 실제 `NOTES_REPOS="라벨=git@github.com:..."`로 `make notes-connect` → clone + `claude mcp list`에 다폴더 등록 확인
+- [ ] 이미 등록된 상태에서 `NOTES_REPOS` 추가 후 `make setup` → 이미 등록됐어도 notes-connect 재연결 제안됨 (AC-20)
+- [ ] `NOTES_REPOS` 미설정(빈 값) `make setup` → 기존 단일 폴더 mcp-install 경로 유지, 회귀 없음 (AC-21)
+- [ ] 인증 미설정으로 전 저장소 clone 실패 시 → 기본 폴더 등록 폴백 제안 확인 (AC-22)
+- [ ] `.env`에 토큰-in-URL 넣고 `make setup`/`notes-connect` → stdout/stderr에 토큰 평문 없음 (AC-23, 실환경 재확인)
+
 ---
 
 ## B. 진행 백로그 — 미구현 (다음 로드맵)
@@ -110,6 +131,13 @@
 - `scripts/up.sh` 헬스 루프의 `curl`에 `--connect-timeout`/`--max-time` 추가(응답 지연 시 짧게 실패).
 - 현재도 `|| echo 000`으로 curl 부재·연결거부엔 무한 대기 안 함 → **Minor 하드닝**(보류 가능).
 - 원 코멘트: https://github.com/shaul1991/localmind/pull/3#discussion_r3489038453
+
+### B5. 고정 버전 주기 갱신 (specs/010 공급망 고정 — 운영)
+- "고정"과 "방치"는 다르다: `Dockerfile`·`docker-compose.yml`에 고정한 외부 아티팩트
+  (node·codex·claude·ollama·litellm)를 분기별(또는 보안 공지 시) 갱신한다.
+- 갱신 절차는 각 파일의 고정 지점 옆 주석 참조(신버전 확인 명령 → 값 교체 → `make up` 검증).
+- 강한 고정 후속: claude install.sh 바이너리 직접 다운로드+체크섬(현재는 버전 인자로 1차 고정),
+  이미지 digest 갱신 자동화 검토.
 
 ---
 
