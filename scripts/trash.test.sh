@@ -43,7 +43,8 @@ out="$(NOTES_DIR="," bash "$TRASH" list 2>&1)"; rc=$?
 assert "회귀: malformed NOTES_DIR(빈 항목)에 크래시 없이 안내(exit 0)" '[ "$rc" -eq 0 ] && printf "%s" "$out" | grep -q "비어 있습니다"'
 
 # ── AC-8/FR-6: backup 이 .trash/ 를 .gitignore 에 시드 ──────────
-assert "AC-8: Makefile backup 시드에 .trash/ 포함" "grep -qF \"'.trash/'\" \"$ROOT/Makefile\""
+# (015에서 backup 파이프라인이 Makefile → scripts/backup.sh로 이동 — 시드 위치 추적)
+assert "AC-8: backup 파이프라인 시드에 .trash/ 포함" "grep -qF \"'.trash/'\" \"$ROOT/scripts/backup.sh\""
 
 echo ""
 echo "011 trash 결과: $pass 통과, $fail 실패"

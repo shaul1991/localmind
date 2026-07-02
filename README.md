@@ -150,6 +150,8 @@ make backup
 ```
 - `make backup-init`은 **GitHub private repo를 자동 생성**(`gh repo create --private`)하고 origin 연결 후 첫 백업까지 수행 — 멱등(이미 연결돼 있으면 생성 생략).
 - 변경 없으면 커밋 생략, remote 없으면 로컬 커밋만 — **여러 번 돌려도 안전**.
+- **스택이 꺼져 있어도 노트는 백업됩니다** — 메모리 export만 건너뛰고 "부분 완료" 요약과
+  비0 종료 코드로 알립니다(cron 로그에서 식별 가능). 스택을 켜고 다시 실행하면 메모리까지 백업.
 - ⚠️ 백업 repo는 **Private로 생성**됩니다. `.env`(시크릿)는 이 repo가 아닌 프로젝트 폴더에 있고 `.brain-index.json`(파생물)은 `.gitignore` 처리됩니다.
 
 > gh CLI 없이 수동으로 하려면: `git -C ~/.localmind init && git -C ~/.localmind remote add origin <private repo url>` 후 `make backup`.

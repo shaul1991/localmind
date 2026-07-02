@@ -112,6 +112,16 @@
 - 참고: openmemory Host 검증 예외 없음(헬스 폴링은 `127.0.0.1` Host라 기본 목록으로 충분).
   특수 구성은 `OPENMEMORY_ALLOWED_HOSTS`(추가 방식, `*`=끔).
 
+### A12. 백업·복구 신뢰성 라이브 검증 — specs/015-backup-reliability
+> 순수 로직(부분 실패·push 안내·purge 가드·MCP 원자성·cron 변수·배선)은
+> `backup/purge/mcp-install/backup-cron/reliability-wiring.test.sh`(44+)로 자동 검증됨.
+> 아래는 실제 스택·crontab·실기기 필요.
+- [ ] 스택 끈 채 `make backup` → 노트 커밋·push + "부분 완료" 요약 + 비0 종료 (AC-1 라이브)
+- [ ] 스택 켠 채 `make backup` → 메모리+노트 정상, 0 종료 (AC-2 라이브)
+- [ ] `make up` 첫 대기가 :8787 포함 3포트 확인 후 "준비 완료" (AC-12 라이브)
+- [ ] 실기기 `make recover` 전 과정에서 extras 복원 확인 (AC-4 라이브 — A3·A7 잔여와 함께)
+- [ ] `make backup-cron`(커스텀 BACKUP_DIR) 실제 등록 → 다음 주기 로그에 변수 반영 확인 (AC-10 라이브)
+
 ---
 
 ## B. 진행 백로그 — 미구현 (다음 로드맵)

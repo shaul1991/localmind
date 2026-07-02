@@ -33,6 +33,7 @@ if [ ! -f "$PROJECT_DIR/.env" ]; then
   cp "$PROJECT_DIR/.env.example" "$PROJECT_DIR/.env"
   ok ".env 생성됨 — 기본값으로도 켜져요. (claude 연동 토큰 등은 'make secrets'로 점검)"
   bash "$PROJECT_DIR/scripts/ensure-master-key.sh" "$PROJECT_DIR/.env" # 새 설치 — 키 자동 생성(014)
+  chmod 600 "$PROJECT_DIR/.env" # OAuth 토큰·키가 담기므로 소유자 전용(specs/015 FR-9)
 else
   ok ".env 있음"
 fi
@@ -45,26 +46,36 @@ fi
 # ── 2/3 : 시작 ──────────────────────────────────────────────────
 say "$(b '[2/3] 엔진 시작')"
 say "  → 컨테이너를 빌드·시작하는 중... (처음엔 몇 분 걸려요. 기다려 주세요.)"
-DC up -d --build >/dev/null 2>&1 || { err "시작 실패 — '$(b 'make logs')'로 원인을 확인해 주세요."; exit 1; }
+DC up -d --build >/dev/null 2>&1 || {
+  err "시작 실패 — '$(b 'make logs')'로 원인을 확인해 주세요."
+  say "  (빌드 자체가 실패했다면 로그에 안 남아요 — '$(b 'docker compose up -d --build')'를 직접 실행하면 에러가 보여요.)"
+  exit 1
+}
 ok "컨테이너 시작됨"
 
 # ── 3/3 : 준비 대기 ─────────────────────────────────────────────
+# 채팅(:8787)까지 확인해야 "준비 완료"가 실제 상태와 일치한다(specs/015 FR-8, BACKLOG B4).
+# curl 타임아웃: 응답이 지연되는 비정상 상태에서 폴링이 행 걸리지 않게.
 say "$(b '[3/3] 준비 상태 확인')"
+probe() { curl -s -o /dev/null --connect-timeout 2 --max-time 5 -w "%{http_code}" "$1" 2>/dev/null || echo 000; }
 ready=0
 for i in $(seq 1 120); do
-  m="$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8767/docs 2>/dev/null || echo 000)"
-  g="$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/health/liveliness 2>/dev/null || echo 000)"
-  if [ "$m" = "200" ] && [ "$g" = "200" ]; then ready=1; break; fi
-  printf '\r  준비 중... %s/120 (메모리=%s AI엔진=%s)   ' "$i" "$m" "$g"
+  c="$(probe http://127.0.0.1:8787/health)"
+  m="$(probe http://127.0.0.1:8767/docs)"
+  g="$(probe http://127.0.0.1:4000/health/liveliness)"
+  if [ "$c" = "200" ] && [ "$m" = "200" ] && [ "$g" = "200" ]; then ready=1; break; fi
+  printf '\r  준비 중... %s/120 (채팅=%s 메모리=%s AI엔진=%s)   ' "$i" "$c" "$m" "$g"
   sleep 5
 done
-printf '\r%*s\r' 60 ''
+printf '\r%*s\r' 70 ''
 if [ "$ready" != "1" ]; then
   warn "엔진이 아직 준비되지 않았어요(처음 모델 내려받기가 더 걸릴 수 있어요)."
+  say "  안 뜬 포트 — 채팅 :8787=$c · 메모리 :8767=$m · AI엔진 :4000=$g"
   say "  잠시 후 '$(b 'make health')'로 다시 확인하거나, '$(b 'make logs')'로 진행 상황을 보세요."
+  say "  (빌드 자체가 실패했다면 로그에 없어요 — '$(b 'docker compose up -d --build')'를 직접 실행하면 에러가 보여요.)"
   exit 1
 fi
-ok "준비 완료 (메모리 :8767 · AI :4000)"
+ok "준비 완료 (채팅 :8787 · 메모리 :8767 · AI :4000)"
 
 say ""
 say "$(b '🎉 localmind가 켜졌어요!')"

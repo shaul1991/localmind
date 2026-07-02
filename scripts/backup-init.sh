@@ -82,7 +82,8 @@ if ! git -C "$BACKUP_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   ok "백업 폴더를 git으로 초기화: $BACKUP_DIR"
 fi
 touch "$BACKUP_DIR/.gitignore"
-for p in .brain-index.json .DS_Store; do
+# 파생물 제외 — backup.sh의 시드 목록과 동일하게 유지(specs/015 self-review 지적)
+for p in '.brain-index.json' '.brain-index.json.tmp' '.brain-index.json.tmp-*' '.brain-index.json.lock' '.trash/' '.DS_Store'; do
   grep -qxF "$p" "$BACKUP_DIR/.gitignore" || echo "$p" >> "$BACKUP_DIR/.gitignore"
 done
 

@@ -65,6 +65,7 @@ if grep -qE '^CLAUDE_CODE_OAUTH_TOKEN=' "$ENV_FILE"; then
 else
   printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$TOKEN" >> "$ENV_FILE"
 fi
+chmod 600 "$ENV_FILE" # OAuth 토큰이 담기므로 소유자 전용(specs/015 FR-9)
 ok ".env 에 저장됨 (앞 8자: ${TOKEN:0:8}…, 길이 ${#TOKEN})"
 
 say ""
