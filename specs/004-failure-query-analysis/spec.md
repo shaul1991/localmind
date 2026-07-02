@@ -9,11 +9,23 @@
 
 ## Context
 
-001 `capture_note` 검증, 002 `ask_brain` 출처 추적이 구현된 후 착수.
-해당 구현들이 이미 "출처 있음/없음", "인덱싱 확인/미확인" 정보를 생성하므로
-이를 로그에 함께 담아 통합 분석한다.
+> 2026-07-03 재검(013 구현 이후 기준) — 이 스펙은 001~003 직후 작성됐고, 이후 009(인덱스
+> 캐싱)·011(soft-delete)·013(청크 분할·임베딩 메타·다중 프로세스 락)이 `brain.ts`를 크게
+> 바꿨다. 아래 Context를 현재 코드 기준으로 갱신했다.
 
-현재 `brain.ts` 에 쿼리 로깅 구조 없음. `search_notes`, `askBrain` 함수에 side-effect로 추가.
+- 001~003·013 **구현 완료**: `capture()`가 `CaptureResult.validationStatus`
+  ("confirmed"/"unconfirmed"/"skipped")를 반환하고, `askBrain()`이 `sources: string[]`를
+  반환한다(`src/brain.ts`). 이 값들을 로그에 담을 준비가 돼 있다.
+- `searchNotes(query, limit, folder?)` / `askBrain(question, k, folder?)`는 `folder`
+  스코프 파라미터를 받는다(다중 노트 폴더) — 로그 레코드에 스코프도 기록해야 실패
+  분석이 왜곡되지 않는다(전체 검색 실패 vs 좁은 폴더 검색 실패는 다른 신호).
+- 현재 `brain.ts`에 쿼리 로깅 구조 없음. `searchNotes`/`askBrain`에 side-effect로 추가.
+- ⚠️ 기본 노트 폴더(`~/.localmind`)는 **백업 git repo이기도 하다** — 로그 파일을 그 안에
+  두면 `make backup`이 개인 쿼리 패턴을 원격에 커밋한다. goal Constraints(".gitignore
+  추가")에 더해, 백업 파이프라인(`scripts/backup.sh`)의 .gitignore 시드 목록에도
+  `query-log.jsonl`을 추가해야 한다(015에서 신설된 파일).
+- 013이 검색 정확성 결함(청크 유실)을 수정했으므로, 이 스펙의 실패 데이터는 "색인 버그"가
+  아니라 "실제 노트 갭·질의 품질"을 반영한다 — goal의 착수 전제 충족.
 
 ## Functional Requirements
 
@@ -68,8 +80,14 @@
   When `make query-report` 실행 시,
   Then "데이터 부족 (5건)" 경고를 포함한 부분 리포트를 출력한다.
 
-## Open questions
+## Open questions — 2026-07-03 재검으로 확정
 
-- 분석 스크립트 언어: Node.js (`scripts/query-report.mjs`) vs Python? 기존 `scripts/` 가 bash/Python 혼용이라 확인 필요.
-- 키워드 추출: 한국어 형태소 분석이 필요한가? 일단 공백 분리 + stop word 제거 휴리스틱으로 시작.
-- `captureValidation` 필드: 001 구현 후 `capture_note` 응답에서 값이 오는지 아니면 별도 로그에서 참조하는지 설계 결정 필요.
+- ~~분석 스크립트 언어~~ → **TypeScript(tsx) `scripts/query-report.ts` + npm 스크립트**로
+  확정. 근거: 기존 scripts/의 Node 유틸은 전부 tsx(.ts) 관례(reindex.ts·memory-export.ts),
+  Python은 컨테이너 패치 전용.
+- ~~키워드 추출~~ → **공백 분리 + 한국어 조사 제거 휴리스틱으로 시작** 확정(형태소 분석
+  의존성 도입 금지 — Simplicity First. 데이터가 쌓여 부족이 증명되면 재론).
+- ~~`captureValidation` 연동~~ → **capture 이벤트를 별도 레코드(tool:"capture_note")로
+  기록**하고, search/ask 레코드에는 포함하지 않는 것으로 확정. `capture()`가
+  `validationStatus`를 이미 반환하므로 호출 지점에서 바로 기록 가능(흐름 연결 불필요).
+- (신규) 로그 레코드에 `folder` 스코프 포함 — 다중 폴더 도입(013 이전 be19bd0) 반영.

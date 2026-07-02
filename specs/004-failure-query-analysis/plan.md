@@ -4,11 +4,14 @@
 
 ## 접근 요약
 
+> 2026-07-03 재검: 스크립트를 기존 관례에 맞춰 `.mjs` → **tsx(.ts)**로, `query-log-clean`은
+> 별도 파일 대신 **같은 스크립트의 `--clean` 옵션**으로 단순화(spec Open questions 확정 반영).
+
 `brain.ts` 에 경량 로거(`QueryLogger`)를 추가한다. `searchNotes()` / `askBrain()` 의 마지막에
-fire-and-forget 방식으로 JSONL 레코드를 append한다.
-분석은 `scripts/query-report.mjs` (Node.js ES Module) 스크립트로 수행하고
-`Makefile` 에 `query-report` / `query-log-clean` 타깃을 추가한다.
-001·002 구현 결과(`validationStatus`, `sources`)를 로그 레코드에 함께 담아 통합 분석한다.
+fire-and-forget 방식으로 JSONL 레코드를 append하고, `capture()`는 별도
+`tool:"capture_note"` 레코드(validationStatus 포함)를 남긴다. 레코드에 `folder` 스코프 포함.
+분석은 `scripts/query-report.ts`(tsx) 스크립트로 수행하고 `Makefile` 에 `query-report` /
+`query-log-clean`(= `query-report.ts --clean`) 타깃을 추가한다.
 
 ## 도메인 경계 (DDD)
 
@@ -24,11 +27,13 @@ fire-and-forget 방식으로 JSONL 레코드를 append한다.
 
 | 파일 | 변경 유형 | 내용 |
 |------|-----------|------|
-| `src/brain.ts` | 수정 | `QueryLogger` 클래스 추가, `searchNotes()` / `askBrain()` 에 로깅 side-effect |
-| `scripts/query-report.mjs` | 신규 | JSONL 로그 분석 스크립트 |
+| `src/brain.ts` | 수정 | `QueryLogger` 추가, `searchNotes()`/`askBrain()`/`capture()` 로깅 side-effect |
+| `scripts/query-report.ts` | 신규 | JSONL 로그 분석 스크립트(tsx, `--clean` 옵션 포함) |
+| `package.json` | 수정 | `query-report` npm 스크립트 추가(기존 reindex 관례) |
 | `Makefile` | 수정 | `query-report`, `query-log-clean` 타깃 추가 |
 | `.gitignore` | 수정 | `query-log.jsonl` 패턴 추가 |
-| `src/brain.test.ts` | 수정/신규 | `QueryLogger` 단위 테스트, fire-and-forget 동작 확인 |
+| `scripts/backup.sh` | 수정 | 백업 .gitignore 시드 목록에 `query-log.jsonl` 추가(개인 쿼리 패턴 커밋 방지 — spec Context ⚠️) |
+| `src/brain.test.ts` | 수정 | `QueryLogger` 단위 테스트, fire-and-forget 동작 확인 |
 
 ## 단계 (task 분해 가능)
 
@@ -41,9 +46,10 @@ fire-and-forget 방식으로 JSONL 레코드를 append한다.
    `hitCount = results.length`, `success = results.length > 0`.
 
 3. **`brain.ts` — `askBrain()` 로깅**: 002 구현의 `sources` 결과와 함께 로깅.
-   `success = sources.length > 0`.
+   `success = sources.length > 0`. **`capture()` 로깅**: `tool:"capture_note"` 레코드로
+   `validationStatus` 기록(2026-07-03 재검 확정안).
 
-4. **`scripts/query-report.mjs` — 분석 스크립트**:
+4. **`scripts/query-report.ts` — 분석 스크립트(tsx)**:
    - `QUERY_LOG` 경로의 JSONL 파일을 줄 단위로 읽기
    - 최근 30일 필터링
    - 출력 섹션: 총량/성공률 → 실패 키워드 Top 10 → 인덱싱 미확인 빈도 → 노트 갭 주제 → 개선 제안
@@ -53,15 +59,14 @@ fire-and-forget 방식으로 JSONL 레코드를 append한다.
      - 노트 갭 키워드 ≥ 3개 → "해당 주제 노트 작성 권장: [키워드]"
      - `captureValidation: unconfirmed` > 10% → "임베딩 서버 상태 확인 (`make health`)"
 
-5. **`Makefile` 타깃 추가**:
+5. **`Makefile`·`package.json` 타깃 추가**:
    ```makefile
-   query-report:
-   	node scripts/query-report.mjs
-   query-log-clean:
-   	node -e "..." # 30일 이전 항목 필터링 후 재저장
+   query-report:      # npm run query-report (tsx scripts/query-report.ts)
+   query-log-clean:   # npm run query-report -- --clean (30일 이전 항목 정리)
    ```
 
-6. **`.gitignore` 업데이트**: `*.jsonl` 또는 `query-log.jsonl` 추가.
+6. **`.gitignore` + `scripts/backup.sh` 시드 업데이트**: `query-log.jsonl` 추가
+   (repo 커밋과 백업 repo 커밋 양쪽에서 제외 — 개인 쿼리 패턴 보호).
 
 7. **테스트 작성**: AC-1 ~ AC-6 커버 (`fs.appendFile` mock, 임시 로그 파일 활용).
 
@@ -78,6 +83,7 @@ fire-and-forget 방식으로 JSONL 레코드를 append한다.
 
 ## Open questions
 
-- 001 `captureValidation` 상태를 로그에 포함하려면 `capture_note` 흐름과 `search_notes` 흐름이 연결돼야 함. 현재 별개 호출이므로 `captureValidation` 은 `capture_note` 로그에서만 기록하고 `search_notes` 로그는 별도로 처리하는 게 현실적. 설계 확정 필요.
-- `query-log-clean` 구현: Node.js 인라인 스크립트 vs 별도 `.mjs` 파일 — 재사용성 위해 별도 파일 권장.
-- 분석 스크립트 실행 주기 자동화(예: `make backup-cron` 에 통합): 004 범위 밖으로 Open questions 에 남김.
+- ~~`captureValidation` 연동~~ → 확정(2026-07-03 재검): `capture_note` 별도 레코드로 기록,
+  search/ask 레코드와 연결하지 않음(spec Open questions 참조).
+- ~~`query-log-clean` 구현~~ → 확정: 별도 파일 대신 `query-report.ts --clean` 옵션(파일 수 최소화).
+- 분석 스크립트 실행 주기 자동화(예: `make backup-cron` 에 통합): 004 범위 밖으로 유지.
