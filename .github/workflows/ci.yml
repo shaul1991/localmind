@@ -50,3 +50,13 @@ jobs:
           tags: localmind:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      # openmemory 이미지도 CI에서 빌드한다(specs/014 FR-4) — mem0 고정 스냅샷 + patch.py의
+      # 호환성 assert가 여기서 검증돼, 사용자 기기의 make up/recover에서 처음 깨지지 않게 한다.
+      - name: Build openmemory image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./openmemory
+          push: false
+          tags: localmind-openmemory:ci
+          cache-from: type=gha,scope=openmemory
+          cache-to: type=gha,mode=max,scope=openmemory

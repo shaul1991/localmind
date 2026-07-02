@@ -52,6 +52,10 @@ fi
 say "$(b '[2/3] 설정 확인')"
 USER_ID="$(grep -E "^OPENMEMORY_USER=" "$PROJECT_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2- || true)"  # .env 없음/매치 없음에 set -e 중단 방지 → 폴백 도달
 USER_ID="${USER_ID:-localmind}"
+# 게이트웨이 키 — MCP 프로세스는 .env를 읽지 않으므로 등록 env로 전달해야 임베딩(:4000)이
+# 인증된다(specs/014 FR-7 — 키가 랜덤화되면서 하드코딩 폴백이 사라짐).
+MASTER_KEY="$(grep -E "^LITELLM_MASTER_KEY=" "$PROJECT_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+[ -z "$MASTER_KEY" ] && warn "게이트웨이 키가 .env에 없어요 — 'make init-env' 후 다시 실행하면 노트 검색이 인증돼요."
 ok "사용자 이름: $(b "$USER_ID")"
 ok "노트 폴더  : $(b "$NOTES_DIR")"
 say "  (노트 폴더를 바꾸려면: $(b 'make mcp-install NOTES_DIR=/내/노트경로'), 여러 개는 쉼표로)"
@@ -61,6 +65,7 @@ say "$(b '[3/3] Claude Code에 등록')"
 claude mcp remove localmind -s user >/dev/null 2>&1 || true   # 기존 등록 있으면 덮어쓰기
 if claude mcp add localmind -s user \
      -e OPENMEMORY_USER="$USER_ID" -e NOTES_DIR="$NOTES_DIR" \
+     ${MASTER_KEY:+-e LITELLM_MASTER_KEY="$MASTER_KEY"} \
      -- node "$PROJECT_DIR/dist/mcp.js" >/dev/null 2>&1; then
   ok "등록 완료 (user 스코프)"
 else

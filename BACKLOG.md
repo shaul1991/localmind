@@ -100,6 +100,18 @@
   색인 실행에 합류하면 낡은 인덱스가 한 번 되살아날 수 있음 — 다음 검색에서 다시 reset되어
   수렴하나, 모델 스왑 이벤트가 잦으면 재임베딩 반복. 필요 시 in-flight 무효화 도입.
 
+### A11. 공급망·노출면 완결 라이브 검증 — specs/014-supply-chain-port-hardening
+> 정적 가드(openmemory 고정·negative 자기검증·sk-local 폴백 부재)는 `pinning.test.sh`,
+> 키 생성·배선은 `master-key.test.sh`로 자동 검증됨. 아래는 실제 빌드·가동 스택 필요.
+- [ ] `docker compose build --no-cache openmemory` 2회 → 빌드 로그의 checkout 커밋 동일(MEM0_COMMIT) + patch.py assert 통과 — **AC-1**
+- [ ] push 후 CI docker job에서 openmemory 이미지 빌드 green — **AC-3**
+- [ ] 재기동 후 `curl -H "Host: evil.example.com" http://127.0.0.1:8767/api/v1/memories/` → 403 · `Host: localhost`는 정상 — **AC-4**
+- [ ] `make up` → `make smoke`(remember/recall·brain 경로) 회귀 없음 — **AC-5**
+- [ ] 잘못된 키로 `curl :4000/v1/embeddings` → 401 · MCP 경유(`search_notes`)는 정상 — **AC-8**
+- [ ] 기존 `.env`(sk-local)로 `make up` 정상 + `make secrets`에 갱신 권장 표시 — **AC-9**
+- 참고: openmemory Host 검증 예외 없음(헬스 폴링은 `127.0.0.1` Host라 기본 목록으로 충분).
+  특수 구성은 `OPENMEMORY_ALLOWED_HOSTS`(추가 방식, `*`=끔).
+
 ---
 
 ## B. 진행 백로그 — 미구현 (다음 로드맵)

@@ -223,6 +223,43 @@ try:
 except FileNotFoundError:
     print("[patch] (skip) mem0 prompts.py 없음")
 
+# (3) Host 헤더 검증 주입 (specs/014 FR-5 — DNS rebinding 차단):
+#     OpenMemory REST는 무인증이라, 악성 웹페이지가 DNS rebinding으로 브라우저를 경유해
+#     127.0.0.1:8767의 개인 기억을 열람·삭제할 수 있다(루프백 바인딩으로는 못 막는 경로).
+#     localmind :8787의 Host 검증(specs/011)과 같은 의미론: 기본 허용 목록에
+#     OPENMEMORY_ALLOWED_HOSTS(콤마 구분)를 '추가'하고, '*' 단독일 때만 끈다.
+apppath = "/usr/src/openmemory/main.py"
+a = open(apppath).read()
+assert "app = FastAPI" in a, "main.py 앱 생성 지점 변경됨"
+a += '''
+
+# ── localmind: Host 헤더 검증 (specs/014, DNS rebinding 차단) ──
+import os as _cg_os
+import re as _cg_re
+from starlette.responses import JSONResponse as _CGJson
+
+_CG_ALLOWED = {"localhost", "127.0.0.1", "[::1]", "openmemory", "host.docker.internal"}
+_cg_extra = (_cg_os.environ.get("OPENMEMORY_ALLOWED_HOSTS") or "").strip()
+_CG_HOST_GUARD_OFF = _cg_extra == "*"
+if _cg_extra and not _CG_HOST_GUARD_OFF:
+    _CG_ALLOWED |= {h.strip().lower() for h in _cg_extra.split(",") if h.strip()}
+
+
+@app.middleware("http")
+async def _cg_host_guard(request, call_next):
+    if _CG_HOST_GUARD_OFF:
+        return await call_next(request)
+    host = _cg_re.sub(r":\\d+$", "", (request.headers.get("host") or "").lower())
+    if host not in _CG_ALLOWED:
+        return _CGJson(
+            {"detail": "허용되지 않은 Host 헤더입니다(로컬 전용 메모리 서버). 리버스 프록시 등 "
+                       "특수 구성이면 OPENMEMORY_ALLOWED_HOSTS에 호스트명을 추가하세요."},
+            status_code=403,
+        )
+    return await call_next(request)
+'''
+open(apppath, "w").write(a)
+
 # (2) Postgres 앱 DB 지원
 dp = "/usr/src/openmemory/app/database.py"
 d = open(dp).read()
@@ -233,4 +270,4 @@ d = d.replace(
 )
 open(dp, "w").write(d)
 
-print("[patch] memories.py + database.py 패치 완료")
+print("[patch] memories.py + database.py + main.py(Host 검증) 패치 완료")

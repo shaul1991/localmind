@@ -77,8 +77,8 @@ services:
       - ./litellm.config.yaml:/app/config.yaml:ro
     command: ["--config", "/app/config.yaml", "--port", "4000"]
     environment:
-      # 소비자는 이 키를 Authorization: Bearer 로 보낸다. 변경 권장.
-      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-local}
+      # 소비자는 이 키를 Authorization: Bearer 로 보낸다. make init-env가 임의 값을 자동 생성.
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY 미설정 — make init-env 로 키를 생성하세요}
       # 임베딩 라우팅 대상. 기본 = Docker ollama. `make embed BACKEND=host` 가
       # docker-compose.host.yml override로 host.docker.internal(맥 네이티브 Ollama·Metal)로 바꾼다.
       - OLLAMA_API_BASE=${OLLAMA_API_BASE:-http://ollama:11434/v1}
@@ -121,8 +121,8 @@ services:
       - "127.0.0.1:${OPENMEMORY_PORT:-8767}:8765"
     environment:
       # config.json이 env:API_KEY를 참조하므로 둘 다 세팅.
-      - API_KEY=${LITELLM_MASTER_KEY:-sk-local}
-      - OPENAI_API_KEY=${LITELLM_MASTER_KEY:-sk-local}
+      - API_KEY=${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY 미설정 — make init-env 로 키를 생성하세요}
+      - OPENAI_API_KEY=${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY 미설정 — make init-env 로 키를 생성하세요}
       # openai SDK가 직접 읽는 base URL → LLM·임베더 모두 게이트웨이로.
       - OPENAI_BASE_URL=http://litellm:4000/v1
       - USER=${OPENMEMORY_USER:-localmind}
@@ -138,11 +138,13 @@ services:
       - LLM_PROVIDER=openai
       - LLM_MODEL=${CHAT_MODEL:-claude-sonnet-4-6}
       - LLM_BASE_URL=http://litellm:4000/v1
-      - LLM_API_KEY=${LITELLM_MASTER_KEY:-sk-local}
+      - LLM_API_KEY=${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY 미설정 — make init-env 로 키를 생성하세요}
       - EMBEDDER_PROVIDER=openai
       - EMBEDDER_MODEL=text-embedding-3-small
       - EMBEDDER_BASE_URL=http://litellm:4000/v1
-      - EMBEDDER_API_KEY=${LITELLM_MASTER_KEY:-sk-local}
+      - EMBEDDER_API_KEY=${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY 미설정 — make init-env 로 키를 생성하세요}
+      # Host 헤더 검증(specs/014 — DNS rebinding 차단). 기본 허용 목록에 '추가'되며 '*'면 끔.
+      - OPENMEMORY_ALLOWED_HOSTS=${OPENMEMORY_ALLOWED_HOSTS:-}
     restart: unless-stopped
 
   # 부트스트랩(일회성): pgvector 테이블을 임베딩 차원에 맞춰 선생성(mem0가 재사용)

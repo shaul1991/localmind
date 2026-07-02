@@ -11,7 +11,7 @@ make health        # 200 확인
 ## 엔드포인트 한눈에
 | 용도 | URL | 키 |
 |---|---|---|
-| **통합**(채팅+임베딩, drop-in OpenAI) | `http://localhost:4000/v1` | `sk-local` (`LITELLM_MASTER_KEY`) |
+| **통합**(채팅+임베딩, drop-in OpenAI) | `http://localhost:4000/v1` | `.env`의 `LITELLM_MASTER_KEY` 값(설치 시 자동 생성 — `make secrets`로 확인) |
 | 채팅만(직접) | `http://localhost:8787/v1` | 기본 없음(`LOCALMIND_API_KEY` 설정 시 필요) |
 | Anthropic 메시지 | `http://localhost:8787` (`/v1/messages`) | 동일 |
 | 메모리(mem0) REST | `http://localhost:8767/api/v1` | 없음 |

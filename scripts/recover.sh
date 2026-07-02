@@ -62,6 +62,7 @@ if [ ! -f "$PROJECT_DIR/.env" ]; then
 else
   ok ".env 있음"
 fi
+bash "$PROJECT_DIR/scripts/ensure-master-key.sh" "$PROJECT_DIR/.env" # 게이트웨이 키 없으면 자동 생성(specs/014)
 
 # ── 2/6 : 백업 내려받기 ─────────────────────────────────────────
 say "$(b '[2/6] 백업 저장소 가져오기')"
@@ -142,7 +143,8 @@ fi
 
 # ── 6/6 : 노트 재인덱싱 ─────────────────────────────────────────
 say "$(b '[6/6] 노트 검색 색인 만들기')"
-if ( cd "$PROJECT_DIR" && NOTES_DIR="${NOTES_DIR:-$BACKUP_DIR}" npm run --silent reindex >/dev/null 2>&1 ); then
+MASTER_KEY="$(grep -E '^LITELLM_MASTER_KEY=' "$PROJECT_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+if ( cd "$PROJECT_DIR" && NOTES_DIR="${NOTES_DIR:-$BACKUP_DIR}" LITELLM_MASTER_KEY="$MASTER_KEY" npm run --silent reindex >/dev/null 2>&1 ); then
   ok "노트 색인 완료 — 첫 검색부터 빨라요."
 else
   warn "색인을 건너뛰었어요(안 해도 첫 검색 때 자동으로 만들어져요). 원하면 나중에 '$(b 'make reindex')'."

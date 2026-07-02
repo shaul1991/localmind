@@ -23,8 +23,8 @@
 >
 > 🔒 **공유 머신 주의**: 여러 사람이 쓰는 컴퓨터·회사 노트북 등 신뢰할 수 없는 프로세스가
 > 있는 환경이면 `.env`의 `LOCALMIND_API_KEY`를 설정하세요 — 루프백 안쪽이라도 같은 머신의
-> 다른 프로세스는 무인증으로 구독을 소비할 수 있습니다. (Host 헤더 검증은 기본 활성 — DNS
-> rebinding 차단.)
+> 다른 프로세스는 무인증으로 구독을 소비할 수 있습니다. (Host 헤더 검증은 채팅 :8787과
+> 메모리 :8767 모두 기본 활성 — DNS rebinding 차단. 게이트웨이 :4000 키는 설치 시 임의 생성.)
 >
 > 📜 **정책 근거**: 본인 구독으로 내 머신에서 나 혼자 쓰는 건 Anthropic 공식 terms의 *"ordinary, individual usage of Claude Code"* 범주라 허용됩니다 — 금지 대상은 *"타인을 대신해(on behalf of their users)"* 구독 자격증명으로 요청을 라우팅하는 경우입니다. **서비스화하거나 타인 요청을 내 구독으로 처리하면 API 키 인증으로 전환해야 합니다.** ([Claude Code Legal & compliance](https://code.claude.com/docs/en/legal-and-compliance))
 

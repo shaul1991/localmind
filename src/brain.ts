@@ -51,7 +51,9 @@ const FOLDER_BY_LABEL = new Map(FOLDERS.map((f) => [f.label, f]));
 const INDEX_PATH = process.env.BRAIN_INDEX ?? path.join(FOLDERS[0].dir, ".brain-index.json");
 
 const EMB_URL = (process.env.EMBEDDINGS_URL ?? "http://localhost:4000/v1").replace(/\/$/, "");
-const EMB_KEY = process.env.EMBEDDINGS_KEY ?? process.env.LITELLM_MASTER_KEY ?? "sk-local";
+// 키 하드코딩 폴백 없음(specs/014 FR-7) — 게이트웨이 키는 설치마다 임의 생성되므로
+// MCP 등록 env(make mcp-install가 전달) 또는 호출 환경에서 와야 한다.
+const EMB_KEY = process.env.EMBEDDINGS_KEY ?? process.env.LITELLM_MASTER_KEY ?? "";
 const EMB_MODEL = process.env.EMBEDDINGS_MODEL ?? "text-embedding-3-small";
 
 const GATEWAY_URL = (process.env.LOCALMIND_URL ?? "http://localhost:8787").replace(/\/$/, "");
@@ -415,6 +417,12 @@ function sha(s: string): string {
 
 async function embed(texts: string[]): Promise<number[][]> {
   if (!texts.length) return [];
+  if (!EMB_KEY) {
+    throw new Error(
+      "게이트웨이 키(LITELLM_MASTER_KEY)가 설정되지 않았어요 — 'make mcp-install'을 다시 실행해 " +
+        "연결을 갱신하거나, MCP 설정의 env에 .env의 LITELLM_MASTER_KEY 값을 넣어 주세요.",
+    );
+  }
   const attempts = Math.max(1, Number(process.env.EMBED_RETRIES ?? 5));
   const timeoutMs = Number(process.env.EMBED_TIMEOUT_MS ?? 120000);
   let lastErr: unknown;

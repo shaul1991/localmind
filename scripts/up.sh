@@ -32,8 +32,14 @@ if [ ! -f "$PROJECT_DIR/.env" ]; then
   warn ".env(설정 파일)가 없어 예시에서 새로 만들어요."
   cp "$PROJECT_DIR/.env.example" "$PROJECT_DIR/.env"
   ok ".env 생성됨 — 기본값으로도 켜져요. (claude 연동 토큰 등은 'make secrets'로 점검)"
+  bash "$PROJECT_DIR/scripts/ensure-master-key.sh" "$PROJECT_DIR/.env" # 새 설치 — 키 자동 생성(014)
 else
   ok ".env 있음"
+fi
+# 게이트웨이 키가 없으면 추측 가능한 기본 키로 뜨는 대신 여기서 멈춘다(specs/014 AC-7).
+if ! grep -qE '^LITELLM_MASTER_KEY=.+' "$PROJECT_DIR/.env"; then
+  err "게이트웨이 키(LITELLM_MASTER_KEY)가 .env에 없어요 — '$(b 'make init-env')'가 자동 생성해 줘요. 실행 후 다시 '$(b 'make up')'."
+  exit 1
 fi
 
 # ── 2/3 : 시작 ──────────────────────────────────────────────────
