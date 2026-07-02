@@ -34,7 +34,13 @@ services:
   # Ollama로 OpenAI 호환 /v1/embeddings 제공. 최초 기동 시 모델을 자동 pull.
   ollama:
     profiles: ["gateway"]
-    image: ollama/ollama:latest
+    # [공급망 고정] digest로 고정(= ollama 0.30.11). sha256이라 업스트림 재푸시에도 불변 — 재현성 최상.
+    #   참고: ollama는 semver 태그가 명확해 `ollama/ollama:0.30.11`(버전 태그)이 더 간단·가독적이며
+    #   specs/010이 1차로 선호하는 형태다. 여기서 digest를 쓴 건 구현 환경에서 태그 원격 검증이
+    #   불가했고 digest는 검증된 재현 핀이기 때문 — 네트워크 되는 호스트에서 태그로 바꿔도 무방.
+    #   버전을 올리려면: 호스트에서 `docker pull ollama/ollama:<신버전>` 후
+    #   `docker image inspect ... --format '{{index .RepoDigests 0}}'`로 새 digest를 얻어 교체 → `make up` 검증.
+    image: ollama/ollama@sha256:c484b703176aa19dfc0a54cbfb60ab8094b38faa04283fb77eba1d33319e5eca
     container_name: localmind-ollama
     environment:
       # CPU에선 임베딩 1건이 이미 전 코어를 쓰므로 병렬(>1)은 경합으로 더 느려진다.
@@ -58,7 +64,11 @@ services:
   #   /v1/chat/completions  → localmind(claude/codex CLI)
   litellm:
     profiles: ["gateway"]
-    image: ghcr.io/berriai/litellm:main-latest
+    # [공급망 고정] digest로 고정(= litellm v1.91.0). litellm의 ghcr 태그 체계가 불명확
+    #   (main-* 롤링 태그 위주)이라 sha256 digest로 고정한다 — specs/010 Open questions 지침.
+    #   버전을 올리려면: 원하는 릴리스 태그로 `docker pull ghcr.io/berriai/litellm:<태그>` 후
+    #   `docker image inspect ... --format '{{index .RepoDigests 0}}'`로 새 digest를 얻어 교체 → `make up` 검증.
+    image: ghcr.io/berriai/litellm@sha256:addc088d27c8e6d143d933dc005b8f1a41d45978e5f3acef8e35881303c67427
     container_name: localmind-litellm
     depends_on: [localmind, ollama]
     ports:
