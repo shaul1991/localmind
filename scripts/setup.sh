@@ -10,6 +10,7 @@ set -uo pipefail
 
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$DIR"
+. "$DIR/scripts/lib/read-env.sh"   # read_env_val(비실행 .env 읽기)·mask_url 공용 헬퍼(specs/012)
 DRY_RUN="${DRY_RUN:-}"
 BACKUP_DIR="${BACKUP_DIR:-$HOME/.localmind}"
 NOTES_DIR="${NOTES_DIR:-$HOME/.localmind}"
@@ -154,8 +155,28 @@ else
   no "codex 인증: 없음 (codex를 쓰려면 호스트에서 로그인)"
   cmd "codex      # 로그인하면 ~/.codex 생성"
 fi
+# specs/012 FR-16: NOTES_REPOS(env→.env 비실행 읽기)가 있으면 notes-connect 경로로 분기.
+# 값 자체는 화면에 출력하지 않는다(토큰 유출 방지) — 존재/개수만 노출.
+NREPOS="${NOTES_REPOS:-}"; [ -z "$NREPOS" ] && NREPOS="$(read_env_val NOTES_REPOS "$DIR/.env")"
 if have claude; then
-  if claude mcp list 2>/dev/null | grep -q localmind; then
+  if [ -n "$NREPOS" ]; then
+    ncount="$(printf '%s' "$NREPOS" | tr ',' '\n' | grep -c .)"
+    if claude mcp list 2>/dev/null | grep -q localmind; then
+      ok "Claude Code 연동: localmind 등록됨 (노트 저장소 ${ncount}곳 선언 — 갱신/재연결 가능)"
+    else
+      no "Claude Code 연동: 미등록 (노트 저장소 ${ncount}곳 선언)"
+    fi
+    cmd "make notes-connect"
+    if confirm "노트 저장소를 받아와 연결할까요?"; then
+      bash "$DIR/scripts/notes-connect.sh" || warn "일부 저장소 연결 실패 — 위 요약을 확인해 주세요."
+      # 전부 실패로 여전히 미등록이면 기본 폴더 등록으로 폴백(레거시보다 나빠지지 않게) — FR-16/AC-22
+      if ! claude mcp list 2>/dev/null | grep -q localmind; then
+        no "아직 미등록입니다(모든 저장소 연결 실패일 수 있어요)."
+        cmd "make mcp-install"
+        if confirm "우선 기본 노트 폴더($NOTES_DIR)로 등록할까요?"; then NOTES_DIR="$NOTES_DIR" bash "$DIR/scripts/mcp-install.sh"; fi
+      fi
+    fi
+  elif claude mcp list 2>/dev/null | grep -q localmind; then
     ok "Claude Code 연동: localmind 등록됨"
   else
     no "Claude Code 연동: 미등록 (Claude Code에서 localmind 도구를 쓰려면)"
@@ -164,6 +185,7 @@ if have claude; then
   fi
 else
   warn "Claude Code(claude) CLI가 안 보여요 — 설치 후 $(b 'make mcp-install')로 연동."
+  [ -n "$NREPOS" ] && say "  (노트 저장소가 선언돼 있어요 — claude 설치 후 $(b 'make notes-connect')로 연결하세요.)"
 fi
 
 # ── 5/5 : 마무리 체크리스트 ────────────────────────────────────
