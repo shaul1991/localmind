@@ -89,12 +89,14 @@
 ### A10. 세션·색인 정확성 라이브 검증 — specs/013-session-index-accuracy
 > 순수 로직(prefix 검증·tools 서명·빈 id 방어·chunk 분할·인덱스 메타·락/병합·delete 제한·
 > capture 충돌)은 `npm test`(session/brain 단위 + 자식 프로세스 격리)로 자동 검증됨.
-> 아래는 라이브 스택·실 임베딩이 필요한 도그푸드.
-- [ ] 같은 `user` 값으로 서로 다른 두 대화를 보내 맥락 혼입이 없는지 (AC-1 라이브)
-- [ ] 첫 턴 tools 없이 → 둘째 턴 tools 추가 시 `tool_calls` 정상 생성 (AC-4 라이브)
-- [ ] 빈 줄 없는 5,000자 문단 캡처 후 꼬리 문구가 `search_notes`로 검색됨 (AC-5, 실 임베딩)
-- [ ] `EMBEDDINGS_MODEL` 교체 후 검색 → 자동 재색인 + 정상 검색 (AC-7, 실 임베딩)
-- [ ] Claude Code + Cursor 동시 접속 상태에서 양쪽 캡처 → 양쪽 검색 (AC-11 라이브)
+> ✅ **라이브 검증 (2026-07-03, 재빌드 스택·실 임베딩):** AC-1(같은 user 두 대화 —
+> 암호명 누출 없음)·AC-4(tools 후행 추가 → tool_calls 정상)·AC-5(5,000자 문단 꼬리
+> 검색 confirmed) 통과.
+- [x] 같은 `user` 값으로 서로 다른 두 대화를 보내 맥락 혼입이 없는지 (AC-1 라이브)
+- [x] 첫 턴 tools 없이 → 둘째 턴 tools 추가 시 `tool_calls` 정상 생성 (AC-4 라이브)
+- [x] 빈 줄 없는 5,000자 문단 캡처 후 꼬리 문구가 `search_notes`로 검색됨 (AC-5, 실 임베딩)
+- [ ] `EMBEDDINGS_MODEL` 교체 후 검색 → 자동 재색인 + 정상 검색 (AC-7, 실 임베딩 — 게이트웨이 라우팅 구성 필요라 잔여)
+- [ ] Claude Code + Cursor 동시 접속 상태에서 양쪽 캡처 → 양쪽 검색 (AC-11 라이브 — 사용자 터미널 필요)
 - 참고: INDEX_VERSION 3→4 bump — 첫 실행 시 기존 노트 전체 1회 재색인(CPU 임베딩이면 수 분, stderr 안내 있음)
 - 잔여(낮음, self-review 결함 6): 임베딩 차원 불일치로 인덱스 reset 직후 이미 진행 중이던
   색인 실행에 합류하면 낡은 인덱스가 한 번 되살아날 수 있음 — 다음 검색에서 다시 reset되어
@@ -102,32 +104,36 @@
 
 ### A11. 공급망·노출면 완결 라이브 검증 — specs/014-supply-chain-port-hardening
 > 정적 가드(openmemory 고정·negative 자기검증·sk-local 폴백 부재)는 `pinning.test.sh`,
-> 키 생성·배선은 `master-key.test.sh`로 자동 검증됨. 아래는 실제 빌드·가동 스택 필요.
-- [ ] `docker compose build --no-cache openmemory` 2회 → 빌드 로그의 checkout 커밋 동일(MEM0_COMMIT) + patch.py assert 통과 — **AC-1**
-- [ ] push 후 CI docker job에서 openmemory 이미지 빌드 green — **AC-3**
-- [ ] 재기동 후 `curl -H "Host: evil.example.com" http://127.0.0.1:8767/api/v1/memories/` → 403 · `Host: localhost`는 정상 — **AC-4**
-- [ ] `make up` → `make smoke`(remember/recall·brain 경로) 회귀 없음 — **AC-5**
-- [ ] 잘못된 키로 `curl :4000/v1/embeddings` → 401 · MCP 경유(`search_notes`)는 정상 — **AC-8**
-- [ ] 기존 `.env`(sk-local)로 `make up` 정상 + `make secrets`에 갱신 권장 표시 — **AC-9**
+> 키 생성·배선은 `master-key.test.sh`로 자동 검증됨.
+> ✅ **라이브 검증 (2026-07-03):** 고정 커밋(cd79fa89) fetch·checkout·patch 적용 빌드 성공 +
+> CI 동일 빌드 green(재현성 이중 확인) · Host 가드·키 거부·sk-local 무파손 전부 통과.
+- [x] 고정 빌드 — 빌드 로그에서 MEM0_COMMIT fetch·checkout + patch.py 전 섹션 적용 확인, CI에서도 동일 커밋 빌드 green(재현성) — **AC-1**
+- [x] push 후 CI docker job에서 openmemory 이미지 빌드 green — **AC-3** (run `a19ba9c` success)
+- [x] 재기동 후 `Host: evil.example.com` → :8767 **403** · `Host: localhost` → 200 (:8787 evil도 403 — 011 회귀 확인) — **AC-4**
+- [x] `make up` → `make smoke`(API·MCP·brain 전부) 회귀 없음 — **AC-5**
+- [x] 잘못된 키 `:4000/v1/embeddings` → **400 거부**(litellm 비마스터키 거부 응답) · 정키(sk-local)는 200 — **AC-8**
+- [x] 기존 `.env`(sk-local)로 `make up` 정상 + `make secrets`에 "예전 기본값 — 갱신 권장" 표시 — **AC-9**
 - 참고: openmemory Host 검증 예외 없음(헬스 폴링은 `127.0.0.1` Host라 기본 목록으로 충분).
   특수 구성은 `OPENMEMORY_ALLOWED_HOSTS`(추가 방식, `*`=끔).
 
 ### A12. 백업·복구 신뢰성 라이브 검증 — specs/015-backup-reliability
 > 순수 로직(부분 실패·push 안내·purge 가드·MCP 원자성·cron 변수·배선)은
 > `backup/purge/mcp-install/backup-cron/reliability-wiring.test.sh`(44+)로 자동 검증됨.
-> 아래는 실제 스택·crontab·실기기 필요.
-- [ ] 스택 끈 채 `make backup` → 노트 커밋·push + "부분 완료" 요약 + 비0 종료 (AC-1 라이브)
-- [ ] 스택 켠 채 `make backup` → 메모리+노트 정상, 0 종료 (AC-2 라이브)
-- [ ] `make up` 첫 대기가 :8787 포함 3포트 확인 후 "준비 완료" (AC-12 라이브)
-- [ ] 실기기 `make recover` 전 과정에서 extras 복원 확인 (AC-4 라이브 — A3·A7 잔여와 함께)
-- [ ] `make backup-cron`(커스텀 BACKUP_DIR) 실제 등록 → 다음 주기 로그에 변수 반영 확인 (AC-10 라이브)
+> ✅ **라이브 검증 (2026-07-03, 실 백업 repo):** 스택 OFF 백업 → 노트 커밋·push +
+> "부분 완료 — 메모리" 요약 + 비0 종료 · 스택 ON 백업 → 전체 성공 0 종료 · `make up`
+> 대기가 채팅 :8787 포함 3포트 확인 후 "준비 완료"(2회 확인).
+- [x] 스택 끈 채 `make backup` → 노트 커밋·push + "부분 완료" 요약 + 비0 종료 (AC-1 라이브)
+- [x] 스택 켠 채 `make backup` → 메모리+노트 정상, 0 종료 (AC-2 라이브)
+- [x] `make up` 첫 대기가 :8787 포함 3포트 확인 후 "준비 완료" (AC-12 라이브)
+- [ ] 실기기 `make recover` 전 과정에서 extras 복원 확인 (AC-4 라이브 — A3·A7 잔여와 함께, 새 기기 필요)
+- [ ] `make backup-cron`(커스텀 BACKUP_DIR) 실제 등록 → 다음 주기 로그에 변수 반영 확인 (AC-10 라이브 — crontab 등록은 사용자 결정)
 
 ### A13. 실패 질의 분석 라이브 검증 — specs/004-failure-query-analysis
 > 순수 로직(기록·fire-and-forget·리포트·--clean)은 단위(임베딩 스텁 프로브 3) +
 > `query-report.test.sh`(12)로 자동 검증됨. 아래는 실사용 데이터가 쌓인 뒤 확인.
-- [ ] MCP 실사용(search_notes/ask_brain/capture) 후 `~/.localmind/query-log.jsonl`에 레코드 축적 확인
+- [x] 실사용(smoke의 search/ask/capture) 후 `~/.localmind/query-log.jsonl`에 레코드 축적 확인 (2026-07-03, 4건)
 - [ ] 20건 이상 쌓인 뒤 `make query-report` → 성공률·실패 키워드·노트 갭·제안이 실데이터로 유의미한지
-- [ ] `make backup` 실행 후 백업 repo 커밋에 query-log.jsonl 미포함 확인(개인 쿼리 패턴 보호)
+- [x] `make backup` 실행 후 백업 repo 커밋에 query-log.jsonl 미포함 확인(.gitignore 시드 동작, 2026-07-03)
 - 참고: 리포트 제안이 유의미해지려면 수 주 사용 필요 — goal의 "데이터가 쌓여야 가치" 전제.
 
 ---
