@@ -26,6 +26,8 @@ import {
   extractLinks,
   resolveLink,
   moveToTrash,
+  chunkText,
+  createNoteFile,
   type BrainIndex,
 } from "./brain.js";
 
@@ -490,5 +492,264 @@ describe("moveToTrash (soft-delete)", () => {
     assert.equal(fs.readFileSync(d1, "utf8"), "first");
     assert.equal(fs.readFileSync(d2, "utf8"), "second");
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+// ── specs/013 트랙 B — chunkText 분할 불변식 (FR-4, AC-6) ──────────────────
+// 기본 MAX_CHUNK=2000(BRAIN_CHUNK_SIZE 미설정) 기준. 순수 함수라 직접 검증.
+
+describe("chunkText — 분할 불변식 (013 AC-6)", () => {
+  const MAX = 2000;
+
+  /** 공백을 제외한 내용이 청크 합집합에 전부 보존됐는지(유실 0) */
+  function strippedEqual(text: string, chunks: string[]): boolean {
+    return chunks.join("").replace(/\s+/g, "") === text.replace(/\s+/g, "");
+  }
+
+  it("AC-6: 빈 줄 없는 5,000자 문단도 잘리지 않고 전부 분할된다(꼬리 유실 0)", () => {
+    const tail = "이것이문단의마지막고유문구다"; // 기존 버그: 앞 2000자만 남고 이 꼬리가 유실됐다
+    const text = "가나다라마바사아자차카타파하 ".repeat(330) + tail; // ~5,000자, 빈 줄 없음
+    const chunks = chunkText(text);
+    assert.ok(chunks.length >= 3, "여러 청크로 분할돼야 한다");
+    for (const c of chunks) assert.ok(c.length <= MAX, `청크가 MAX(${MAX})를 넘으면 안 됨: ${c.length}`);
+    assert.ok(strippedEqual(text, chunks), "공백 제외 내용 유실이 없어야 한다");
+    assert.ok(chunks[chunks.length - 1].includes(tail), "문단 꼬리가 마지막 청크에 존재");
+  });
+
+  it("AC-6: 경계값 — 정확히 MAX 길이는 1청크, MAX+1은 분할되되 유실이 없다", () => {
+    const exact = "a".repeat(MAX);
+    assert.deepEqual(chunkText(exact), [exact]);
+
+    const over = "b".repeat(MAX + 1); // 공백·문장 경계가 전혀 없는 극단 — 고정 창 분할
+    const chunks = chunkText(over);
+    assert.ok(chunks.length === 2);
+    for (const c of chunks) assert.ok(c.length <= MAX);
+    assert.ok(strippedEqual(over, chunks));
+  });
+
+  it("AC-6: 문장 경계가 있으면 경계에서 나눈다(문장이 중간에 동강나지 않음)", () => {
+    const sentence = "이 문장은 충분히 길어서 여러 번 반복하면 청크 한계를 넘게 된다. ";
+    const text = sentence.repeat(60); // ~2,700자
+    const chunks = chunkText(text);
+    assert.ok(chunks.length >= 2);
+    for (const c of chunks) assert.ok(c.length <= MAX);
+    assert.ok(strippedEqual(text, chunks));
+    // 경계 분할 확인: 각 청크가 문장 종결로 끝난다
+    for (const c of chunks.slice(0, -1)) assert.ok(c.trimEnd().endsWith("."), `문장 경계에서 잘려야 함: ...${c.slice(-20)}`);
+  });
+
+  it("기존 동작 보존: 짧은 문단들은 하나의 청크로 합쳐진다", () => {
+    const text = "첫 문단입니다.\n\n둘째 문단입니다.\n\n셋째 문단입니다.";
+    assert.deepEqual(chunkText(text), ["첫 문단입니다.\n\n둘째 문단입니다.\n\n셋째 문단입니다."]);
+  });
+
+  it("빈 입력은 빈 배열", () => {
+    assert.deepEqual(chunkText(""), []);
+    assert.deepEqual(chunkText("   \n\n  "), []);
+  });
+});
+
+// ── specs/013 트랙 C — createNoteFile 배타 생성 (FR-8, AC-10) ───────────────
+
+describe("createNoteFile — capture 파일명 충돌 방지 (013 AC-10)", () => {
+  it("AC-10: 같은 파일명으로 두 번 생성해도 덮어쓰지 않고 둘 다 보존된다", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lm-capture-collide-"));
+    try {
+      const f1 = createNoteFile(dir, "2026-07-03T10-00-00-메모.md", "첫 노트");
+      const f2 = createNoteFile(dir, "2026-07-03T10-00-00-메모.md", "둘째 노트");
+      assert.notEqual(f1, f2, "파일명이 달라야 한다");
+      assert.equal(fs.readFileSync(path.join(dir, f1), "utf8"), "첫 노트", "첫 노트가 보존된다");
+      assert.equal(fs.readFileSync(path.join(dir, f2), "utf8"), "둘째 노트");
+      assert.ok(f2.endsWith(".md"), "접미가 붙어도 .md 확장자 유지");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("충돌이 없으면 요청한 파일명 그대로 생성된다", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lm-capture-plain-"));
+    try {
+      const f = createNoteFile(dir, "note.md", "본문");
+      assert.equal(f, "note.md");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ── specs/013 트랙 C — deleteNote 대상 제한 (FR-7, AC-9) ────────────────────
+// deleteNote는 FOLDERS(모듈 로드 시 고정)에 묶여 있어 자식 프로세스로 격리한다.
+
+function runDeleteProbe(notesDir: string, targets: string[]): any {
+  const script = [
+    `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+    `  const out = [];`,
+    `  for (const t of ${JSON.stringify(targets)}) out.push(await m.deleteNote(t));`,
+    `  process.stdout.write(JSON.stringify(out));`,
+    `}).catch((e) => { console.error(e); process.exit(1); });`,
+  ].join("\n");
+  const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      NOTES_DIR: `notes=${notesDir}`,
+      BRAIN_INDEX: path.join(notesDir, ".brain-index.json"),
+      // 삭제 성공 경로의 ensureIndexed가 임베딩을 부르지 않도록 빈 vault 유지가 원칙이나,
+      // 여기서는 거부 경로만 검증하므로 임베딩 서버가 필요 없다.
+    },
+  });
+  return JSON.parse(out);
+}
+
+describe("deleteNote — 대상 제한 (013 AC-9)", () => {
+  it("AC-9: 비-.md·숨김 파일·폴더 탈출 경로는 거부되고 파일이 그대로 남는다", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lm-delete-guard-"));
+    try {
+      fs.writeFileSync(path.join(dir, "data.txt"), "plain");
+      fs.writeFileSync(path.join(dir, ".brain-index.json"), "{}");
+      fs.mkdirSync(path.join(dir, ".trash"), { recursive: true });
+      fs.writeFileSync(path.join(dir, ".trash", "old.md"), "trashed");
+      const outside = path.join(path.dirname(dir), `outside-${path.basename(dir)}.md`);
+      fs.writeFileSync(outside, "outside");
+      // 심링크 경유 탈출(결함 3): notes/linkdir → 폴더 밖 디렉토리
+      const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "lm-delete-outside-"));
+      fs.writeFileSync(path.join(outsideDir, "real.md"), "vault 밖 실제 파일");
+      fs.symlinkSync(outsideDir, path.join(dir, "linkdir"));
+      try {
+        const results = runDeleteProbe(dir, [
+          "notes/data.txt", // 비-.md
+          "notes/.brain-index.json", // 숨김(인덱스 파일)
+          "notes/.trash/old.md", // 숨김 폴더 내부
+          `notes/../${path.basename(outside)}`, // 폴더 탈출(기존 동작 회귀 고정)
+          "notes/no-such.md", // 없음
+          "notes/linkdir/real.md", // 심링크 경유 탈출(결함 3)
+        ]);
+        for (const r of results) assert.equal(r.ok, false, `거부돼야 함: ${JSON.stringify(r)}`);
+        assert.equal(results[0].reason, "invalid-target", "비-.md는 invalid-target");
+        assert.equal(results[1].reason, "invalid-target", "숨김 파일은 invalid-target");
+        assert.equal(results[2].reason, "invalid-target", "숨김 폴더 내부는 invalid-target");
+        assert.equal(results[4].reason, "not-found", "존재하지 않는 노트는 not-found");
+        assert.equal(results[5].reason, "invalid-target", "심링크 경유 vault 밖 파일은 invalid-target");
+        // 파일이 전부 그대로 남아 있다
+        assert.ok(fs.existsSync(path.join(dir, "data.txt")));
+        assert.ok(fs.existsSync(path.join(dir, ".brain-index.json")));
+        assert.ok(fs.existsSync(path.join(dir, ".trash", "old.md")));
+        assert.ok(fs.existsSync(outside));
+        assert.ok(fs.existsSync(path.join(outsideDir, "real.md")), "vault 밖 파일이 이동되지 않아야 한다");
+      } finally {
+        fs.rmSync(outside, { force: true });
+        fs.rmSync(outsideDir, { recursive: true, force: true });
+      }
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ── specs/013 트랙 B — 다중 프로세스 인덱스 안전 (FR-6, AC-11·12) ───────────
+
+describe("인덱스 다중 프로세스 안전 (013)", () => {
+  it("AC-11: 다른 프로세스가 먼저 저장한 엔트리가 내 저장으로 유실되지 않는다(reload-merge)", () => {
+    const r = runBrainProbe(`
+      const V = m.loadIndex().version;
+      const fe = (folder) => ({ hash: "h", folder, chunks: [], linksOut: [] });
+      // 내 로드 시점: a만 있는 인덱스 저장(cachedStat 확정)
+      m.saveIndex({ version: V, files: { "notes/a.md": fe("notes") } });
+      // 다른 프로세스 저장 시뮬: saveIndex를 거치지 않고 직접 교체(b 추가) + mtime 변경
+      fs.writeFileSync(idxPath, JSON.stringify({ version: V, files: { "notes/a.md": fe("notes"), "notes/b.md": fe("notes") } }));
+      const future = Date.now() / 1000 + 10;
+      fs.utimesSync(idxPath, future, future);
+      // 내 저장: c를 추가 — b가 유실되면 안 된다
+      m.saveIndex({ version: V, files: { "notes/a.md": fe("notes"), "notes/c.md": fe("notes") } });
+      const finalIdx = JSON.parse(fs.readFileSync(idxPath, "utf8"));
+      process.stdout.write(JSON.stringify({ keys: Object.keys(finalIdx.files).sort() }));
+    `);
+    assert.deepEqual(r.keys, ["notes/a.md", "notes/b.md", "notes/c.md"], "양쪽 갱신이 모두 보존돼야 한다");
+  });
+
+  it("AC-12: 죽은 프로세스의 stale 락이 있어도 저장이 유한 시간 안에 완료된다", () => {
+    const r = runBrainProbe(`
+      const V = m.loadIndex().version;
+      // 고아 락 파일(오래된 mtime) — 락 보유 프로세스가 죽은 상황
+      fs.writeFileSync(idxPath + ".lock", "");
+      const past = (Date.now() - 60_000) / 1000;
+      fs.utimesSync(idxPath + ".lock", past, past);
+      const t0 = Date.now();
+      m.saveIndex({ version: V, files: {} });
+      process.stdout.write(JSON.stringify({
+        ms: Date.now() - t0,
+        lockGone: !fs.existsSync(idxPath + ".lock"),
+        saved: fs.existsSync(idxPath),
+      }));
+    `);
+    assert.ok(r.saved, "저장이 완료돼야 한다");
+    assert.ok(r.lockGone, "저장 후 락이 남지 않는다");
+    assert.ok(r.ms < 5000, `영구 대기 없이 완료돼야 한다(${r.ms}ms)`);
+  });
+
+  it("결함1 회귀: 중간의 무관한 loadIndex가 있어도 병합 기준(객체별 스냅샷)이 유지된다", () => {
+    const r = runBrainProbe(`
+      const V = m.loadIndex().version;
+      const fe = (folder) => ({ hash: "h", folder, chunks: [], linksOut: [] });
+      m.saveIndex({ version: V, files: { "notes/a.md": fe("notes") } });
+      const mine = m.loadIndex(); // 내 작업본 — 이 시점(a만 존재)이 병합 기준이어야 한다
+      // 다른 프로세스가 b를 추가 저장
+      fs.writeFileSync(idxPath, JSON.stringify({ version: V, files: { "notes/a.md": fe("notes"), "notes/b.md": fe("notes") } }));
+      const future = Date.now() / 1000 + 10;
+      fs.utimesSync(idxPath, future, future);
+      m.loadIndex(); // 무관한 중간 로드(다른 도구 호출·watcher) — 공유 캐시가 전진하는 상황
+      mine.files["notes/c.md"] = fe("notes"); // 내 작업본에 c 추가
+      m.saveIndex(mine); // 기준이 공유 캐시라면 merge가 스킵돼 b가 유실된다
+      const finalIdx = JSON.parse(fs.readFileSync(idxPath, "utf8"));
+      process.stdout.write(JSON.stringify({ keys: Object.keys(finalIdx.files).sort() }));
+    `);
+    assert.deepEqual(r.keys, ["notes/a.md", "notes/b.md", "notes/c.md"], "중간 로드가 있어도 b가 보존돼야 한다");
+  });
+
+  it("결함2 회귀: 스키마 버전 업그레이드 시 재색인 사유를 안내한다", () => {
+    const r = runBrainProbe(`
+      const errs = [];
+      process.stderr.write = (s) => { errs.push(String(s)); return true; };
+      fs.writeFileSync(idxPath, JSON.stringify({ version: 3, files: { "notes/x.md": { hash: "h", folder: "notes", chunks: [], linksOut: [] } } }));
+      m._resetIndexCacheForTest();
+      const idx = m.loadIndex();
+      process.stdout.write(JSON.stringify({ fileCount: Object.keys(idx.files).length, notice: errs.join("") }));
+    `);
+    assert.equal(r.fileCount, 0, "구버전 인덱스는 재색인 대상으로 비워진다");
+    assert.ok(r.notice.includes("다시 색인"), "재색인 사유가 안내돼야 한다");
+  });
+
+  it("결함4 회귀: dangling .md 심링크가 있어도 색인이 크래시하지 않는다", () => {
+    const r = runBrainProbe(`
+      fs.symlinkSync("/nonexistent-target-note.md", process.env.NOTES_DIR.split("=")[1] + "/dangling.md");
+      const stats = await m.reindex(); // 읽기 실패 파일은 건너뛴다 — throw 없이 완료돼야 한다
+      process.stdout.write(JSON.stringify({ files: stats.files }));
+    `);
+    assert.equal(r.files, 0, "dangling 심링크는 건너뛰고 색인이 완료된다");
+  });
+
+  it("AC-8(메타): 재색인 후 인덱스에 임베딩 모델명이 기록된다(빈 vault — dims는 임베딩 후에만)", () => {
+    const r = runBrainProbe(`
+      await m.reindex(); // 빈 vault — 임베딩 호출 없이 스캔·저장만
+      const idx = JSON.parse(fs.readFileSync(idxPath, "utf8"));
+      process.stdout.write(JSON.stringify({ model: idx.embeddingModel }));
+    `);
+    assert.equal(r.model, "text-embedding-3-small", "기본 모델명이 기록돼야 한다");
+  });
+
+  it("AC-7(모델 게이트): 인덱스의 임베딩 모델이 현재 설정과 다르면 빈 인덱스로 폴백(전체 재색인 유도)", () => {
+    const r = runBrainProbe(`
+      const V = m.loadIndex().version;
+      // 다른 모델로 만들어진 인덱스가 디스크에 있는 상황
+      fs.writeFileSync(idxPath, JSON.stringify({
+        version: V, embeddingModel: "other-model", dims: 768,
+        files: { "notes/x.md": { hash: "h", folder: "notes", chunks: [], linksOut: [] } },
+      }));
+      m._resetIndexCacheForTest();
+      const idx = m.loadIndex();
+      process.stdout.write(JSON.stringify({ fileCount: Object.keys(idx.files).length }));
+    `);
+    assert.equal(r.fileCount, 0, "모델 불일치 인덱스는 재색인 대상으로 비워져야 한다");
   });
 });

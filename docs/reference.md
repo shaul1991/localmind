@@ -103,7 +103,7 @@ OpenAI/Anthropic API는 stateless라 보통 매 요청마다 전체 히스토리
 | 모드 | 동작 |
 |---|---|
 | `auto` (기본) | 메시지 prefix를 해시로 자동 인식. **클라이언트 변경 불필요** — 히스토리를 append하는 일반 채팅이면 자동으로 이어짐 |
-| `explicit` | `x-localmind-session` 헤더(또는 `session_id`/`user`/`metadata.user_id`)가 있을 때만 그 id로 잇기. 가장 견고 |
+| `explicit` | `x-localmind-session` 헤더(또는 `session_id`/`user`/`metadata.user_id`)가 있을 때만 그 id로 잇기. 가장 견고. 같은 id라도 **대화 내용(prefix)이 이어지지 않으면 새 세션**으로 처리 — 여러 대화에 같은 값(예: OpenAI `user`)을 보내는 클라이언트에서도 맥락이 섞이지 않는다. 히스토리를 편집해 보내면 auto와 마찬가지로 전체 히스토리로 새 세션(틀린 답이 아니라 토큰 절약만 사라짐) |
 | `off` | 세션 없이 항상 전체 히스토리 전송 |
 
 ```bash

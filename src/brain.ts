@@ -60,7 +60,7 @@ const ANSWER_MODEL = process.env.MCP_DEFAULT_MODEL ?? "sonnet";
 
 const MAX_CHUNK = Math.max(400, Number(process.env.BRAIN_CHUNK_SIZE ?? 2000));
 
-const INDEX_VERSION = 3; // 2→3: FileEntry에 linksOut(위키링크 추출 결과) 추가
+const INDEX_VERSION = 4; // 3→4: 임베딩 메타(embeddingModel·dims) 기록 + 청크 분할 방식 변경(specs/013)
 
 interface IndexedChunk {
   path: string;
@@ -75,6 +75,11 @@ export interface FileEntry {
 }
 export interface BrainIndex {
   version: number;
+  /** 이 인덱스를 만든 임베딩 모델명 — 현재 설정과 다르면 전체 재색인(specs/013 FR-5). */
+  embeddingModel?: string;
+  /** 임베딩 벡터 차원 — 첫 임베딩 후 기록. 쿼리 벡터와 다르면 재색인(같은 모델명으로
+   *  다른 모델이 라우팅된 경우까지 방어 — 차원이 섞이면 NaN 코사인·무의미 결과가 난다). */
+  dims?: number;
   files: Record<string, FileEntry>;
 }
 
@@ -87,6 +92,19 @@ function ensureDirs(): void {
 // mtime 해상도가 1초인 파일시스템에선 같은 초 내 외부 변경을 놓칠 수 있어 size도 함께 본다.
 let cachedIndex: BrainIndex | null = null;
 let cachedStat: { mtimeMs: number; size: number } | null = null;
+
+// 각 인덱스 객체가 "언제의 디스크"에서 왔는지를 객체 자체에 스냅샷한다(symbol 키 —
+// JSON 직렬화에 안 섞임). saveIndex의 reload-merge 기준을 공유 cachedStat이 아니라
+// 이 스냅샷으로 잡아야, 중간의 무관한 loadIndex(다른 도구 호출·watcher)가 cachedStat을
+// 전진시켜 병합을 무력화하는 경합이 없다(specs/013 self-review 결함 1).
+const LOAD_STAT = Symbol("localmind.loadStat");
+type LoadStat = { mtimeMs: number; size: number } | null; // null = 로드 시점에 디스크 파일 없음
+function setLoadStat(idx: BrainIndex, stat: LoadStat): void {
+  (idx as unknown as Record<symbol, LoadStat>)[LOAD_STAT] = stat;
+}
+function getLoadStat(idx: BrainIndex): LoadStat | undefined {
+  return (idx as unknown as Record<symbol, LoadStat | undefined>)[LOAD_STAT];
+}
 
 // 테스트 계측: doEnsureIndexed 실제 실행 횟수(single-flight 검증용).
 let indexRunCount = 0;
@@ -112,7 +130,9 @@ export function loadIndex(): BrainIndex {
     // 파일 없음 → 낡은 캐시를 반환하지 않도록 무효화하고 빈 인덱스.
     cachedIndex = null;
     cachedStat = null;
-    return { version: INDEX_VERSION, files: {} };
+    const empty: BrainIndex = { version: INDEX_VERSION, files: {} };
+    setLoadStat(empty, null);
+    return empty;
   }
 
   if (cachedIndex && cachedStat && cachedStat.mtimeMs === stat.mtimeMs && cachedStat.size === stat.size) {
@@ -122,34 +142,177 @@ export function loadIndex(): BrainIndex {
   try {
     const idx = JSON.parse(fs.readFileSync(INDEX_PATH, "utf8")) as BrainIndex;
     if (idx.version === INDEX_VERSION && idx.files) {
-      cachedIndex = idx;
-      cachedStat = { mtimeMs: stat.mtimeMs, size: stat.size };
-      return idx;
+      // 임베딩 모델이 바뀐 인덱스는 벡터가 호환되지 않는다 — 전체 재색인(013 FR-5).
+      if (idx.embeddingModel !== undefined && idx.embeddingModel !== EMB_MODEL) {
+        notifyReindexOnce(`임베딩 모델이 바뀌어(${idx.embeddingModel} → ${EMB_MODEL})`);
+      } else {
+        cachedIndex = idx;
+        cachedStat = { mtimeMs: stat.mtimeMs, size: stat.size };
+        setLoadStat(idx, cachedStat);
+        return idx;
+      }
+    } else if (typeof idx?.version === "number") {
+      // 스키마 버전 업그레이드(예: 013의 청크 분할·메타 도입) — 조용히 수 분 재색인하지
+      // 않도록 사유를 안내한다(FR-4, self-review 결함 2).
+      notifyReindexOnce(`인덱스 형식이 바뀌어(v${idx.version} → v${INDEX_VERSION})`);
     }
   } catch {
     /* 손상 → 새로 만든다 */
   }
-  // 버전 불일치(스키마 변경) 또는 손상 → 전체 재인덱싱. 캐시는 무효화.
+  // 버전 불일치(스키마 변경)·모델 변경·손상 → 전체 재인덱싱. 캐시는 무효화.
   cachedIndex = null;
   cachedStat = null;
-  return { version: INDEX_VERSION, files: {} };
+  const fresh: BrainIndex = { version: INDEX_VERSION, embeddingModel: EMB_MODEL, files: {} };
+  setLoadStat(fresh, { mtimeMs: stat.mtimeMs, size: stat.size });
+  return fresh;
 }
 
-/** 내부·테스트용: 인덱스 파일을 원자적으로 저장한다(캐시 갱신). */
+// 재색인 사유 안내는 loadIndex가 반복 호출돼도 한 번만 출력한다.
+let reindexNotified = false;
+function notifyReindexOnce(reason: string): void {
+  if (reindexNotified) return;
+  reindexNotified = true;
+  process.stderr.write(
+    `[localmind-brain] ${reason} 노트를 처음부터 다시 색인합니다. 노트가 많으면 시간이 걸릴 수 있어요.\n`,
+  );
+}
+
+// ── 다중 프로세스 쓰기 안전(specs/013 FR-6) ─────────────────────────────────
+// 인메모리 캐시·single-flight는 프로세스 안에서만 유효하다. Claude Desktop + Claude Code +
+// Cursor처럼 stdio MCP 프로세스가 여럿이면 같은 인덱스 파일에 각자 로드→수정→저장을 해서
+// 마지막 쓰기가 이긴다(다른 쪽 임베딩 유실). 파일 락으로 쓰기 구간을 직렬화하고, 쓰기
+// 직전에 디스크가 내 로드 시점 이후 바뀌었으면 다시 읽어 병합한다(reload-merge).
+
+const LOCK_PATH = `${INDEX_PATH}.lock`;
+const LOCK_STALE_MS = Math.max(1000, Number(process.env.BRAIN_LOCK_STALE_MS ?? 10_000));
+
+/** 동기 대기(외부 의존성 없이). saveIndex가 동기 함수라 setTimeout을 쓸 수 없다. */
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/** 락 획득: O_EXCL 생성. 실패 시 재시도하되, 락 파일이 LOCK_STALE_MS보다 오래됐으면
+ *  죽은 프로세스의 고아 락으로 보고 제거한다. 최악의 경우에도 유한 시간 안에 진행한다
+ *  (영구 대기 금지 — 락은 정확성 보조 수단이고 최종 방어는 reload-merge다). */
+function acquireLock(): void {
+  const deadline = Date.now() + LOCK_STALE_MS * 2;
+  for (;;) {
+    try {
+      fs.closeSync(fs.openSync(LOCK_PATH, "wx"));
+      return;
+    } catch {
+      try {
+        const st = fs.statSync(LOCK_PATH);
+        if (Date.now() - st.mtimeMs > LOCK_STALE_MS) {
+          fs.rmSync(LOCK_PATH, { force: true }); // stale — 강제 해제 후 재시도
+          continue;
+        }
+      } catch {
+        continue; // 락이 방금 사라짐 — 즉시 재시도
+      }
+      if (Date.now() > deadline) {
+        fs.rmSync(LOCK_PATH, { force: true }); // 데드라인 초과 — 영구 대기 대신 강제 진행
+        continue;
+      }
+      sleepSync(50);
+    }
+  }
+}
+
+function releaseLock(): void {
+  fs.rmSync(LOCK_PATH, { force: true });
+}
+
+/** 같은 파일 키가 양쪽에 있으면: 해시가 같으면 내 것 유지, 다르면 실제 파일 내용(정본)과
+ *  일치하는 쪽을 채택한다. 디스크에만 있는 키는 보존한다(다른 프로세스가 색인한 파일).
+ *  삭제 반영의 지연(내가 지운 키를 디스크가 아직 갖고 있는 경우 등)은 다음 스캔에서
+ *  수렴한다 — 파일이 정본이므로 인덱스는 언제나 재유도 가능. */
+function mergeIndexFromDisk(ours: BrainIndex, disk: BrainIndex): void {
+  for (const [key, dfe] of Object.entries(disk.files)) {
+    const ofe = ours.files[key];
+    if (!ofe) {
+      ours.files[key] = dfe;
+      continue;
+    }
+    if (ofe.hash === dfe.hash) continue;
+    // 충돌: 현재 파일 내용의 해시와 일치하는 쪽이 최신이다.
+    const f = FOLDER_BY_LABEL.get(dfe.folder);
+    if (!f) continue;
+    try {
+      const cur = sha(fs.readFileSync(path.join(f.dir, key.slice(dfe.folder.length + 1)), "utf8"));
+      if (dfe.hash === cur && ofe.hash !== cur) ours.files[key] = dfe;
+    } catch {
+      /* 파일 없음 — 내 것 유지, 다음 스캔에서 정리 */
+    }
+  }
+  if (ours.dims === undefined && disk.dims !== undefined) ours.dims = disk.dims;
+}
+
+/** 내부·테스트용: 인덱스 파일을 원자적으로 저장한다(락 + reload-merge + 캐시 갱신). */
 export function saveIndex(idx: BrainIndex): void {
-  // 원자적 쓰기: 같은 디렉토리의 temp 파일에 쓰고 rename으로 교체한다(rename은 동일
-  // 파일시스템 내에서 원자적). 쓰기 도중 중단돼도 기존 인덱스 파일은 온전하다.
-  const tmp = `${INDEX_PATH}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(idx));
-  fs.renameSync(tmp, INDEX_PATH);
-  // 방금 저장한 내용을 캐시에 반영 → 자기 저장 직후 조회가 디스크를 다시 읽지 않는다.
+  acquireLock();
   try {
-    const stat = fs.statSync(INDEX_PATH);
-    cachedIndex = idx;
-    cachedStat = { mtimeMs: stat.mtimeMs, size: stat.size };
-  } catch {
-    cachedIndex = null;
-    cachedStat = null;
+    // reload-merge: 이 객체의 로드 시점 이후 다른 프로세스가 저장했으면 병합(FR-6).
+    // 기준은 객체별 스냅샷(LOAD_STAT) — 공유 cachedStat을 기준으로 삼으면 중간의 무관한
+    // loadIndex가 기준을 전진시켜 병합이 무력화된다(self-review 결함 1). 스냅샷이 없는
+    // 객체(테스트·외부 조립)는 cachedStat으로 폴백.
+    try {
+      const stat = fs.statSync(INDEX_PATH);
+      const base = getLoadStat(idx) === undefined ? cachedStat : getLoadStat(idx);
+      if (!base || base.mtimeMs !== stat.mtimeMs || base.size !== stat.size) {
+        const disk = JSON.parse(fs.readFileSync(INDEX_PATH, "utf8")) as BrainIndex;
+        // 버전·임베딩 모델이 다른 인덱스(마이그레이션·모델 교체 중)는 병합하지 않는다 —
+        // 낡은 벡터를 되살리면 차원 불일치가 재발한다.
+        if (disk.version === idx.version && disk.files && disk.embeddingModel === idx.embeddingModel) {
+          mergeIndexFromDisk(idx, disk);
+        }
+      }
+    } catch {
+      /* 디스크에 없음/손상 — 그대로 저장 */
+    }
+
+    // 원자적 쓰기: 같은 디렉토리의 temp 파일에 쓰고 rename으로 교체한다(rename은 동일
+    // 파일시스템 내에서 원자적). 쓰기 도중 중단돼도 기존 인덱스 파일은 온전하다.
+    // temp 이름에 pid를 붙여, 락 경합의 극단(동시 stale 강제 해제)에서도 서로의 temp를
+    // 밟지 않는다(self-review 결함 5).
+    const tmp = `${INDEX_PATH}.tmp-${process.pid}`;
+    fs.writeFileSync(tmp, JSON.stringify(idx));
+    fs.renameSync(tmp, INDEX_PATH);
+    // 방금 저장한 내용을 캐시에 반영 → 자기 저장 직후 조회가 디스크를 다시 읽지 않는다.
+    try {
+      const stat = fs.statSync(INDEX_PATH);
+      cachedIndex = idx;
+      cachedStat = { mtimeMs: stat.mtimeMs, size: stat.size };
+      setLoadStat(idx, cachedStat);
+    } catch {
+      cachedIndex = null;
+      cachedStat = null;
+    }
+  } finally {
+    releaseLock();
+  }
+}
+
+/** 인덱스를 비워 전체 재색인을 유도한다(병합 없이 덮어씀 — 모델·차원 교체용).
+ *  saveIndex의 merge를 타면 낡은 벡터가 되살아나므로 반드시 이 경로를 쓴다. */
+function resetIndex(): void {
+  acquireLock();
+  try {
+    const empty: BrainIndex = { version: INDEX_VERSION, embeddingModel: EMB_MODEL, files: {} };
+    const tmp = `${INDEX_PATH}.tmp-${process.pid}`;
+    fs.writeFileSync(tmp, JSON.stringify(empty));
+    fs.renameSync(tmp, INDEX_PATH);
+    try {
+      const stat = fs.statSync(INDEX_PATH);
+      cachedIndex = empty;
+      cachedStat = { mtimeMs: stat.mtimeMs, size: stat.size };
+      setLoadStat(empty, cachedStat);
+    } catch {
+      cachedIndex = null;
+      cachedStat = null;
+    }
+  } finally {
+    releaseLock();
   }
 }
 
@@ -173,17 +336,43 @@ function listMarkdown(dir: string, isRoot = true): string[] {
   return out;
 }
 
-function chunkText(text: string): string[] {
+/** MAX_CHUNK를 넘는 문단을 분할한다 — 잘라 버리지 않는다(유실 0, specs/013 FR-4).
+ *  경계는 늦은 것 우선(줄 → 문장 끝 → 공백), 창의 절반보다 이른 경계는 무시하고,
+ *  경계가 전혀 없으면 고정 창으로 자른다. */
+function splitLongParagraph(p: string): string[] {
+  const out: string[] = [];
+  let rest = p;
+  while (rest.length > MAX_CHUNK) {
+    const window = rest.slice(0, MAX_CHUNK);
+    const boundaries = [
+      window.lastIndexOf("\n"),
+      Math.max(window.lastIndexOf(". "), window.lastIndexOf("! "), window.lastIndexOf("? ")),
+      window.lastIndexOf(" "),
+    ];
+    const found = boundaries.find((b) => b >= MAX_CHUNK / 2);
+    const cut = found === undefined ? MAX_CHUNK : found + 1;
+    const piece = rest.slice(0, cut).trimEnd();
+    if (piece) out.push(piece);
+    rest = rest.slice(cut).trimStart();
+  }
+  if (rest) out.push(rest);
+  return out;
+}
+
+/** 텍스트를 임베딩 청크로 나눈다. 어떤 청크도 MAX_CHUNK를 넘지 않고, 원문 내용(공백 제외)은
+ *  전부 청크 어딘가에 존재한다(specs/013 AC-6 불변식). 테스트를 위해 export. */
+export function chunkText(text: string): string[] {
   const paras = text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
   const chunks: string[] = [];
   let cur = "";
   for (const p of paras) {
-    const piece = p.length > MAX_CHUNK ? p.slice(0, MAX_CHUNK) : p;
-    if (cur && (cur.length + 2 + piece.length) > MAX_CHUNK) {
-      chunks.push(cur);
-      cur = piece;
-    } else {
-      cur = cur ? `${cur}\n\n${piece}` : piece;
+    for (const piece of splitLongParagraph(p)) {
+      if (cur && (cur.length + 2 + piece.length) > MAX_CHUNK) {
+        chunks.push(cur);
+        cur = piece;
+      } else {
+        cur = cur ? `${cur}\n\n${piece}` : piece;
+      }
     }
   }
   if (cur) chunks.push(cur);
@@ -287,6 +476,7 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
   indexRunCount++; // 테스트 계측(single-flight 검증)
   ensureDirs();
   const idx = loadIndex();
+  idx.embeddingModel = EMB_MODEL; // 인덱스가 자기 임베딩 모델을 안다(013 FR-5)
   const seen = new Set<string>();
 
   const pending: { key: string; folder: string; hash: string; chunks: string[]; linksOut: string[] }[] = [];
@@ -294,7 +484,15 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
     for (const full of listMarkdown(f.dir)) {
       const key = `${f.label}/${path.relative(f.dir, full)}`;
       seen.add(key);
-      const text = fs.readFileSync(full, "utf8");
+      let text: string;
+      try {
+        text = fs.readFileSync(full, "utf8");
+      } catch (e) {
+        // dangling 심링크·권한 문제 파일 하나가 색인 전체(검색·캡처)를 크래시시키지 않게
+        // 건너뛴다(self-review 결함 4). 기존 엔트리는 seen 처리돼 보존된다.
+        process.stderr.write(`[localmind-brain] 읽기 실패로 건너뜀: ${key} (${(e as Error).message})\n`);
+        continue;
+      }
       const h = sha(text);
       if (idx.files[key]?.hash === h) continue; // 변경 없음
       pending.push({ key, folder: f.label, hash: h, chunks: chunkText(text), linksOut: extractLinks(text) });
@@ -327,6 +525,7 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
       while (cursor < batches.length) {
         const batch = batches[cursor++];
         const out = await embed(batch.map((r) => r.text));
+        if (idx.dims === undefined && out.length) idx.dims = out[0].length; // 차원 기록(013 FR-5)
         for (let j = 0; j < batch.length; j++) {
           const r = batch[j];
           vecs.get(r.key)![r.ci] = out[j];
@@ -365,8 +564,17 @@ export interface NoteHit {
 
 /** 노트 의미검색. folder(라벨)를 주면 그 폴더로 한정. */
 export async function searchNotes(query: string, limit = 5, folder?: string): Promise<NoteHit[]> {
-  const idx = await ensureIndexed();
+  let idx = await ensureIndexed();
   const [qv] = await embed([query]);
+  // 차원 불일치 = 같은 모델명으로 다른 모델이 라우팅됐다는 뜻 — NaN 코사인으로 조용히
+  // 쓰레기 결과를 내는 대신 전체 재색인한다(013 FR-5, AC-7).
+  if (idx.dims !== undefined && qv.length !== idx.dims) {
+    process.stderr.write(
+      `[localmind-brain] 임베딩 차원이 인덱스(${idx.dims})와 달라(${qv.length}) 노트를 처음부터 다시 색인합니다.\n`,
+    );
+    resetIndex();
+    idx = await ensureIndexed();
+  }
   const hits: NoteHit[] = [];
   for (const fe of Object.values(idx.files)) {
     if (folder && fe.folder !== folder) continue; // 스코프 필터
@@ -393,6 +601,24 @@ export function extractSearchQuery(text: string): string | null {
   return q.length >= 10 ? q : null;
 }
 
+/** 노트 파일을 배타적으로 생성한다(specs/013 FR-8). 같은 이름이 이미 있으면 `-2`, `-3` …
+ *  접미로 재시도해 기존 파일을 덮어쓰지 않는다. 최종 파일명을 반환. 순수 fs 연산 —
+ *  인덱싱과 분리해 단위 테스트 가능. */
+export function createNoteFile(dir: string, fname: string, body: string): string {
+  const ext = path.extname(fname);
+  const base = fname.slice(0, fname.length - ext.length);
+  let name = fname;
+  for (let n = 2; ; n++) {
+    try {
+      fs.writeFileSync(path.join(dir, name), body, { flag: "wx" }); // 배타 생성
+      return name;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      name = `${base}-${n}${ext}`;
+    }
+  }
+}
+
 /** 노트를 새 마크다운 파일로 저장하고 인덱싱한 뒤 인덱싱 검증 결과를 반환한다.
  *  folder(라벨)로 대상 폴더 선택(기본 첫 폴더). */
 export async function capture(text: string, title?: string, folder?: string): Promise<CaptureResult> {
@@ -405,8 +631,6 @@ export async function capture(text: string, title?: string, folder?: string): Pr
       .replace(/[^\w가-힣\s-]/g, "")
       .trim()
       .replace(/\s+/g, "-") || "note";
-  const fname = `${ts}-${slug}`.slice(0, 80) + ".md";
-  const fpath = path.join(target.dir, fname);
   const isoDate = new Date().toISOString().slice(0, 19);
   const frontmatter = [
     "---",
@@ -418,7 +642,8 @@ export async function capture(text: string, title?: string, folder?: string): Pr
     "",
   ].join("\n");
   const body = title ? `${frontmatter}# ${title}\n\n${text}\n` : `${frontmatter}${text}\n`;
-  fs.writeFileSync(fpath, body);
+  // 배타적 생성 — 같은 초에 같은 제목으로 캡처해도 먼저 저장된 노트를 덮어쓰지 않는다(013 FR-8).
+  const fname = createNoteFile(target.dir, `${ts}-${slug}`.slice(0, 80) + ".md", body);
 
   const key = `${target.label}/${fname}`;
 
@@ -662,15 +887,36 @@ export function moveToTrash(full: string, folderDir: string): string {
   return dest;
 }
 
-export async function deleteNote(qualified: string): Promise<boolean> {
+export type DeleteNoteResult =
+  | { ok: true }
+  /** invalid-target: 노트가 아닌 대상(비-.md, 숨김 파일/폴더, 폴더 밖 경로) — specs/013 FR-7 */
+  | { ok: false; reason: "not-found" | "invalid-target" };
+
+export async function deleteNote(qualified: string): Promise<DeleteNoteResult> {
+  const notFound: DeleteNoteResult = { ok: false, reason: "not-found" };
+  const invalid: DeleteNoteResult = { ok: false, reason: "invalid-target" };
   const slash = qualified.indexOf("/");
-  if (slash < 0) return false;
+  if (slash < 0) return notFound;
   const f = FOLDER_BY_LABEL.get(qualified.slice(0, slash));
-  if (!f) return false;
+  if (!f) return notFound;
   const full = path.resolve(f.dir, qualified.slice(slash + 1));
-  if (full !== f.dir && !full.startsWith(path.resolve(f.dir) + path.sep)) return false; // 폴더 밖 탈출 방지
-  if (!fs.existsSync(full) || !fs.statSync(full).isFile()) return false;
+  if (full !== f.dir && !full.startsWith(path.resolve(f.dir) + path.sep)) return invalid; // 폴더 밖 탈출 방지
+  // 노트(.md)만 삭제 대상이다 — 인덱스(.brain-index.json)·휴지통(.trash/)·설정 등
+  // 숨김 파일/폴더나 비-.md 파일은 프롬프트 주입·착오로 지목돼도 거부한다(013 FR-7).
+  if (!full.toLowerCase().endsWith(".md")) return invalid;
+  const rel = path.relative(f.dir, full);
+  if (rel.split(path.sep).some((seg) => seg.startsWith("."))) return invalid;
+  if (!fs.existsSync(full) || !fs.statSync(full).isFile()) return notFound;
+  // 심링크 경유 탈출 방지 — 경로 문자열은 폴더 안이어도 실경로가 밖이면 거부
+  // (self-review 결함 3: notes/link→밖 심링크로 vault 밖 파일이 이동되는 우회).
+  try {
+    const realFull = fs.realpathSync(full);
+    const realDir = fs.realpathSync(f.dir);
+    if (realFull !== realDir && !realFull.startsWith(realDir + path.sep)) return invalid;
+  } catch {
+    return notFound;
+  }
   moveToTrash(full, f.dir); // 영구 삭제 대신 휴지통 이동(soft-delete)
   await ensureIndexed();
-  return true;
+  return { ok: true };
 }

@@ -360,12 +360,19 @@ export function buildServer(): McpServer {
     },
     async ({ path: notePath }) => {
       try {
-        const ok = await deleteNote(notePath);
-        return ok
+        const r = await deleteNote(notePath);
+        if (r.ok)
+          return textResult(
+            `휴지통으로 이동: ${notePath}\n복구하려면 파일을 원위치로 옮기세요(검색에서 즉시 제외됨). ` +
+              `완전 삭제는 사람이 'make trash-empty'로만 할 수 있습니다.`,
+            false,
+            "🗑️",
+          );
+        return r.reason === "invalid-target"
           ? textResult(
-              `휴지통으로 이동: ${notePath}\n복구하려면 파일을 원위치로 옮기세요(검색에서 즉시 제외됨). ` +
-                `완전 삭제는 사람이 'make trash-empty'로만 할 수 있습니다.`,
-              false,
+              `삭제할 수 없는 대상입니다: '${notePath}' — 노트(.md 파일)만 삭제할 수 있어요. ` +
+                `숨김 파일·인덱스 파일·폴더 밖 경로는 이 도구로 지울 수 없습니다.`,
+              true,
               "🗑️",
             )
           : textResult(`삭제 실패: '${notePath}' 를 찾지 못했습니다(목록은 list_notes).`, true, "🗑️");

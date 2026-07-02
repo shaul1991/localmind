@@ -4,7 +4,7 @@ import type { Config } from "../config.js";
 import type { Router } from "../backends/router.js";
 import { BackendError } from "../backends/types.js";
 import { contentToText, flattenAnthropic } from "../transform.js";
-import { extractExplicitId, prepareSession, type SessionStore } from "../session.js";
+import { extractExplicitId, prepareSession, toolsSignature, type SessionStore } from "../session.js";
 import {
   buildToolSystemPrompt,
   normalizeAnthropicChoice,
@@ -92,6 +92,12 @@ export function createMessagesHandler(router: Router, config: Config, sessions: 
 
     const { backend, model } = router.resolve(body.model);
 
+    // 함수 호출(A2 프롬프트 방식) 정의는 세션 준비보다 먼저 파싱한다 — tools 서명이
+    // 세션 생성 시점과 다르면 resume하지 않아야 하기 때문(specs/013 FR-3).
+    const toolDefs = normalizeAnthropicTools(body.tools);
+    const toolChoice = normalizeAnthropicChoice(body.tool_choice);
+    const toolsOn = toolDefs.length > 0 && toolChoice !== "none";
+
     // 세션 영속화: 이전 대화면 CLI 세션을 resume하고 새 턴만 전송.
     const sess = prepareSession({
       messages: body.messages,
@@ -100,6 +106,7 @@ export function createMessagesHandler(router: Router, config: Config, sessions: 
       explicitId: extractExplicitId(req.header("x-localmind-session"), body as Record<string, unknown>),
       config,
       store: sessions,
+      toolsSig: toolsOn ? toolsSignature(toolDefs, toolChoice) : undefined,
     });
 
     // resume 시엔 system이 세션에 이미 있으므로 다시 보내지 않는다.
@@ -109,10 +116,8 @@ export function createMessagesHandler(router: Router, config: Config, sessions: 
     );
     const stream = body.stream === true;
 
-    // 함수 호출(A2 프롬프트 방식): tools가 있으면 지시문을 system에 주입.
-    const toolDefs = normalizeAnthropicTools(body.tools);
-    const toolChoice = normalizeAnthropicChoice(body.tool_choice);
-    const toolsOn = toolDefs.length > 0 && toolChoice !== "none";
+    // tools 지시문을 system에 주입. resume이면 세션 system에 이미 들어있고, tools가
+    // 달라진 경우는 위의 서명 검사로 fresh가 되므로 여기서 항상 최신 지시문이 들어간다.
     let runSystem = system;
     if (toolsOn && !sess.resumeId) {
       const toolPrompt = buildToolSystemPrompt(toolDefs, toolChoice);

@@ -13,6 +13,10 @@ dist/
 brain-index.json
 .brain-index.json.tmp
 **/.brain-index.json.tmp
+.brain-index.json.tmp-*
+**/.brain-index.json.tmp-*
+.brain-index.json.lock
+**/.brain-index.json.lock
 .localmind/
 localmind-brain/
 memory-backup.md

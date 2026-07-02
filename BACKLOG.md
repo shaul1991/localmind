@@ -86,6 +86,20 @@
 - [ ] 인증 미설정으로 전 저장소 clone 실패 시 → 기본 폴더 등록 폴백 제안 확인 (AC-22)
 - [ ] `.env`에 토큰-in-URL 넣고 `make setup`/`notes-connect` → stdout/stderr에 토큰 평문 없음 (AC-23, 실환경 재확인)
 
+### A10. 세션·색인 정확성 라이브 검증 — specs/013-session-index-accuracy
+> 순수 로직(prefix 검증·tools 서명·빈 id 방어·chunk 분할·인덱스 메타·락/병합·delete 제한·
+> capture 충돌)은 `npm test`(session/brain 단위 + 자식 프로세스 격리)로 자동 검증됨.
+> 아래는 라이브 스택·실 임베딩이 필요한 도그푸드.
+- [ ] 같은 `user` 값으로 서로 다른 두 대화를 보내 맥락 혼입이 없는지 (AC-1 라이브)
+- [ ] 첫 턴 tools 없이 → 둘째 턴 tools 추가 시 `tool_calls` 정상 생성 (AC-4 라이브)
+- [ ] 빈 줄 없는 5,000자 문단 캡처 후 꼬리 문구가 `search_notes`로 검색됨 (AC-5, 실 임베딩)
+- [ ] `EMBEDDINGS_MODEL` 교체 후 검색 → 자동 재색인 + 정상 검색 (AC-7, 실 임베딩)
+- [ ] Claude Code + Cursor 동시 접속 상태에서 양쪽 캡처 → 양쪽 검색 (AC-11 라이브)
+- 참고: INDEX_VERSION 3→4 bump — 첫 실행 시 기존 노트 전체 1회 재색인(CPU 임베딩이면 수 분, stderr 안내 있음)
+- 잔여(낮음, self-review 결함 6): 임베딩 차원 불일치로 인덱스 reset 직후 이미 진행 중이던
+  색인 실행에 합류하면 낡은 인덱스가 한 번 되살아날 수 있음 — 다음 검색에서 다시 reset되어
+  수렴하나, 모델 스왑 이벤트가 잦으면 재임베딩 반복. 필요 시 in-flight 무효화 도입.
+
 ---
 
 ## B. 진행 백로그 — 미구현 (다음 로드맵)
