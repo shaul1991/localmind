@@ -67,12 +67,12 @@
 ### A8. 공급망 고정 라이브 검증 — specs/010-supply-chain-pinning
 > 정적 회귀 가드(가변 태그 0건·고정 지점 존재)는 `scripts/pinning.test.sh`로 자동 검증됨.
 > 아래 AC-2·AC-3은 실제 재빌드가 필요해 라이브(호스트+네트워크)에서 확인한다.
-> (구현 환경에서 레지스트리 네트워크가 막혀 이 세션에선 미실행 — 고정 버전은 현재 가동
-> 버전과 동일하게 선정해 회귀 위험은 낮으나, 빌드 성공 자체는 아래로 확인해야 한다.)
-- [ ] `docker compose build --no-cache` 성공(node:24.18.0-slim 존재, `@openai/codex@0.142.4`
-      존재, `install.sh | bash -s -- 2.1.196`이 지정 버전 설치) — **AC-3**
-- [ ] `make up` → `make health` → `make smoke` 회귀 없이 통과 — **AC-2**
-- [ ] 컨테이너 내 `claude --version`=2.1.196 · `codex --version`=0.142.4 확인 — **AC-3**
+> ✅ **라이브 검증 완료 (2026-07-02, 호스트):** 클린 빌드 44.1s 성공 · make up/health/smoke
+> (smoke·smoke:mcp·smoke:brain) 전부 통과 · 컨테이너 CLI 버전 = 고정값 일치. 회귀 없음.
+- [x] `docker compose build --no-cache` 성공(node:24.18.0-slim 존재, `@openai/codex@0.142.4`
+      존재, `install.sh | bash -s -- 2.1.196`이 지정 버전 설치) — **AC-3** ✅
+- [x] `make up` → `make health` → `make smoke` 회귀 없이 통과 — **AC-2** ✅
+- [x] 컨테이너 내 `claude --version`=2.1.196 · `codex --version`=0.142.4 · `node`=v24.18.0 확인 — **AC-3** ✅
 - [ ] (선택) ollama digest를 `ollama/ollama:0.30.11` 태그로 교체(호스트에서 태그 존재 확인 시 — spec 1차 선호 형태)
 
 ### A9. 노트 저장소 연결 라이브 검증 — specs/012-notes-repo-connect
