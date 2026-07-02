@@ -1,7 +1,8 @@
 /**
  * brain.ts 단위 테스트 — node:test 기반
  *
- * 임베딩 서버 불필요: extractSearchQuery·extractLinks·resolveLink(순수 함수), noteLinks AC-7(빈 vault)
+ * 임베딩 서버 불필요: extractSearchQuery·extractLinks·resolveLink(순수 함수),
+ *   noteLinks AC-7(빈 vault), 인덱스 캐시·원자성·single-flight(009, 빈 vault)
  * 임베딩 서버 필요(LOCALMIND_INTEGRATION=1로만 실행): capture()·noteLinks AC-1/2/4/5
  *
  * NOTES_DIR/BRAIN_INDEX는 brain.ts 모듈 로드 시점에 한 번만 읽히므로, 이미 로드된 프로세스
@@ -335,5 +336,112 @@ describe("capture() 검증 루프 (통합 — 임베딩 서버 필요)", { skip:
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+// ── 009: 인덱스 원자성·캐싱·동시성 (임베딩 불필요 — 순수 인덱스 IO) ──────────
+//
+// loadIndex/saveIndex는 INDEX_PATH(모듈 로드 시 고정)에 묶여 있어, 실제 ~/.localmind
+// 오염을 막으려면 자식 프로세스로 BRAIN_INDEX/NOTES_DIR을 격리해야 한다.
+
+function runBrainProbe(scriptBody: string): any {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-index-"));
+  const idxPath = path.join(tmp, ".brain-index.json");
+  const script = [
+    `import * as fs from "node:fs";`,
+    `const idxPath = process.env.BRAIN_INDEX;`,
+    `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+    scriptBody,
+    `}).catch((e) => { console.error(e); process.exit(1); });`,
+  ].join("\n");
+  try {
+    const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        NOTES_DIR: `notes=${tmp}`,
+        BRAIN_INDEX: idxPath,
+      },
+    });
+    return JSON.parse(out);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+describe("인덱스 캐시·원자성·동시성 (009)", () => {
+  it("AC-1: 파일 변경이 없으면 두 번째 loadIndex는 같은 객체를 반환한다(캐시 적중)", () => {
+    const r = runBrainProbe(`
+      const V = m.loadIndex().version;
+      m.saveIndex({ version: V, files: {} });
+      const a = m.loadIndex();
+      const b = m.loadIndex();
+      process.stdout.write(JSON.stringify({ same: a === b }));
+    `);
+    assert.equal(r.same, true);
+  });
+
+  it("AC-2: 외부에서 파일이 바뀌면(mtime/size 변화) 다시 읽는다", () => {
+    const r = runBrainProbe(`
+      const V = m.loadIndex().version;
+      m.saveIndex({ version: V, files: { "a/x.md": { hash: "h", folder: "a", chunks: [], linksOut: [] } } });
+      m.loadIndex(); // 캐시 적중 상태 만들기
+      // 외부 변경 시뮬: saveIndex 안 거치고 파일 직접 교체 + mtime 강제 변경
+      fs.writeFileSync(idxPath, JSON.stringify({ version: V, files: { "b/y.md": { hash: "h2", folder: "b", chunks: [], linksOut: [] } } }));
+      const future = Date.now() / 1000 + 10;
+      fs.utimesSync(idxPath, future, future);
+      const after = m.loadIndex();
+      process.stdout.write(JSON.stringify({ keys: Object.keys(after.files) }));
+    `);
+    assert.deepEqual(r.keys, ["b/y.md"]);
+  });
+
+  // 참고: "temp 쓰기 도중 중단 시 원본 온전"은 fs.renameSync의 POSIX 원자성(OS 보장)에
+  // 의존하므로 유닛 테스트로 중단을 재현하기 부적절하다. 여기서는 원자적 쓰기의 관측 가능한
+  // 결과(잔여 temp 없음 + 기존 인덱스가 새 내용으로 온전히 교체됨)를 검증한다.
+  it("AC-3: saveIndex는 원자적이다 — temp 잔여 없이 기존 인덱스를 온전히 교체한다", () => {
+    const r = runBrainProbe(`
+      const V = m.loadIndex().version;
+      // 기존 인덱스가 있는 상태에서 새 내용으로 교체(중단 없이 정상 경로).
+      m.saveIndex({ version: V, files: { "old/a.md": { hash: "h", folder: "old", chunks: [], linksOut: [] } } });
+      m.saveIndex({ version: V, files: { "new/b.md": { hash: "h2", folder: "new", chunks: [], linksOut: [] } } });
+      let parsed = null;
+      try { parsed = JSON.parse(fs.readFileSync(idxPath, "utf8")); } catch {}
+      process.stdout.write(JSON.stringify({
+        tmpExists: fs.existsSync(idxPath + ".tmp"),
+        keys: parsed ? Object.keys(parsed.files) : null,
+      }));
+    `);
+    assert.equal(r.tmpExists, false, "temp 파일이 남으면 안 된다");
+    assert.deepEqual(r.keys, ["new/b.md"], "새 내용으로 온전히 교체돼야 한다");
+  });
+
+  it("AC-4: 동시 호출은 1회로 합치고(single-flight), 종료 후 새 호출은 새로 실행한다", () => {
+    const r = runBrainProbe(`
+      m._resetIndexCacheForTest();
+      // reindex()는 내부에서 ensureIndexed()를 호출한다. 빈 vault라 임베딩 없이 스캔만.
+      // 1) 동시 3회 → in-flight 공유 → 실제 실행 1회
+      await Promise.all([m.reindex(), m.reindex(), m.reindex()]);
+      const afterConcurrent = m._indexRunCountForTest();
+      // 2) 앞 실행이 끝난 뒤(in-flight=null) 새 호출 → 새 실행 → 2회
+      await m.reindex();
+      const afterSequential = m._indexRunCountForTest();
+      process.stdout.write(JSON.stringify({ afterConcurrent, afterSequential }));
+    `);
+    assert.equal(r.afterConcurrent, 1, "동시 3회는 1회로 합쳐져야 한다");
+    assert.equal(r.afterSequential, 2, "in-flight 종료 후 새 호출은 새로 실행돼야 한다");
+  });
+
+  it("AC-6: 캐시가 있어도 파일이 삭제되면 빈 인덱스를 반환한다(낡은 캐시 금지)", () => {
+    const r = runBrainProbe(`
+      const V = m.loadIndex().version;
+      m.saveIndex({ version: V, files: { "a/x.md": { hash: "h", folder: "a", chunks: [], linksOut: [] } } });
+      m.loadIndex(); // 캐시 적중
+      fs.unlinkSync(idxPath);
+      const after = m.loadIndex();
+      process.stdout.write(JSON.stringify({ fileCount: Object.keys(after.files).length }));
+    `);
+    assert.equal(r.fileCount, 0);
   });
 });

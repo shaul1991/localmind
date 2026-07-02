@@ -113,7 +113,9 @@ backup: ## 메모리 export + 노트 백업 repo 커밋·푸시 (BACKUP_DIR; 최
 	@npm run memory:export -- "$(BACKUP_DIR)/memory.md"
 	@git -C "$(BACKUP_DIR)" rev-parse --is-inside-work-tree >/dev/null 2>&1 || \
 		{ echo "✗ $(BACKUP_DIR) 는 git repo가 아닙니다 — git -C $(BACKUP_DIR) init && remote add origin <url> 후 다시"; exit 1; }
-	@grep -qxF '.brain-index.json' "$(BACKUP_DIR)/.gitignore" 2>/dev/null || echo '.brain-index.json' >> "$(BACKUP_DIR)/.gitignore"
+	@for p in '.brain-index.json' '.brain-index.json.tmp'; do \
+		grep -qxF "$$p" "$(BACKUP_DIR)/.gitignore" 2>/dev/null || echo "$$p" >> "$(BACKUP_DIR)/.gitignore"; \
+	done
 	@BACKUP_DIR="$(BACKUP_DIR)" BACKUP_EXTRA_FILES="$(BACKUP_EXTRA_FILES)" \
 		bash "$(CURDIR)/scripts/backup-extras.sh"
 	@git -C "$(BACKUP_DIR)" add -A; \

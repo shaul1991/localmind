@@ -82,18 +82,75 @@ function ensureDirs(): void {
   for (const f of FOLDERS) fs.mkdirSync(f.dir, { recursive: true });
 }
 
-function loadIndex(): BrainIndex {
-  try {
-    const idx = JSON.parse(fs.readFileSync(INDEX_PATH, "utf8")) as BrainIndex;
-    if (idx.version === INDEX_VERSION && idx.files) return idx;
-  } catch {
-    /* 없음/손상 → 새로 만든다 */
-  }
-  return { version: INDEX_VERSION, files: {} }; // 버전 불일치(스키마 변경) → 전체 재인덱싱
+// 인메모리 캐시: 인덱스 파일(76MB까지 관찰됨)을 매 조회마다 파싱하지 않도록,
+// 파일 stat(mtime+size)이 마지막 로드와 같으면 파싱된 객체를 재사용한다.
+// mtime 해상도가 1초인 파일시스템에선 같은 초 내 외부 변경을 놓칠 수 있어 size도 함께 본다.
+let cachedIndex: BrainIndex | null = null;
+let cachedStat: { mtimeMs: number; size: number } | null = null;
+
+// 테스트 계측: doEnsureIndexed 실제 실행 횟수(single-flight 검증용).
+let indexRunCount = 0;
+
+/** 테스트 전용: 캐시 상태·실행 카운터를 초기화한다(프로덕션 코드에서 호출 금지). */
+export function _resetIndexCacheForTest(): void {
+  cachedIndex = null;
+  cachedStat = null;
+  indexRunCount = 0;
 }
 
-function saveIndex(idx: BrainIndex): void {
-  fs.writeFileSync(INDEX_PATH, JSON.stringify(idx));
+/** 테스트 전용: doEnsureIndexed가 실제로 실행된 횟수. */
+export function _indexRunCountForTest(): number {
+  return indexRunCount;
+}
+
+/** 내부·테스트용: 인덱스 파일을 읽는다(캐시 경유). */
+export function loadIndex(): BrainIndex {
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(INDEX_PATH);
+  } catch {
+    // 파일 없음 → 낡은 캐시를 반환하지 않도록 무효화하고 빈 인덱스.
+    cachedIndex = null;
+    cachedStat = null;
+    return { version: INDEX_VERSION, files: {} };
+  }
+
+  if (cachedIndex && cachedStat && cachedStat.mtimeMs === stat.mtimeMs && cachedStat.size === stat.size) {
+    return cachedIndex; // 캐시 적중 — 디스크 재파싱 생략
+  }
+
+  try {
+    const idx = JSON.parse(fs.readFileSync(INDEX_PATH, "utf8")) as BrainIndex;
+    if (idx.version === INDEX_VERSION && idx.files) {
+      cachedIndex = idx;
+      cachedStat = { mtimeMs: stat.mtimeMs, size: stat.size };
+      return idx;
+    }
+  } catch {
+    /* 손상 → 새로 만든다 */
+  }
+  // 버전 불일치(스키마 변경) 또는 손상 → 전체 재인덱싱. 캐시는 무효화.
+  cachedIndex = null;
+  cachedStat = null;
+  return { version: INDEX_VERSION, files: {} };
+}
+
+/** 내부·테스트용: 인덱스 파일을 원자적으로 저장한다(캐시 갱신). */
+export function saveIndex(idx: BrainIndex): void {
+  // 원자적 쓰기: 같은 디렉토리의 temp 파일에 쓰고 rename으로 교체한다(rename은 동일
+  // 파일시스템 내에서 원자적). 쓰기 도중 중단돼도 기존 인덱스 파일은 온전하다.
+  const tmp = `${INDEX_PATH}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(idx));
+  fs.renameSync(tmp, INDEX_PATH);
+  // 방금 저장한 내용을 캐시에 반영 → 자기 저장 직후 조회가 디스크를 다시 읽지 않는다.
+  try {
+    const stat = fs.statSync(INDEX_PATH);
+    cachedIndex = idx;
+    cachedStat = { mtimeMs: stat.mtimeMs, size: stat.size };
+  } catch {
+    cachedIndex = null;
+    cachedStat = null;
+  }
 }
 
 function listMarkdown(dir: string, isRoot = true): string[] {
@@ -210,8 +267,24 @@ function cosine(a: number[], b: number[]): number {
  * 배치가 크면 요청 타임아웃을 넘겨 재시도 cascade가 나므로 작게 잡고, 동시성도
  * 낮게(BRAIN_CONCURRENCY=2: NUM_PARALLEL=1 ollama 큐 적체 완화) 둔다.
  * 파일은 청크가 모두 임베딩된 뒤에만 커밋하고 배치마다 저장해 중단에도 안전(이어감).
+ *
+ * single-flight: 이미 실행 중이면 새 스캔·임베딩을 시작하지 않고 진행 중인 실행의 결과를
+ * 공유한다(watcher 이벤트와 MCP 도구 호출이 동시에 불러도 임베딩 중복 없음). 합류한
+ * 호출자는 "합류 시점 이후의 파일 변경"을 못 볼 수 있으나, 기존 동시 실행(각자 스캔 후
+ * 마지막 쓰기 승리)보다 나쁘지 않고 다음 호출에서 반영된다.
  */
-async function ensureIndexed(): Promise<BrainIndex> {
+let indexingInFlight: Promise<BrainIndex> | null = null;
+
+function ensureIndexed(): Promise<BrainIndex> {
+  if (indexingInFlight) return indexingInFlight;
+  indexingInFlight = doEnsureIndexed().finally(() => {
+    indexingInFlight = null;
+  });
+  return indexingInFlight;
+}
+
+async function doEnsureIndexed(): Promise<BrainIndex> {
+  indexRunCount++; // 테스트 계측(single-flight 검증)
   ensureDirs();
   const idx = loadIndex();
   const seen = new Set<string>();
