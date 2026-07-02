@@ -27,6 +27,9 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      # build를 셸 테스트보다 먼저 — mcp-install.test.sh가 dist/mcp.js(미추적 산출물)를
+      # 전제한다(specs/015). 로컬은 항상 빌드돼 있어 이 순서 문제가 CI에서만 드러났다.
+      - run: npm run build
       - name: shell tests
         run: |
           shopt -s nullglob   # 매치되는 *.test.sh가 없으면 리터럴 glob이 아니라 빈 목록으로 (거짓 실패 방지)
@@ -34,7 +37,6 @@ jobs:
             echo "── $t ──"
             bash "$t" || exit 1
           done
-      - run: npm run build
 
   docker:
     name: docker build
