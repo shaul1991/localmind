@@ -6,6 +6,8 @@
 set -uo pipefail
 
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
+. "$DIR/scripts/lib/read-env.sh"
+. "$DIR/scripts/lib/notes-dir.sh"   # NOTES_DIR 정합 점검(specs/019 FR-5)
 
 b()    { printf '\033[1m%s\033[0m' "$1"; }
 say()  { printf '%s\n' "$*"; }
@@ -119,6 +121,41 @@ elif [ "$OS" = "Linux" ]; then
   say "  • 최초/대량 색인이 답답하면: 노트를 나눠 넣거나, GPU 있는 기기(맥북 등)에서 색인."
 else
   say "  CPU 임베딩으로 동작합니다. 대량 색인 시에만 시간이 듭니다."
+fi
+
+# ── 노트 폴더(NOTES_DIR) 정합(specs/019 FR-5) ──────────────────
+# 셸 명령(make reindex 등)과 Claude Code(MCP)가 같은 폴더 목록을 보는지 비교한다.
+# MCP 등록을 읽을 수 없는 환경(claude 미설치 등)에서는 조용히 건너뛴다(오탐 금지).
+mcp_nd="$(mcp_notes_dir)"
+if [ -n "$mcp_nd" ]; then
+  head "[노트 폴더 정합]  ← 셸 명령과 Claude Code가 같은 노트를 보는지"
+  eff_nd="$(resolve_notes_dir "${LOCALMIND_ENV_FILE:-$DIR/.env}")"
+  eff_nd="${eff_nd:-$HOME/.localmind}"   # 셸 유효값: 환경변수 → .env → 기본
+  # 라벨·~·심링크·후행 슬래시 표기 차이는 같은 폴더로 본다 — 정규화된 경로 집합으로 비교(오탐 방지).
+  if [ "$(notes_dir_paths "$eff_nd" | sort)" = "$(notes_dir_paths "$mcp_nd" | sort)" ]; then
+    say "  ✓ 일치 — 셸(make reindex 등)과 Claude Code(MCP)가 같은 폴더 목록을 봅니다."
+  else
+    say "  ⚠ 불일치 — 셸과 Claude Code가 서로 다른 노트 폴더 목록을 보고 있어요."
+    row "셸(유효값)" "$eff_nd"
+    row "MCP 등록"   "$mcp_nd"
+    # MCP 목록에는 있는데 셸 유효값에 없는 항목 = 셸 색인(make reindex)에서 빠지는 폴더.
+    # 라벨·심링크·후행 슬래시 표기 차이는 같은 폴더로 본다(canon_path 정규화 — 오탐 방지).
+    missing=""
+    eff_paths="$(notes_dir_paths "$eff_nd")"
+    IFS=',' read -r -a _mcp_items <<< "$mcp_nd"
+    for _it in "${_mcp_items[@]}"; do
+      _it="$(printf '%s' "$_it" | sed -E 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+      [ -z "$_it" ] && continue
+      case "$_it" in *=*) _p="${_it#*=}";; *) _p="$_it";; esac
+      _p="$(canon_path "$_p")"
+      printf '%s\n' "$eff_paths" | grep -qxF -- "$_p" || missing="$missing\n      - $_it"
+    done
+    if [ -n "$missing" ]; then
+      say "  셸에서 색인 시 빠지는 폴더:"
+      printf '%b\n' "$missing" | sed '/^$/d'
+    fi
+    say "  해결: .env에 NOTES_DIR를 추가하거나 $(b 'make mcp-install NOTES_DIR=<폴더 목록>')을 다시 실행하면 맞춰져요."
+  fi
 fi
 
 head "[다음 단계]"

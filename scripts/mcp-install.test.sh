@@ -28,11 +28,21 @@ exit 0
 S
 chmod +x "$TMP/bin/claude"
 
-run_install() { # run_install <ADD_FAIL> <로그파일>
+run_install() { # run_install <ADD_FAIL> <로그파일> [NOTES_DIR값("-"이면 미설정)] [env파일]
   : > "$2"
-  OUT="$(PATH="$TMP/bin:$PATH" CLAUDE_CALL_LOG="$2" ADD_FAIL="$1" NOTES_DIR="$TMP/notes" bash "$SCRIPT" </dev/null 2>&1)"
+  local nd="${3:-$TMP/notes}" envf="${4:-$TMP/test.env}"
+  if [ "$nd" = "-" ]; then
+    OUT="$(PATH="$TMP/bin:$PATH" CLAUDE_CALL_LOG="$2" ADD_FAIL="$1" \
+          LOCALMIND_ENV_FILE="$envf" LOCALMIND_ENV_EXAMPLE="$TMP/example.env" \
+          env -u NOTES_DIR bash "$SCRIPT" </dev/null 2>&1)"
+  else
+    OUT="$(PATH="$TMP/bin:$PATH" CLAUDE_CALL_LOG="$2" ADD_FAIL="$1" NOTES_DIR="$nd" \
+          LOCALMIND_ENV_FILE="$envf" LOCALMIND_ENV_EXAMPLE="$TMP/example.env" \
+          bash "$SCRIPT" </dev/null 2>&1)"
+  fi
   RC=$?
 }
+printf '# example\n' > "$TMP/example.env"
 
 # 전제: dist/mcp.js가 있어야 빌드 단계를 건너뛴다(리포에서 빌드돼 있음).
 [ -f "$ROOT/dist/mcp.js" ] || { echo "dist/mcp.js 없음 — 'npm run build' 후 실행"; exit 1; }
@@ -59,6 +69,28 @@ run_install real "$LOG3"
 assert "결함3: 비0 종료" '[ "$RC" -ne 0 ]'
 assert "결함3: 실제 add를 재시도한다(일시 오류 흡수)" '[ "$(grep -cE "mcp add localmind -s user" "$LOG3")" -ge 2 ]'
 assert "결함3: 등록이 제거된 상태를 정직하게 안내한다" 'printf %s "$OUT" | grep -q "해제된 상태"'
+
+# ── 019 AC-23: 등록 성공 시 NOTES_DIR가 .env(정본)에 기록된다 ────────────────
+LOG4="$TMP/calls4.log"; ENV4="$TMP/ac23.env"
+rm -f "$ENV4"
+run_install 0 "$LOG4" "$TMP/n1,$TMP/n2,$TMP/n3" "$ENV4"
+assert "AC-23: .env가 example에서 생성됨" 'grep -q "^# example" "$ENV4"'
+perm="$(stat -f %Lp "$ENV4" 2>/dev/null || stat -c %a "$ENV4" 2>/dev/null)"
+assert "AC-23: 생성된 .env 권한 600" '[ "$perm" = "600" ]'
+assert "AC-23: NOTES_DIR가 .env에 기록됨" 'grep -q "^NOTES_DIR=$TMP/n1,$TMP/n2,$TMP/n3$" "$ENV4"'
+assert "AC-23: 등록 인자(-e NOTES_DIR)와 .env 기록이 일치" 'grep -q -- "-e NOTES_DIR=$TMP/n1,$TMP/n2,$TMP/n3" "$LOG4"'
+
+# ── 019 FR-6: 환경변수 없으면 .env의 NOTES_DIR로 등록(정본 해석) ─────────────
+LOG5="$TMP/calls5.log"; ENV5="$TMP/resolve.env"
+printf 'NOTES_DIR="%s/from-env-file"\n' "$TMP" > "$ENV5"
+run_install 0 "$LOG5" "-" "$ENV5"
+assert "FR-6: 환경변수 부재 시 .env 값으로 등록" 'grep -q -- "-e NOTES_DIR=$TMP/from-env-file" "$LOG5"'
+
+# ── 019 FR-6: 등록 실패 시 .env를 기록하지 않는다 ───────────────────────────
+LOG6="$TMP/calls6.log"; ENV6="$TMP/nofail.env"
+rm -f "$ENV6"
+run_install 1 "$LOG6" "$TMP/notes" "$ENV6"
+assert "FR-6: 등록 실패 시 NOTES_DIR 미기록" '! grep -q "^NOTES_DIR=" "$ENV6" 2>/dev/null'
 
 echo ""
 echo "015 mcp-install 결과: $pass 통과, $fail 실패"

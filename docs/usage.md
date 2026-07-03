@@ -91,9 +91,13 @@ NOTES_DIR="work=/내/업무노트,life=/내/개인노트"
 
 ## 백업 · 새 기기 복구
 
-- **백업**: `make backup` (메모리+노트를 내 private git repo로). 자동은 `make backup-cron`.
+- **백업**: `make backup` (메모리+노트+페르소나·스킬을 내 private git repo로). 자동은 `make backup-cron`.
 - **복구**: 새 컴퓨터에서 `make recover RESTORE_REPO=<내 백업 repo>` 한 줄.
-- 자세히 👉 [README의 백업 섹션](../README.md#백업--복구-git)
+  페르소나·스킬은 복원 후 배포까지 자동 재실행됩니다. 노트 저장소를 여러 개 쓰면
+  recover 후 `make notes-connect` → `make restore` 한 번 더(recover가 안내).
+- **검색 기록(선택)**: 기본은 로컬 전용 — `BACKUP_QUERY_LOG=1 make backup`으로 기기 간
+  병합 가능(검색어가 git 이력에 남는 점 주의 — [FAQ 참조](faq.md)).
+- 자세히 👉 [README의 백업 섹션](../README.md#백업--복구-git) · [FAQ 백업 절](faq.md#5-운영--성능과-백업)
 
 ## 막히면
 

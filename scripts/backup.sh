@@ -41,6 +41,45 @@ if BACKUP_DIR="$BACKUP_DIR" BACKUP_EXTRA_FILES="$BACKUP_EXTRA_FILES" \
   FAILURES="$FAILURES 개인설정"
 fi
 
+# ── 4.5) 자산(페르소나·스킬) 미러(specs/019 FR-1) — 실패해도 계속 ──
+if BACKUP_DIR="$BACKUP_DIR" bash "$PROJECT_DIR/scripts/backup-assets.sh"; then :; else
+  echo "! 자산(페르소나·스킬) 백업이 완료되지 않았어요 — 노트 백업은 계속합니다."
+  FAILURES="$FAILURES 자산"
+fi
+
+# ── 4.7) 쿼리 로그 opt-in 백업(specs/019 FR-3) ───────────────────
+# 004의 "로컬 전용" 제약을 사용자 opt-in에 한해 완화한다(019에서 개정). 기본은 여전히 제외.
+if [ "${BACKUP_QUERY_LOG:-}" = "1" ]; then
+  QL_SRC="${QUERY_LOG:-$HOME/.localmind/query-log.jsonl}"   # 위치 해석은 004와 동일
+  if [ -f "$QL_SRC" ]; then
+    dev_id="$(hostname -s 2>/dev/null | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]/-/g')"
+    [ -z "$dev_id" ] && dev_id="device"                     # 극단 hostname 폴백(FR-3)
+    QL_DEST="$BACKUP_DIR/query-log.$dev_id.jsonl"
+    QL_SKIP=0
+    if [ ! -f "$QL_DEST" ]; then
+      # 비가역성 고지(최초 1회) — git 이력에 한 번 실리면 설정을 꺼도 지워지지 않는다.
+      echo "! 알림: 검색 기록이 백업 저장소의 git 이력에 남아요 — 나중에 이 설정(BACKUP_QUERY_LOG)을 꺼도"
+      echo "  이미 커밋된 기록은 이력에서 지워지지 않아요."
+      if [ -t 0 ]; then
+        # 대화형일 때만 실질적 탈출구를 준다 — "중단하세요" 안내만 하고 즉시 커밋하는 거짓 약속 금지.
+        read -r -p "  이번 백업부터 포함할까요? [Y/n] " _ql_ans || _ql_ans=""
+        case "$_ql_ans" in [Nn]*) echo "  ℹ 쿼리 로그를 포함하지 않았어요 — 다시 묻지 않으려면 BACKUP_QUERY_LOG 설정을 빼 주세요."; QL_SKIP=1;; esac
+      else
+        echo "  (이번 백업부터 포함됩니다 — 원치 않으면 BACKUP_QUERY_LOG 설정을 빼 주세요.)"
+      fi
+    fi
+    if [ "$QL_SKIP" -eq 1 ]; then :
+    elif cp "$QL_SRC" "$QL_DEST"; then
+      echo "✓ 쿼리 로그 백업 → query-log.$dev_id.jsonl (이 기기의 현재 로그 스냅샷)"
+    else
+      echo "! 쿼리 로그 백업 실패 — 노트 백업은 계속합니다."
+      FAILURES="$FAILURES 쿼리로그"
+    fi
+  else
+    echo "ℹ 쿼리 로그 파일이 없어 백업을 건너뜁니다($QL_SRC)."
+  fi
+fi
+
 # ── 5) 커밋 — 실패를 삼키지 않는다(self-review 결함 1: identity 미설정·훅 등으로
 #     커밋이 실패해도 "백업 완료"가 나가면 성공 메시지 ≠ 실제 상태가 된다) ──────
 if ! git -C "$BACKUP_DIR" add -A; then

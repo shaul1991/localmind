@@ -353,7 +353,8 @@ function resetIndex(): void {
   }
 }
 
-function listMarkdown(dir: string, isRoot = true): string[] {
+// specs/019 AC-10 테스트를 위해 export
+export function listMarkdown(dir: string, isRoot = true): string[] {
   const out: string[] = [];
   let entries: fs.Dirent[];
   try {
@@ -370,6 +371,9 @@ function listMarkdown(dir: string, isRoot = true): string[] {
     // 페르소나 레지스트리(agents/)·스킬 정본(skills/)은 노트가 아니다 —
     // 색인·검색에서 제외(specs/016 FR-10 · specs/018 FR-8)
     if (e.isDirectory() && (path.resolve(full) === agentsDir() || path.resolve(full) === skillsDir())) continue;
+    // 백업 미러(specs/019 FR-1)도 노트가 아니다 — 색인 프로세스는 BACKUP_DIR를 모르므로
+    // 미러 폴더가 스스로를 식별하는 마커로 제외한다(AC-10, 016 FR-10 불변식 유지).
+    if (e.isDirectory() && fs.existsSync(path.join(full, ".localmind-mirror"))) continue;
     if (e.isDirectory()) out.push(...listMarkdown(full, false));
     else if (e.name.toLowerCase().endsWith(".md")) out.push(full);
   }

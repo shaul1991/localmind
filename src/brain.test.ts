@@ -28,6 +28,7 @@ import {
   moveToTrash,
   chunkText,
   createNoteFile,
+  listMarkdown,
   type BrainIndex,
 } from "./brain.js";
 
@@ -957,6 +958,40 @@ describe("agents/ 색인 제외 — specs/016 AC-9 (자식 프로세스 격리)"
       assert.ok(!paths.some((p) => p.includes("agents")), `agents/ 파일이 목록에 노출됨: ${paths.join(", ")}`);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ── specs/019 AC-10: 미러 마커(.localmind-mirror) 폴더 색인 제외 ────────────
+
+describe("listMarkdown 미러 제외 (019 AC-10)", () => {
+  it("마커가 있는 하위 폴더는 색인 대상에서 빠진다", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "lm-mirror-"));
+    try {
+      fs.writeFileSync(path.join(tmp, "note.md"), "# 노트");
+      fs.mkdirSync(path.join(tmp, "agents"));
+      fs.writeFileSync(path.join(tmp, "agents", "persona.md"), "# 페르소나(미러)");
+      fs.writeFileSync(path.join(tmp, "agents", ".localmind-mirror"), "specs/019 미러 마커");
+      fs.mkdirSync(path.join(tmp, "sub"));
+      fs.writeFileSync(path.join(tmp, "sub", "keep.md"), "# 유지");
+      const files = listMarkdown(tmp);
+      assert.ok(files.some((f) => f.endsWith("note.md")));
+      assert.ok(files.some((f) => f.endsWith("keep.md")));
+      assert.ok(!files.some((f) => f.includes("persona.md")), "미러 하위 파일이 색인에 포함되면 안 된다");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("마커가 없는 같은 이름 폴더는 정상 색인된다(오탐 금지)", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "lm-mirror-"));
+    try {
+      fs.mkdirSync(path.join(tmp, "agents"));
+      fs.writeFileSync(path.join(tmp, "agents", "doc.md"), "# 일반 노트");
+      const files = listMarkdown(tmp);
+      assert.ok(files.some((f) => f.endsWith("doc.md")));
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
 });

@@ -10,9 +10,11 @@
 read_env_val() {
   local key="$1" file="$2" val
   [ -f "$file" ] || return 0
-  val="$(grep -E "^${key}=" "$file" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+  # command 접두 — 이 lib은 여러 스크립트에 source되므로, 호출측이 같은 이름의 셸 함수
+  # (예: doctor.sh의 head())를 정의해도 외부 바이너리를 쓰게 고정한다(019에서 실제 충돌).
+  val="$(command grep -E "^${key}=" "$file" 2>/dev/null | command head -1 | command cut -d= -f2- || true)"
   # 앞뒤 공백 제거 후 감싼 따옴표 1쌍 제거
-  val="$(printf '%s' "$val" | sed -E 's/^[[:space:]]*//; s/[[:space:]]*$//; s/^"(.*)"$/\1/; s/^'\''(.*)'\''$/\1/')"
+  val="$(printf '%s' "$val" | command sed -E 's/^[[:space:]]*//; s/[[:space:]]*$//; s/^"(.*)"$/\1/; s/^'\''(.*)'\''$/\1/')"
   printf '%s' "$val"
 }
 

@@ -47,6 +47,14 @@ say "총 6단계입니다. 한 단계씩 안내하고, 중간에 언제든 Ctrl+
 say "  (처음 기동은 AI 모델 내려받기로 몇 분 걸릴 수 있어요 — 정상입니다.)"
 say ""
 
+# 전환 사전 안내(specs/019 FR-7): 백업 모델 밖의 데이터는 옮길 수 없다 — 미백업분의
+# 유실을 사용자가 인지하고 진행하게 한다(비대화 환경은 안내 후 자동 진행).
+say "$(b '먼저 확인해 주세요') — 이전 컴퓨터에서 $(b 'make backup')을 마지막으로 실행한 게 언제인가요?"
+say "  그 백업 $(b '이후')에 만든 기억(메모리)·페르소나·검색 기록은 이 복구로 넘어오지 않아요."
+say "  이전 컴퓨터를 아직 쓸 수 있다면, 거기서 'make backup'을 한 번 실행한 뒤 진행하는 걸 권해요."
+confirm "이대로 복구를 진행할까요?" || { say "  준비되면 다시 '$(b 'make recover')'를 실행해 주세요."; exit 0; }
+say ""
+
 # ── 1/6 : 사전 점검 ─────────────────────────────────────────────
 say "$(b '[1/6] 준비물 점검')"
 command -v docker >/dev/null 2>&1 || { err "Docker가 없어요. https://www.docker.com/products/docker-desktop 에서 설치 후 다시 실행해 주세요."; exit 1; }
@@ -55,15 +63,17 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 ok "Docker 실행 중"
-if [ ! -f "$PROJECT_DIR/.env" ]; then
+# 테스트는 LOCALMIND_ENV_FILE로 .env를 격리한다(다른 스크립트와 동일 관례, specs/019)
+ENV_FILE="${LOCALMIND_ENV_FILE:-$PROJECT_DIR/.env}"
+if [ ! -f "$ENV_FILE" ]; then
   warn ".env(설정 파일)가 없어 예시에서 새로 만들어요."
-  cp "$PROJECT_DIR/.env.example" "$PROJECT_DIR/.env"
+  cp "$PROJECT_DIR/.env.example" "$ENV_FILE"
   ok ".env 생성됨 — 기본값으로도 복구는 진행돼요. (claude 연동 등은 나중에 'make secrets'로 점검)"
 else
   ok ".env 있음"
 fi
-bash "$PROJECT_DIR/scripts/ensure-master-key.sh" "$PROJECT_DIR/.env" # 게이트웨이 키 없으면 자동 생성(specs/014)
-chmod 600 "$PROJECT_DIR/.env" # OAuth 토큰·키가 담기므로 소유자 전용(specs/015 FR-9)
+bash "$PROJECT_DIR/scripts/ensure-master-key.sh" "$ENV_FILE" # 게이트웨이 키 없으면 자동 생성(specs/014)
+chmod 600 "$ENV_FILE" # OAuth 토큰·키가 담기므로 소유자 전용(specs/015 FR-9)
 
 # ── 2/6 : 백업 내려받기 ─────────────────────────────────────────
 say "$(b '[2/6] 백업 저장소 가져오기')"
@@ -150,16 +160,27 @@ say "  → 개인 설정 파일 복원 확인"
 BACKUP_DIR="$BACKUP_DIR" bash "$PROJECT_DIR/scripts/restore-extras.sh" \
   || warn "개인 설정 파일 복원을 건너뛰었어요 — 나중에 'make restore'로 다시 시도할 수 있어요."
 
-MASTER_KEY="$(grep -E '^LITELLM_MASTER_KEY=' "$PROJECT_DIR/.env" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+MASTER_KEY="$(grep -E '^LITELLM_MASTER_KEY=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
 if ( cd "$PROJECT_DIR" && NOTES_DIR="${NOTES_DIR:-$BACKUP_DIR}" LITELLM_MASTER_KEY="$MASTER_KEY" npm run --silent reindex >/dev/null 2>&1 ); then
   ok "노트 색인 완료 — 첫 검색부터 빨라요."
 else
   warn "색인을 건너뛰었어요(안 해도 첫 검색 때 자동으로 만들어져요). 원하면 나중에 '$(b 'make reindex')'."
 fi
 
+# 자산(페르소나·스킬) 복원 + 쿼리 로그 병합(specs/019 FR-2·4) — 실패해도 복구를 막지
+# 않는다(set -e 하 실패 허용 블록). 미러 백업(마커)은 노트 연결 전이라 보류되고 restore-assets가
+# 순서를 안내한다(보류=정상, 배포 실행 실패만 비0 요약).
+say "  → 페르소나·스킬 복원 확인"
+ASSET_FAIL=0
+if BACKUP_DIR="$BACKUP_DIR" RESTORE_CONTEXT=recover bash "$PROJECT_DIR/scripts/restore-assets.sh"; then :; else ASSET_FAIL=1; fi
+
 say ""
 say "$(b '🎉 복구 완료!') 두뇌가 이 컴퓨터로 돌아왔어요."
 say "  • 상태 확인     : $(b 'make health')"
 say "  • Claude 연동   : $(b 'make mcp-install')   (Claude Code에서 localmind 도구 사용)"
 say "  • 앞으로 백업   : $(b 'make backup')"
+if [ "$ASSET_FAIL" = "1" ]; then
+  warn "일부 단계(페르소나·스킬 배포)가 완료되지 않았어요 — 위 안내를 확인해 주세요."
+  exit 1
+fi
 say ""
