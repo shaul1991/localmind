@@ -6,7 +6,8 @@
   "main": "dist/index.js",
   "bin": {
     "localmind": "dist/index.js",
-    "localmind-mcp": "dist/mcp.js"
+    "localmind-mcp": "dist/mcp.js",
+    "localmind-review": "dist/agents/cross-review-cli.js"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -27,6 +28,7 @@
     "brain-report": "tsx scripts/brain-report.ts",
     "init-sdd": "tsx scripts/init-sdd.ts",
     "agents:deploy": "tsx scripts/agents-deploy.ts",
+    "skills:deploy": "tsx scripts/skills-deploy.ts",
     "test": "node --import tsx/esm --test src/*.test.ts src/agents/*.test.ts"
   },
   "keywords": [

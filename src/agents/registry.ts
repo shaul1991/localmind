@@ -51,16 +51,21 @@ function expandHome(p: string): string {
 export function agentsDir(): string {
   const env = process.env.LOCALMIND_AGENTS_DIR?.trim();
   if (env) return path.resolve(expandHome(env));
+  return path.join(firstNotesDir(), "agents");
+}
+
+/** 첫 노트 폴더(NOTES_DIR 첫 항목, 라벨 표기 허용) — agents/·skills/(018) 정본의 기준
+ *  경로. 노트 폴더 하위여야 기존 backup(git)에 자동 편입된다. */
+export function firstNotesDir(): string {
   const notesRaw = process.env.NOTES_DIR?.trim();
   if (notesRaw) {
     const first = notesRaw.split(",")[0]?.trim();
     if (first) {
       const eq = first.indexOf("=");
-      const dir = expandHome(eq > 0 ? first.slice(eq + 1).trim() : first);
-      return path.resolve(path.join(dir, "agents"));
+      return path.resolve(expandHome(eq > 0 ? first.slice(eq + 1).trim() : first));
     }
   }
-  return path.resolve(path.join(process.env.HOME ?? ".", ".localmind", "agents"));
+  return path.resolve(path.join(process.env.HOME ?? ".", ".localmind"));
 }
 
 const NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;

@@ -109,7 +109,29 @@ make agents-deploy                          # 도구별 설정 재생성
   주 1회 자동 실행은 `make report-cron`.
 - 위임이 실패하거나 느려도 본래 기능(답변·캡처)은 항상 완수됩니다.
 
-## 5. 주의
+## 5. SDD self-review 교차 검증 (스킬 + `localmind-review`)
+
+`/goal`로 구현을 마치면 self-review가 따라오는데(생략 불가), 018부터는 여기에 **다른
+모델 계열의 두 번째 눈**이 붙습니다: `sdd-self-review` 스킬이 ① Claude 크리틱 적대
+리뷰와 ② `localmind-review`(codex/GPT 교차 검증)를 함께 돌려 하나의 보고로 병합합니다.
+
+```bash
+make skills-deploy    # 스킬 정본 시드 + Claude Code로 복사 배포
+{ cat specs/<NNN>-*/spec.md; git diff; } | localmind-review   # 직접 실행도 가능
+```
+
+- 산출은 `{판정, 차단 결함[], 조언[]}` — **차단 결함**은 수정 후 재검 대상, **조언**은
+  참고용입니다. 수정·재검 반복은 `/goal` 흐름이 담당합니다(도구는 보고까지).
+- **끄기**: `SDD_CROSS_REVIEW=off` — ask_brain 답변 검증을 끄는 `BRAIN_VERIFY`와는
+  **별개 스위치**입니다(무대가 다름: 그쪽은 노트 질문, 이쪽은 코드 self-review).
+- codex 미설치·critic 프로필 없음·시간 초과면 그 검증만 "생략(사유)"로 표시되고
+  Claude 단독 self-review는 정상 진행됩니다 — 생략은 숨겨지지 않습니다.
+- 스킬 정본은 노트 폴더의 `skills/`(백업 자동 포함)이고 배포본(`~/.claude/skills/`)은
+  파생입니다 — 고칠 때는 정본에서. 직접 만든 스킬(마커 없음)은 배포·정리가 건드리지
+  않습니다. 단, `LOCALMIND_SKILLS_DIR`로 정본을 노트 폴더 밖으로 옮기면 백업에서
+  빠질 수 있으니 주의하세요.
+
+## 6. 주의
 
 - **민감정보 경고**: 페르소나 지침에 적은 내용은 백업 저장소에 그대로 커밋됩니다.
   비공개 repo라도 토큰·비밀번호 같은 민감정보는 넣지 마세요(백업 전반과 동일한 규칙 —

@@ -61,7 +61,8 @@ function defaultClaudeAgentsDir(): string {
   return path.join(process.env.HOME ?? ".", ".claude", "agents");
 }
 
-function defaultCodexHome(): string {
+/** Codex 홈(프로필·에이전트 배포 대상). cross-review(018)가 프로필 존재 확인에 재사용. */
+export function defaultCodexHome(): string {
   const env = (process.env.LOCALMIND_CODEX_HOME ?? process.env.CODEX_HOME)?.trim();
   if (env) return path.resolve(expandHome(env));
   return path.join(process.env.HOME ?? ".", ".codex");
