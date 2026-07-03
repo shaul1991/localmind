@@ -919,3 +919,44 @@ describe("인덱스 다중 프로세스 안전 (013)", () => {
     assert.equal(r.fileCount, 0, "모델 불일치 인덱스는 재색인 대상으로 비워져야 한다");
   });
 });
+
+// ── specs/016 AC-9: 페르소나 레지스트리(agents/)는 노트 색인·목록에서 제외 ──
+describe("agents/ 색인 제외 — specs/016 AC-9 (자식 프로세스 격리)", () => {
+  it("노트 폴더 안의 agents/ 정의는 listNotes에 나타나지 않는다", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-agents-exclude-"));
+    try {
+      fs.writeFileSync(path.join(dir, "note.md"), "일반 노트 본문");
+      fs.mkdirSync(path.join(dir, "agents"));
+      fs.writeFileSync(
+        path.join(dir, "agents", "critic.md"),
+        "---\nname: critic\ndescription: x\ntargets:\n  claude:\n    model: opus\n---\n페르소나-지침-고유-문구",
+      );
+      // agents와 무관한 하위 폴더는 여전히 색인되는지 함께 확인(과도 제외 방지)
+      fs.mkdirSync(path.join(dir, "sub"));
+      fs.writeFileSync(path.join(dir, "sub", "inner.md"), "하위 폴더 노트");
+
+      const script = [
+        `import(${JSON.stringify(BRAIN_JS)}).then((m) => {`,
+        `  process.stdout.write(JSON.stringify(m.listNotes()));`,
+        `}).catch((e) => { console.error(e); process.exit(1); });`,
+      ].join("\n");
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          NOTES_DIR: `notes=${dir}`,
+          BRAIN_INDEX: path.join(dir, ".brain-index.json"),
+          LOCALMIND_AGENTS_DIR: path.join(dir, "agents"),
+        },
+      });
+      const notes: { folder: string; path: string }[] = JSON.parse(out);
+      const paths = notes.map((n) => n.path);
+      assert.ok(paths.includes("notes/note.md"), "일반 노트가 목록에 없음");
+      assert.ok(paths.includes(path.join("notes", "sub", "inner.md")), "하위 폴더 노트가 목록에 없음");
+      assert.ok(!paths.some((p) => p.includes("agents")), `agents/ 파일이 목록에 노출됨: ${paths.join(", ")}`);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

@@ -25,7 +25,8 @@
     "reindex": "tsx scripts/reindex.ts",
     "query-report": "tsx scripts/query-report.ts",
     "init-sdd": "tsx scripts/init-sdd.ts",
-    "test": "node --import tsx/esm --test src/*.test.ts"
+    "agents:deploy": "tsx scripts/agents-deploy.ts",
+    "test": "node --import tsx/esm --test src/*.test.ts src/agents/*.test.ts"
   },
   "keywords": [
     "claude",

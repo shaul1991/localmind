@@ -72,3 +72,64 @@ describe("scaffold_sdd MCP tool", () => {
     assert.match(text, /절대경로/);
   });
 });
+
+// ── specs/016 AC-11: 페르소나 레지스트리 MCP 도구(list_agents · deploy_agents) ──
+describe("list_agents / deploy_agents MCP tools", () => {
+  let client: Client;
+  let root: string;
+  const savedEnv: Record<string, string | undefined> = {};
+
+  before(async () => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-mcp-agents-test-"));
+    const registryDir = path.join(root, "registry");
+    fs.mkdirSync(registryDir, { recursive: true });
+    fs.mkdirSync(path.join(root, "dot-claude"), { recursive: true });
+    fs.mkdirSync(path.join(root, "dot-codex"), { recursive: true });
+    fs.writeFileSync(
+      path.join(registryDir, "critic.md"),
+      "---\nname: critic\ndescription: 적대 검증\ntargets:\n  claude:\n    model: opus\n  codex:\n    model: gpt-5.5\n    reasoning_effort: high\n---\n결함을 찾으러 간다.\n",
+    );
+    // deployAgents/loadRegistry는 호출 시점에 env를 읽으므로(레지스트리와 달리 모듈
+    // 로드 시점 고정이 아님) 같은 프로세스에서 env 주입으로 격리할 수 있다.
+    for (const k of ["LOCALMIND_AGENTS_DIR", "LOCALMIND_CLAUDE_AGENTS_DIR", "LOCALMIND_CODEX_HOME"]) {
+      savedEnv[k] = process.env[k];
+    }
+    process.env.LOCALMIND_AGENTS_DIR = registryDir;
+    process.env.LOCALMIND_CLAUDE_AGENTS_DIR = path.join(root, "dot-claude", "agents");
+    process.env.LOCALMIND_CODEX_HOME = path.join(root, "dot-codex");
+
+    const server = buildServer();
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    client = new Client({ name: "test-client", version: "0.0.0" });
+    await Promise.all([client.connect(clientTransport), server.connect(serverTransport)]);
+  });
+
+  after(async () => {
+    await client.close();
+    for (const [k, v] of Object.entries(savedEnv)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it("AC-11: list_agents가 레지스트리의 페르소나를 대상·모델과 함께 반환한다", async () => {
+    const result = await client.callTool({ name: "list_agents", arguments: {} });
+    assert.equal(result.isError, false);
+    const text = (result.content as Array<{ text?: string }>).map((c) => c.text ?? "").join("\n");
+    assert.match(text, /critic/);
+    assert.match(text, /opus/);
+    assert.match(text, /gpt-5\.5/);
+  });
+
+  it("AC-11: deploy_agents가 배포를 수행하고 결과를 한국어로 요약한다", async () => {
+    const result = await client.callTool({ name: "deploy_agents", arguments: {} });
+    assert.equal(result.isError, false);
+    const text = (result.content as Array<{ text?: string }>).map((c) => c.text ?? "").join("\n");
+    assert.match(text, /critic/);
+    assert.match(text, /생성됨|변경 없음/);
+    assert.ok(fs.existsSync(path.join(root, "dot-claude", "agents", "critic.md")));
+    assert.ok(fs.existsSync(path.join(root, "dot-codex", "critic.config.toml")));
+    assert.ok(fs.existsSync(path.join(root, "dot-codex", "agents", "critic.toml")));
+  });
+});

@@ -11,6 +11,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { agentsDir } from "./agents/registry.js";
 
 export interface NoteFolder {
   label: string;
@@ -365,6 +366,8 @@ function listMarkdown(dir: string, isRoot = true): string[] {
     // 하위 폴더의 memory.md 노트는 정상 색인한다.
     if (isRoot && e.name === "memory.md") continue;
     const full = path.join(dir, e.name);
+    // 페르소나 레지스트리(agents/)는 노트가 아니다 — 색인·검색에서 제외(specs/016 FR-10)
+    if (e.isDirectory() && path.resolve(full) === agentsDir()) continue;
     if (e.isDirectory()) out.push(...listMarkdown(full, false));
     else if (e.name.toLowerCase().endsWith(".md")) out.push(full);
   }

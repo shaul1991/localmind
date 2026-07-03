@@ -2,7 +2,7 @@
  * localmind MCP 서버 정의(도구 등록). stdio transport로 로컬에서만 동작한다.
  *
  * 도구: ask · remember · recall · capture_note · search_notes · ask_brain · note_links ·
- *       scaffold_sdd · whoami
+ *       scaffold_sdd · list_agents · deploy_agents · whoami
  *
  * 이 모듈은 stdout에 아무것도 쓰지 않는다(stdio transport 전용).
  */
@@ -11,6 +11,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { askBrain, capture, deleteNote, listFolders, listNotes, noteLinks, notesDir, searchNotes } from "./brain.js";
 import { formatScaffoldResult, scaffoldSdd } from "./scaffold.js";
+import { agentsDir, loadRegistry } from "./agents/registry.js";
+import { deployAgents, formatDeployResult } from "./agents/deploy.js";
 
 export const GATEWAY_URL = (process.env.LOCALMIND_URL ?? "http://localhost:8787").replace(/\/$/, "");
 export const GATEWAY_KEY = process.env.LOCALMIND_API_KEY?.trim();
@@ -403,6 +405,65 @@ export function buildServer(): McpServer {
         return textResult(formatScaffoldResult(result), false, "🧩");
       } catch (e) {
         return textResult(`scaffold_sdd 실패: ${(e as Error).message}`, true, "🧩");
+      }
+    },
+  );
+
+  // ── list_agents: 페르소나 레지스트리 목록 ────────────────────────
+  server.registerTool(
+    "list_agents",
+    {
+      title: "List persona agents",
+      description:
+        "List persona agent definitions in the localmind registry (the canonical source that " +
+        "gets deployed to Claude Code / Codex). Shows each persona's targets and models, plus " +
+        "any validation problems.",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        const reg = loadRegistry();
+        if (reg.personas.length === 0 && reg.problems.length === 0) {
+          return textResult(
+            `등록된 페르소나가 없습니다.\n레지스트리 폴더: ${agentsDir()}\n` +
+              `페르소나 정의(.md)를 추가한 뒤 deploy_agents로 배포하세요.`,
+            false,
+            "🎭",
+          );
+        }
+        const lines = reg.personas.map((p) => {
+          const t: string[] = [];
+          if (p.targets.claude) t.push(`claude=${p.targets.claude.model}`);
+          if (p.targets.codex) {
+            t.push(`codex=${p.targets.codex.model}${p.targets.codex.reasoning_effort ? `(${p.targets.codex.reasoning_effort})` : ""}`);
+          }
+          return `- ${p.name}: ${p.description} [${t.join(", ")}]`;
+        });
+        for (const pr of reg.problems) lines.push(`문제: ${pr.file} — ${pr.reason}`);
+        return textResult(`페르소나 ${reg.personas.length}개 (${agentsDir()}):\n${lines.join("\n")}`, false, "🎭");
+      } catch (e) {
+        return textResult(`list_agents 실패: ${(e as Error).message}`, true, "🎭");
+      }
+    },
+  );
+
+  // ── deploy_agents: 레지스트리 → Claude Code·Codex 배포 ──────────
+  server.registerTool(
+    "deploy_agents",
+    {
+      title: "Deploy persona agents",
+      description:
+        "Deploy persona agents from the localmind registry to Claude Code (~/.claude/agents) and " +
+        "Codex (~/.codex profiles + agents). Only files created by localmind (managed marker) are " +
+        "updated or removed; user-made files are never touched. Idempotent.",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        const result = deployAgents();
+        return textResult(formatDeployResult(result), false, "🎭");
+      } catch (e) {
+        return textResult(`deploy_agents 실패: ${(e as Error).message}`, true, "🎭");
       }
     },
   );

@@ -140,6 +140,10 @@ trash-list: ## 휴지통(.trash/) 확인 — soft-delete된 노트 목록 (NOTES
 trash-empty: ## 휴지통 완전 비우기(비가역) — 실행 전 확인. 비대화 시 FORCE=1 (NOTES_DIR)
 	@NOTES_DIR="$(NOTES_DIR)" FORCE="$(FORCE)" bash "$(CURDIR)/scripts/trash.sh" empty
 
+.PHONY: agents-deploy
+agents-deploy: ## 페르소나 레지스트리(~/.localmind/agents)를 Claude Code·Codex 설정으로 배포(멱등; 직접 만든 파일은 보호)
+	@npm run --silent agents:deploy
+
 .PHONY: init-sdd
 init-sdd: ## SDD 작업 흐름(AGENTS.md+specs/)을 지정한 프로젝트에 심기 (DIR=<경로>; 기존 파일은 덮어쓰지 않음)
 	@if [ -z "$(DIR)" ]; then echo "✗ DIR을 지정하세요: make init-sdd DIR=<경로>"; exit 1; fi
