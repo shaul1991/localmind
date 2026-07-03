@@ -9,7 +9,7 @@ SCRIPT="$ROOT/scripts/purge.sh"
 pass=0; fail=0
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; pass=$((pass+1)); }
 no()   { printf '  \033[31m✗\033[0m %s\n' "$*"; fail=$((fail+1)); }
-assert() { if eval "$2"; then ok "$1"; else no "$1"; fi; }
+assert() { local _lm_last=$?; if ( set +o pipefail; (exit $_lm_last); eval "$2" ); then ok "$1"; else no "$1"; fi; }  # pipefail 없이 + 직전 $? 보존 — SIGPIPE(141) 플레이키 방지
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT

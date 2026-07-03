@@ -14,7 +14,7 @@ OM_DOCKERFILE="$ROOT/openmemory/Dockerfile"
 pass=0; fail=0
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; pass=$((pass+1)); }
 no()   { printf '  \033[31m✗\033[0m %s\n' "$*"; fail=$((fail+1)); }
-assert() { if eval "$2"; then ok "$1"; else no "$1"; fi; }
+assert() { local _lm_last=$?; if ( set +o pipefail; (exit $_lm_last); eval "$2" ); then ok "$1"; else no "$1"; fi; }  # pipefail 없이 + 직전 $? 보존 — SIGPIPE(141) 플레이키 방지
 
 # 이미지 참조가 고정됐는가: digest 또는 구체 태그(숫자/v숫자/pg숫자로 시작)만 허용.
 is_pinned() {

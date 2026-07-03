@@ -11,7 +11,7 @@ NC="${NC_SCRIPT:-$REPO_ROOT/scripts/notes-connect.sh}"
 TAB="$(printf '\t')"
 
 pass=0; fail=0
-assert() { if eval "$2"; then printf '  \033[32m✓\033[0m %s\n' "$1"; pass=$((pass+1)); else printf '  \033[31m✗\033[0m %s\n' "$1"; fail=$((fail+1)); fi; }
+assert() { local _lm_last=$?; if ( set +o pipefail; (exit $_lm_last); eval "$2" ); then printf '  \033[32m✓\033[0m %s\n' "$1"; pass=$((pass+1)); else printf '  \033[31m✗\033[0m %s\n' "$1"; fail=$((fail+1)); fi; }  # pipefail 없이 + 직전 $? 보존 — SIGPIPE 플레이키 방지
 has_item() { grep -qF "ITEM${TAB}$1${TAB}$2" "$OUT"; }
 has_failed() { grep -qF "${TAB}failed" "$OUT"; }
 

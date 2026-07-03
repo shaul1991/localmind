@@ -9,8 +9,9 @@ TARGET="$SCRIPT_DIR/restore-extras.sh"
 pass=0
 fail=0
 assert() {
-  local desc="$1" cond="$2"
-  if eval "$cond"; then
+  local _lm_last=$? desc="$1" cond="$2"
+  # pipefail 없이 + 직전 $? 보존 — grep -q 조기 종료의 SIGPIPE(141) 플레이키 방지
+  if ( set +o pipefail; (exit $_lm_last); eval "$cond" ); then
     printf '  \033[32m✓\033[0m %s\n' "$desc"; pass=$((pass+1))
   else
     printf '  \033[31m✗\033[0m %s\n' "$desc"; fail=$((fail+1))
