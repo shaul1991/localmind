@@ -79,7 +79,9 @@ echo "내 새 노트" > "$D4/new.md"
 run_backup "$TMP/bin-ok" "$D4"
 assert "AC-11: non-ff push는 비0 종료" '[ "$RC" -ne 0 ]'
 assert "AC-11: 원인(다른 기기)과 해결(pull) 안내" 'printf %s "$OUT" | grep -q "다른 기기" && printf %s "$OUT" | grep -q "pull"'
-assert "AC-11: 로컬 커밋은 보존된다" 'git -C "$D4" log --oneline | head -1 | grep -q "localmind backup"'
+# `log | head -1`은 pipefail 아래서 git이 간헐적으로 SIGPIPE(141)를 받아 grep이 매치해도
+# 실패한다(CI node22에서 3회 발현). log -1은 head 없이 결정적.
+assert "AC-11: 로컬 커밋은 보존된다" 'git -C "$D4" log -1 --format=%s | grep -q "localmind backup"'
 
 # ── repo 아님: 안내 후 비0 종료 ──────────────────────────────────────────────
 D5="$TMP/notes5"; mkdir -p "$D5"
