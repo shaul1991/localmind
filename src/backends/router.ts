@@ -9,8 +9,9 @@ export interface Routed {
   model: string;
 }
 
-/** 모델 문자열로 백엔드를 판별하는 규칙. */
-function detectBackend(model: string): "claude" | "codex" | null {
+/** 모델 문자열로 백엔드를 판별하는 규칙. 페르소나 런타임(agents/runtime.ts)이
+ *  교차 백엔드 판정에 같은 규칙을 재사용한다(중복 정의 시 드리프트). */
+export function detectBackend(model: string): "claude" | "codex" | null {
   const m = model.toLowerCase();
   if (/(^|[/:])(claude|sonnet|opus|haiku|anthropic)/.test(m)) return "claude";
   if (/(^|[/:])(gpt|o1|o3|o4|codex|openai)/.test(m)) return "codex";

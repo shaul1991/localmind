@@ -12,6 +12,15 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { agentsDir } from "./agents/registry.js";
+import {
+  modelBackend,
+  parseVerdict,
+  personaChat,
+  pickCrossTarget,
+  pickTarget,
+  resolvePersona,
+} from "./agents/runtime.js";
+import { countVerifyOnDay, readRecords, type QueryLogRecord } from "./query-analysis.js";
 
 export interface NoteFolder {
   label: string;
@@ -68,16 +77,7 @@ const MAX_CHUNK = Math.max(400, Number(process.env.BRAIN_CHUNK_SIZE ?? 2000));
 const QUERY_LOG_PATH =
   process.env.QUERY_LOG ?? path.join(process.env.HOME ?? ".", ".localmind", "query-log.jsonl");
 
-interface QueryLogRecord {
-  ts: string;
-  tool: "search_notes" | "ask_brain" | "capture_note";
-  query: string;
-  hitCount: number;
-  success: boolean;
-  folder?: string | null;
-  captureValidation?: string | null;
-  sources?: string[];
-}
+// QueryLogRecord 타입 정본은 query-analysis.ts — CLI 리포트·리포트 노트와 공유(017).
 
 /** fire-and-forget 로깅 — 기록 실패가 검색·캡처 응답을 절대 막지 않는다(004 FR-2).
  *  stdout은 MCP 프로토콜 전용이므로 오류는 stderr에만 남긴다. */
@@ -647,6 +647,100 @@ export interface CaptureResult {
   path: string;
   validationStatus: "confirmed" | "unconfirmed" | "skipped";
   retried: boolean;
+  /** specs/017 — 큐레이터가 부여한 태그(태깅 미수행·실패 시 없음). */
+  tags?: string[];
+}
+
+// ── specs/017 — 큐레이터 태깅 ───────────────────────────────────────────────
+
+/** 기존 태그 어휘 수집 — 최근 수정 노트(상한 200개)의 frontmatter tags를 빈도순으로.
+ *  매 capture 전수 스캔을 피하기 위해 프로세스 내 TTL 캐시(5분)를 둔다(plan). */
+let tagVocabCache: { at: number; vocab: string[] } | null = null;
+const TAG_VOCAB_TTL_MS = 5 * 60_000;
+
+export function collectTagVocab(): string[] {
+  if (tagVocabCache && Date.now() - tagVocabCache.at < TAG_VOCAB_TTL_MS) return tagVocabCache.vocab;
+  const freq = new Map<string, number>();
+  try {
+    const files: { path: string; mtime: number }[] = [];
+    for (const f of FOLDERS) {
+      for (const p of listMarkdown(f.dir)) {
+        try {
+          files.push({ path: p, mtime: fs.statSync(p).mtimeMs });
+        } catch {
+          /* 사라진 파일 — 건너뜀 */
+        }
+      }
+    }
+    files.sort((a, b) => b.mtime - a.mtime);
+    for (const { path: p } of files.slice(0, 200)) {
+      try {
+        const head = fs.readFileSync(p, "utf8").slice(0, 2000);
+        const m = head.match(/^tags:\s*\[([^\]]*)\]/m);
+        if (!m) continue;
+        for (const raw of m[1].split(",")) {
+          const tag = raw.trim().replace(/^["']|["']$/g, "");
+          if (tag) freq.set(tag, (freq.get(tag) ?? 0) + 1);
+        }
+      } catch {
+        /* 읽기 실패 — 건너뜀 */
+      }
+    }
+  } catch {
+    /* 수집 실패 — 빈 어휘로 진행(FR-5) */
+  }
+  const vocab = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 50).map(([t]) => t);
+  tagVocabCache = { at: Date.now(), vocab };
+  return vocab;
+}
+
+/** 테스트용 — 캐시 초기화. */
+export function _resetTagVocabCacheForTest(): void {
+  tagVocabCache = null;
+}
+
+/** 큐레이터에게 태그를 제안받는다. 실패·해석 불가는 null(태그 없이 캡처 진행, FR-5). */
+async function suggestTags(text: string, title?: string): Promise<string[] | null> {
+  const curator = resolvePersona("curator");
+  if (!curator) return null; // 미구성 — 무음(FR-1)
+  const vocab = collectTagVocab();
+  const vocabLine = vocab.length
+    ? `기존 태그 어휘(재사용 우선): ${vocab.join(", ")}`
+    : "기존 태그 어휘 없음 — 새 태그는 보수적으로 최대 2개만.";
+  const timeoutMs = Math.max(1000, Number(process.env.BRAIN_TAG_TIMEOUT_MS ?? 30_000));
+  const res = await personaChat(curator, {
+    user: `${vocabLine}\n\n제목: ${title ?? "(없음)"}\n본문:\n${text.slice(0, 2000)}`,
+    systemPrefix:
+      "역할 제한: 지금은 노트 태깅만 한다. 위 노트에 어울리는 태그 1~3개를 고르되 기존 어휘를 " +
+      '우선 재사용하라. 반드시 JSON 문자열 배열만 출력하라. 예: ["회의", "프로젝트a"]',
+    prefer: "claude",
+    timeoutMs,
+  });
+  if (!res) return null;
+  try {
+    const m = res.text.match(/\[[\s\S]*?\]/);
+    const arr = JSON.parse(m ? m[0] : res.text);
+    if (!Array.isArray(arr)) return null;
+    const tags = [...new Set(arr.filter((t) => typeof t === "string").map((t: string) => t.trim()).filter(Boolean))].slice(0, 3);
+    return tags.length ? tags : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 방금 capture가 만든 frontmatter의 `tags: []` 줄에 태그를 기록한다(capture 시 1회만 —
+ *  이후 재색인·동작은 파일을 수정하지 않으므로 수동 편집 태그가 보존된다, AC-11). */
+function writeTagsToNote(filePath: string, tags: string[]): boolean {
+  try {
+    const src = fs.readFileSync(filePath, "utf8");
+    const line = `tags: [${tags.map((t) => JSON.stringify(t)).join(", ")}]`;
+    const next = src.replace(/^tags: \[\]$/m, line);
+    if (next === src) return false; // 예상 줄이 없으면 건드리지 않는다
+    fs.writeFileSync(filePath, next);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** 텍스트에서 재검색 쿼리를 추출한다. frontmatter/제목을 건너뛰고 첫 유효 줄 50자. 10자 미만이면 null. */
@@ -706,10 +800,18 @@ export async function capture(text: string, title?: string, folder?: string): Pr
 
   const key = `${target.label}/${fname}`;
 
+  // specs/017 FR-5 — 큐레이터 태깅: 파일 생성 후·색인 전에 frontmatter에 기록해
+  // 색인이 최종본으로 1회만 돌게 한다. 실패·부재·꺼짐은 태그 없이 진행(캡처 우선).
+  let tags: string[] | undefined;
+  if (process.env.BRAIN_CAPTURE_TAGS !== "off") {
+    const suggested = await suggestTags(text, title);
+    if (suggested && writeTagsToNote(path.join(target.dir, fname), suggested)) tags = suggested;
+  }
+
   // 텍스트가 너무 짧으면 검증 생략
   if (!extractSearchQuery(text)) {
     await ensureIndexed();
-    const skipped: CaptureResult = { path: key, validationStatus: "skipped", retried: false };
+    const skipped: CaptureResult = { path: key, validationStatus: "skipped", retried: false, ...(tags && { tags }) };
     logCapture(skipped, title ?? text.slice(0, 50), target.label);
     return skipped;
   }
@@ -749,6 +851,7 @@ export async function capture(text: string, title?: string, folder?: string): Pr
     path: key,
     validationStatus: found ? "confirmed" : "unconfirmed",
     retried,
+    ...(tags && { tags }),
   };
   logCapture(result, title ?? text.slice(0, 50), target.label);
   return result;
@@ -772,10 +875,75 @@ export interface BrainAnswer {
   sources: string[];
 }
 
-/** RAG: 노트 검색 → 컨텍스트로 claude/codex 종합 답변(인용 포함). folder(라벨)로 한정 가능. */
+// ── specs/017 — 페르소나 런타임 위임 (사서 합성 · 크리틱 검증) ──────────────
+
+/** 노트 근거 원칙 — 페르소나(사서)와 무관하게 항상 강제되는 규칙(017 FR-2). */
+const FORCED_RAG_RULES =
+  "당신은 사용자의 개인 노트만 근거로 답하는 어시스턴트입니다. 아래 '노트'에 있는 내용만 사용하고, " +
+  "출처를 [경로]로 인용하세요. 노트에 없으면 모른다고 답하세요.";
+
+/** 크리틱 자동 검증의 강제 규칙 — 검사 범위를 사실·수치·인용으로 한정(017 FR-3). */
+const VERIFY_RULES =
+  "역할 제한: 지금은 자동 사실 대조만 한다. 답변의 구체적 사실 주장·수치·날짜·인용이 아래 출처 청크와 " +
+  "일치하는지만 검사하라. 일반 서술·종합·연결·의견은 검사 대상이 아니다. " +
+  '반드시 JSON만 출력하라: {"ok": true} 또는 {"ok": false, "issues": ["확인되지 않는 항목 설명", ...]}';
+
+interface VerifyOutcome {
+  /** 답변 뒤에 붙일 표시(무음이면 빈 문자열) */
+  note: string;
+  /** 로그 필드 — undefined면 기록하지 않음(env off·페르소나 부재) */
+  verify?: "pass" | "warn" | "skipped";
+}
+
+/** 검증 생략 표시 — 크리틱이 "존재하는데" 수행하지 못했을 때만 쓴다(부재는 무음). */
+function skipNote(reason: string): string {
+  return `\n\n---\nℹ 검증 생략(${reason})`;
+}
+
+/** 크리틱 교차 검증 파이프라인(017 FR-3·4). 어떤 실패도 답변을 막지 않는다. */
+async function verifyAnswer(answer: string, context: string, synthModel: string): Promise<VerifyOutcome> {
+  if (process.env.BRAIN_VERIFY === "off") return { note: "" }; // 필드 자체를 남기지 않음(AC-14)
+  const critic = resolvePersona("critic");
+  if (!critic) return { note: "" }; // 미구성 — 무음·무필드(FR-1)
+
+  // 교차 백엔드 판정 — 동종 검증으로 위장하지 않는다(FR-3).
+  const target = pickCrossTarget(critic, modelBackend(synthModel));
+  if (!target) return { note: skipNote("교차 모델 없음"), verify: "skipped" };
+
+  // 일일 상한 — 로그가 곧 카운터(±1 오차 허용, plan).
+  const limit = Math.max(0, Number(process.env.BRAIN_VERIFY_DAILY_LIMIT ?? 50));
+  const todayCount = countVerifyOnDay(readRecords(QUERY_LOG_PATH) ?? []);
+  if (todayCount >= limit) return { note: skipNote("일일 상한"), verify: "skipped" };
+
+  const timeoutMs = Math.max(1000, Number(process.env.BRAIN_VERIFY_TIMEOUT_MS ?? 60_000));
+  const res = await personaChat(critic, {
+    user: `답변:\n${answer}\n\n출처 청크:\n${context}`,
+    systemPrefix: VERIFY_RULES,
+    target,
+    timeoutMs,
+  });
+  if (!res) return { note: skipNote("시간 초과 또는 호출 실패"), verify: "skipped" };
+
+  const verdict = parseVerdict(res.text);
+  if (!verdict) return { note: skipNote("판정 해석 실패"), verify: "skipped" };
+  if (verdict.ok || verdict.issues.length === 0) return { note: "", verify: "pass" }; // 통과 = 무음(FR-9)
+
+  const items = verdict.issues.slice(0, 5).map((i) => `- ${i}`).join("\n");
+  return {
+    note:
+      `\n\n---\n⚠ 검증(critic/${res.model}): 아래 내용은 출처에서 확인되지 않았습니다 — ` +
+      `교차 모델의 추정이며 최종 판단은 사용자 몫입니다:\n${items}\n` +
+      `(이 검증이 거슬리면 BRAIN_VERIFY=off 로 끌 수 있어요)`,
+    verify: "warn",
+  };
+}
+
+/** RAG: 노트 검색 → 컨텍스트로 claude/codex 종합 답변(인용 포함). folder(라벨)로 한정 가능.
+ *  specs/017: 사서 페르소나가 있으면 합성을 위임하고, 크리틱이 답변을 교차 검증한다.
+ *  로그는 검증까지 끝난 뒤 **단일 레코드**로 남긴다(AC-15 — 이중 기록은 리포트를 오염). */
 export async function askBrain(question: string, k = 5, folder?: string): Promise<BrainAnswer> {
   const hits = await searchNotesInternal(question, k, folder); // 내부 경유 — 이중 기록 방지(D-1)
-  const logAsk = (sources: string[]) =>
+  const logAsk = (sources: string[], extra: Partial<QueryLogRecord> = {}) =>
     logQuery({
       ts: new Date().toISOString(),
       tool: "ask_brain",
@@ -784,15 +952,29 @@ export async function askBrain(question: string, k = 5, folder?: string): Promis
       success: sources.length > 0,
       folder: folder ?? null,
       sources,
+      ...extra,
     });
   if (!hits.length) {
-    logAsk([]);
+    logAsk([]); // 답변이 없으므로 검증도 없다(FR-4)
     return { answer: "관련 노트를 찾지 못했습니다.", sources: [] };
   }
 
   const context = hits.map((h) => `[${h.path}]\n${h.text}`).join("\n\n---\n\n");
   const sources = [...new Set(hits.map((h) => h.path))];
-  logAsk(sources);
+
+  // 사서 합성(FR-2) — 강제 규칙이 페르소나 지침보다 앞. 부재 시 기존 경로·무음.
+  let model = ANSWER_MODEL;
+  let system = FORCED_RAG_RULES;
+  let persona: string | undefined;
+  if (process.env.BRAIN_LIBRARIAN !== "off") {
+    const librarian = resolvePersona("librarian");
+    const target = librarian && pickTarget(librarian, "claude");
+    if (librarian && target) {
+      model = target.model;
+      system = `${FORCED_RAG_RULES}\n\n${librarian.prompt}`;
+      persona = "librarian";
+    }
+  }
 
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (GATEWAY_KEY) headers.Authorization = `Bearer ${GATEWAY_KEY}`;
@@ -800,24 +982,24 @@ export async function askBrain(question: string, k = 5, folder?: string): Promis
     method: "POST",
     headers,
     body: JSON.stringify({
-      model: ANSWER_MODEL,
+      model,
       stream: false,
       messages: [
-        {
-          role: "system",
-          content:
-            "당신은 사용자의 개인 노트만 근거로 답하는 어시스턴트입니다. 아래 '노트'에 있는 내용만 사용하고, " +
-            "출처를 [경로]로 인용하세요. 노트에 없으면 모른다고 답하세요.",
-        },
+        { role: "system", content: system },
         { role: "user", content: `노트:\n${context}\n\n질문: ${question}` },
       ],
     }),
   });
   if (!res.ok) {
+    logAsk(sources, { model, persona }); // 합성 실패 — 검증 없이 1회 기록(FR-4·AC-15)
     return { answer: `종합 실패 (HTTP ${res.status})`, sources };
   }
   const j: any = await res.json();
-  return { answer: j?.choices?.[0]?.message?.content ?? "(빈 응답)", sources };
+  const answer = j?.choices?.[0]?.message?.content ?? "(빈 응답)";
+
+  const verified = await verifyAnswer(answer, context, model);
+  logAsk(sources, { model, persona, ...(verified.verify ? { verify: verified.verify } : {}) });
+  return { answer: answer + verified.note, sources };
 }
 
 export interface ResolvedLink {

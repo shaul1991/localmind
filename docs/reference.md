@@ -241,6 +241,9 @@ curl -X POST http://localhost:8767/api/v1/memories/filter -H "Content-Type: appl
 | `BRAIN_BATCH` / `BRAIN_CONCURRENCY` / `BRAIN_CHUNK_SIZE` | `32` / `4` / `2000` | 인덱싱 튜닝 |
 | `QUERY_LOG` | `~/.localmind/query-log.jsonl` | 검색 품질 로그(로컬 전용 — 커밋·백업 제외). 분석: `make query-report`, 정리: `make query-log-clean` |
 | `LOCALMIND_AGENTS_DIR` | `<첫 NOTES_DIR 폴더>/agents` | 페르소나 에이전트 레지스트리(정본) — [페르소나 에이전트](agents.md) |
+| `BRAIN_LIBRARIAN` / `BRAIN_VERIFY` / `BRAIN_CAPTURE_TAGS` | (켜짐) | `off`로 각 런타임 위임(사서 합성/크리틱 검증/큐레이터 태깅) 끄기 |
+| `BRAIN_VERIFY_TIMEOUT_MS` / `BRAIN_VERIFY_DAILY_LIMIT` | `60000` / `50` | 크리틱 검증 시간 상한 / 일일 횟수 상한 |
+| `BRAIN_TAG_TIMEOUT_MS` / `BRAIN_REPORT_TIMEOUT_MS` | `30000` / `60000` | 큐레이터 태깅 / 분석가 해석 시간 상한 |
 | `LOCALMIND_CLAUDE_AGENTS_DIR` | `~/.claude/agents` | 페르소나 배포 대상(Claude Code 서브에이전트) |
 | `LOCALMIND_CODEX_HOME` | `$CODEX_HOME` 또는 `~/.codex` | 페르소나 배포 대상(Codex 프로필·에이전트) |
 
