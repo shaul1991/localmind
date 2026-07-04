@@ -102,12 +102,19 @@ function logQuery(rec: QueryLogRecord): void {
   }
 }
 
-const INDEX_VERSION = 4; // 3→4: 임베딩 메타(embeddingModel·dims) 기록 + 청크 분할 방식 변경(specs/013)
+const INDEX_VERSION = 5; // 4→5: 벡터를 바이너리 사이드카로 분리(specs/023 — 디스크 인코딩만 변경)
 
+/** 인메모리 청크 — 벡터 보유(검색·병합은 이 형태만 본다, specs/023 불변식). */
 interface IndexedChunk {
   path: string;
   text: string;
   vector: number[];
+}
+/** 디스크(v5) 청크 — 벡터 대신 사이드카 slot 참조. 직렬화 경계에서만 존재. */
+interface DiskChunk {
+  path: string;
+  text: string;
+  slot: number;
 }
 export interface FileEntry {
   hash: string;
@@ -122,7 +129,125 @@ export interface BrainIndex {
   /** 임베딩 벡터 차원 — 첫 임베딩 후 기록. 쿼리 벡터와 다르면 재색인(같은 모델명으로
    *  다른 모델이 라우팅된 경우까지 방어 — 차원이 섞이면 NaN 코사인·무의미 결과가 난다). */
   dims?: number;
+  /** v5 — 현재 벡터 사이드카 파일 basename(specs/023 FR-1). files가 비면 생략. */
+  vectorFile?: string;
   files: Record<string, FileEntry>;
+}
+
+// ── specs/023 — 벡터 바이너리 사이드카 ──────────────────────────────────────
+// 디스크 인코딩: JSON은 slot 참조만, 벡터는 <indexBasename>.vec-<gen>에
+// [16B 헤더(magic "LMV1" | dims u32LE | count u32LE | reserved) + Float32LE 연속]으로.
+// JSON rename만이 커밋점(FR-2) — 사이드카는 커밋 전 durable, GC는 직전 세대 유예(keep=2).
+
+const SIDECAR_HEADER = 16;
+let sidecarGenCounter = 0;
+
+function sidecarAbs(basename: string): string {
+  return path.join(path.dirname(INDEX_PATH), basename);
+}
+
+function buildSidecar(vectors: number[][], dims: number): Buffer {
+  const buf = Buffer.alloc(SIDECAR_HEADER + vectors.length * dims * 4);
+  buf.write("LMV1", 0, "ascii");
+  buf.writeUInt32LE(dims, 4);
+  buf.writeUInt32LE(vectors.length, 8);
+  for (let i = 0; i < vectors.length; i++)
+    for (let j = 0; j < dims; j++) buf.writeFloatLE(vectors[i][j], SIDECAR_HEADER + (i * dims + j) * 4);
+  return buf;
+}
+
+type Sidecar = { dims: number; count: number; body: Buffer };
+
+function readSidecarFile(abs: string): Sidecar | null {
+  try {
+    const buf = fs.readFileSync(abs);
+    if (buf.length < SIDECAR_HEADER || buf.toString("ascii", 0, 4) !== "LMV1") return null;
+    const dims = buf.readUInt32LE(4);
+    const count = buf.readUInt32LE(8);
+    if (dims === 0 || buf.length !== SIDECAR_HEADER + count * dims * 4) return null; // 부분 손상(truncate 포함)
+    return { dims, count, body: buf.subarray(SIDECAR_HEADER) };
+  } catch {
+    return null; // 부재·권한 — 호출부가 재시도/자가치유 판단(FR-3)
+  }
+}
+
+/** 디스크 JSON(slot 참조)을 사이드카로 하이드레이션해 인메모리(벡터 보유)로 만든다.
+ *  해석 불가한 파일 항목은 제거(자가 치유 — 다음 스캔에서 재임베딩). 반환: 제거 수. */
+function hydrateV5(idx: BrainIndex, sc: Sidecar | null): number {
+  let healed = 0;
+  for (const [key, fe] of Object.entries(idx.files)) {
+    if (fe.chunks.length === 0) continue; // 빈 파일 — 벡터 불필요
+    const chunks: IndexedChunk[] = [];
+    let ok = sc !== null;
+    if (sc) {
+      for (const c of fe.chunks as unknown as DiskChunk[]) {
+        if (typeof c.slot !== "number" || c.slot < 0 || c.slot >= sc.count) {
+          ok = false;
+          break;
+        }
+        const vector = new Array<number>(sc.dims);
+        for (let j = 0; j < sc.dims; j++) vector[j] = sc.body.readFloatLE((c.slot * sc.dims + j) * 4);
+        chunks.push({ path: c.path, text: c.text, vector });
+      }
+    }
+    if (!ok) {
+      delete idx.files[key];
+      healed++;
+    } else {
+      fe.chunks = chunks;
+    }
+  }
+  return healed;
+}
+
+function scUsable(sc: Sidecar | null, dims: number | undefined): sc is Sidecar {
+  return sc !== null && (dims === undefined || sc.dims === dims);
+}
+
+/** 오래된 generation 사이드카 GC — 참조 중(방금 커밋) + mtime 최신 1개는 유예(keep=2,
+ *  FR-2: 락 없는 reader가 옛 gen 참조를 쥔 채 지워지는 경합 흡수). 실패는 무해(다음 저장 정리). */
+function gcSidecars(keepBasename: string | null): void {
+  try {
+    const dir = path.dirname(INDEX_PATH);
+    const prefix = `${path.basename(INDEX_PATH)}.vec-`;
+    const others = fs
+      .readdirSync(dir)
+      .filter((n) => n.startsWith(prefix) && !n.includes(".tmp-") && n !== keepBasename)
+      .map((n) => {
+        let m = 0;
+        try {
+          m = fs.statSync(path.join(dir, n)).mtimeMs;
+        } catch {
+          /* 사라짐 — 정리 대상 아님 */
+        }
+        return { n, m };
+      })
+      .sort((a, b) => b.m - a.m);
+    for (const o of others.slice(1)) fs.rmSync(path.join(dir, o.n), { force: true });
+  } catch {
+    /* GC 실패는 무해 */
+  }
+}
+
+// v4 → v5 무재임베딩 마이그레이션 플래그(FR-4) — 다음 저장(재색인의 dirty 판정 포함)이 영속화.
+let migrationPending = false;
+let migrateNotified = false;
+function notifyMigrateOnce(): void {
+  if (migrateNotified) return;
+  migrateNotified = true;
+  process.stderr.write("[localmind-brain] 색인을 새 형식(v5 — 벡터 분리 저장)으로 전환합니다. 다시 색인할 필요는 없어요.\n");
+}
+let sidecarHealNotified = false;
+function notifySidecarHealOnce(n: number): void {
+  if (sidecarHealNotified) return;
+  sidecarHealNotified = true;
+  process.stderr.write(`[localmind-brain] 색인의 벡터 파일이 없거나 손상돼 ${n}개 파일을 다시 색인합니다(자가 치유).\n`);
+}
+
+// 테스트 전용(specs/023 AC-3b) — loadIndex의 "JSON 파싱 후 ↔ 사이드카 읽기 전" 경계 훅.
+let afterJsonParseHook: (() => void) | null = null;
+export function _setAfterJsonParseHookForTest(fn: (() => void) | null): void {
+  afterJsonParseHook = fn;
 }
 
 function ensureDirs(): void {
@@ -191,12 +316,58 @@ export function loadIndex(): BrainIndex {
   }
 
   try {
-    const idx = JSON.parse(fs.readFileSync(INDEX_PATH, "utf8")) as BrainIndex;
-    if (idx.version === INDEX_VERSION && idx.files) {
+    let idx = JSON.parse(fs.readFileSync(INDEX_PATH, "utf8")) as BrainIndex;
+    if (idx.files && (idx.version === INDEX_VERSION || idx.version === 4)) {
       // 임베딩 모델이 바뀐 인덱스는 벡터가 호환되지 않는다 — 전체 재색인(013 FR-5).
       if (idx.embeddingModel !== undefined && idx.embeddingModel !== EMB_MODEL) {
         notifyReindexOnce(`임베딩 모델이 바뀌어(${idx.embeddingModel} → ${EMB_MODEL})`);
+      } else if (idx.version === 4) {
+        // specs/023 FR-4 — v4(인라인 벡터) 무재임베딩 마이그레이션: 벡터를 그대로 재사용해
+        // v5 인메모리로 전환하고, 다음 저장이 v5(JSON slot + 사이드카)로 영속화한다.
+        let broken = 0;
+        let expectDims = idx.dims; // stamp-less v4는 첫 유효 벡터 길이로 통일(불균일 → 자가 치유)
+        for (const [key, fe] of Object.entries(idx.files)) {
+          const valid = fe.chunks.every((c) => {
+            const v = (c as IndexedChunk).vector;
+            // 유한 숫자 + dims 일치(전 청크 균일)까지 검증 — 손상 v4 벡터가 사이드카에
+            // NaN Float32로 영속되지 않게(교차 리뷰 지적). 불합격은 재임베딩 자가 치유.
+            if (!Array.isArray(v) || v.length === 0 || !v.every((x) => Number.isFinite(x))) return false;
+            if (expectDims === undefined) expectDims = v.length;
+            return v.length === expectDims;
+          });
+          if (!valid) {
+            delete idx.files[key];
+            broken++;
+          }
+        }
+        if (idx.dims === undefined) idx.dims = expectDims; // dims 스탬프 영속(리뷰 경미-1)
+        idx.version = INDEX_VERSION;
+        migrationPending = true;
+        notifyMigrateOnce();
+        if (broken > 0) notifySidecarHealOnce(broken);
+        cachedIndex = idx;
+        cachedStat = { mtimeMs: stat.mtimeMs, size: stat.size };
+        setLoadStat(idx, cachedStat);
+        return idx;
       } else {
+        // v5 — 사이드카 하이드레이션. 부재·불일치면 JSON 1회 재파싱(FR-3): vectorFile이
+        // 새 generation으로 전진했으면 동시 저장의 양성 경합이므로 그것을 읽는다(자가 치유 아님).
+        afterJsonParseHook?.();
+        let sc = idx.vectorFile ? readSidecarFile(sidecarAbs(idx.vectorFile)) : null;
+        if (idx.vectorFile && !scUsable(sc, idx.dims)) {
+          try {
+            const again = JSON.parse(fs.readFileSync(INDEX_PATH, "utf8")) as BrainIndex;
+            if (again.version === INDEX_VERSION && again.files && again.vectorFile && again.vectorFile !== idx.vectorFile) {
+              idx = again;
+              sc = readSidecarFile(sidecarAbs(again.vectorFile));
+              stat = fs.statSync(INDEX_PATH); // 캐시 기준을 재파싱본에 맞춘다
+            }
+          } catch {
+            /* 재파싱 실패 — 아래 자가 치유로 */
+          }
+        }
+        const healed = hydrateV5(idx, scUsable(sc, idx.dims) ? sc : null);
+        if (healed > 0) notifySidecarHealOnce(healed);
         cachedIndex = idx;
         cachedStat = { mtimeMs: stat.mtimeMs, size: stat.size };
         setLoadStat(idx, cachedStat);
@@ -204,7 +375,8 @@ export function loadIndex(): BrainIndex {
       }
     } else if (typeof idx?.version === "number") {
       // 스키마 버전 업그레이드(예: 013의 청크 분할·메타 도입) — 조용히 수 분 재색인하지
-      // 않도록 사유를 안내한다(FR-4, self-review 결함 2).
+      // 않도록 사유를 안내한다(FR-4, self-review 결함 2). v5 코드가 미래 버전·구버전
+      // 코드가 v5를 만나는 롤백도 이 경로(전량 재빌드 자가 치유, specs/023 FR-5).
       notifyReindexOnce(`인덱스 형식이 바뀌어(v${idx.version} → v${INDEX_VERSION})`);
     }
   } catch {
@@ -312,7 +484,14 @@ export function saveIndex(idx: BrainIndex): void {
       const stat = fs.statSync(INDEX_PATH);
       const base = getLoadStat(idx) === undefined ? cachedStat : getLoadStat(idx);
       if (!base || base.mtimeMs !== stat.mtimeMs || base.size !== stat.size) {
+        // 디스크가 v5면 그 사이드카로 하이드레이션해 병합한다(specs/023 — 병합 채택 항목도
+        // 인메모리 형태(벡터 보유)여야 재직렬화가 성립). 해석 불가 항목은 병합에서 제외
+        // (재임베딩 자가 치유). v4 등 다른 버전은 아래 가드가 병합을 건너뛴다.
         const disk = JSON.parse(fs.readFileSync(INDEX_PATH, "utf8")) as BrainIndex;
+        if (disk.version === INDEX_VERSION && disk.files) {
+          const dsc = disk.vectorFile ? readSidecarFile(sidecarAbs(disk.vectorFile)) : null;
+          hydrateV5(disk, scUsable(dsc, disk.dims) ? dsc : null);
+        }
         // 버전·임베딩 모델이 다른 인덱스(마이그레이션·모델 교체 중)는 병합하지 않는다 —
         // 낡은 벡터를 되살리면 차원 불일치가 재발한다.
         if (disk.version === idx.version && disk.files && disk.embeddingModel === idx.embeddingModel) {
@@ -323,13 +502,42 @@ export function saveIndex(idx: BrainIndex): void {
       /* 디스크에 없음/손상 — 그대로 저장 */
     }
 
-    // 원자적 쓰기: 같은 디렉토리의 temp 파일에 쓰고 rename으로 교체한다(rename은 동일
-    // 파일시스템 내에서 원자적). 쓰기 도중 중단돼도 기존 인덱스 파일은 온전하다.
+    // specs/023 FR-1·2 — 디스크 인코딩: 벡터를 사이드카로 분리(JSON은 slot 참조만).
+    // 순서가 원자성의 핵심: (1) 사이드카를 temp+rename으로 durable화(아직 미참조),
+    // (2) 그 사이드카를 가리키는 JSON을 temp+rename — 이 rename이 단일 커밋점,
+    // (3) 커밋 후 오래된 세대 GC(직전 1개 유예). 어느 시점에 중단돼도 디스크 JSON은
+    // 항상 존재하는 사이드카를 가리킨다.
+    const vectors: number[][] = [];
+    const filesOut: Record<string, unknown> = {};
+    for (const [key, fe] of Object.entries(idx.files)) {
+      filesOut[key] = {
+        ...fe,
+        chunks: fe.chunks.map((c): DiskChunk => {
+          vectors.push(c.vector);
+          return { path: c.path, text: c.text, slot: vectors.length - 1 };
+        }),
+      };
+    }
+    let vectorFile: string | undefined;
+    if (vectors.length > 0) {
+      idx.dims ??= vectors[0].length; // 사이드카 헤더와 JSON dims 스탬프 일치(리뷰 경미-1)
+      const gen = `${Date.now().toString(36)}-${process.pid}-${sidecarGenCounter++}`;
+      vectorFile = `${path.basename(INDEX_PATH)}.vec-${gen}`;
+      const scTmp = `${sidecarAbs(vectorFile)}.tmp-${process.pid}`;
+      fs.writeFileSync(scTmp, buildSidecar(vectors, idx.dims));
+      fs.renameSync(scTmp, sidecarAbs(vectorFile));
+    }
     // temp 이름에 pid를 붙여, 락 경합의 극단(동시 stale 강제 해제)에서도 서로의 temp를
-    // 밟지 않는다(self-review 결함 5).
+    // 밟지 않는다(021 self-review 결함 5 관례).
+    // 직렬화는 {...idx} 스프레드 — 화이트리스트로 최상위 필드를 나열하면 미래 additive
+    // 필드(예: 024 bindings)가 저장에서 조용히 탈락한다(리뷰 경미-2). LOAD_STAT은
+    // Symbol 키라 JSON.stringify가 자동 제외.
     const tmp = `${INDEX_PATH}.tmp-${process.pid}`;
-    fs.writeFileSync(tmp, JSON.stringify(idx));
-    fs.renameSync(tmp, INDEX_PATH);
+    fs.writeFileSync(tmp, JSON.stringify({ ...idx, vectorFile, files: filesOut }));
+    fs.renameSync(tmp, INDEX_PATH); // 단일 커밋점
+    idx.vectorFile = vectorFile; // 인메모리 객체도 최신 참조 유지(캐시 정합)
+    gcSidecars(vectorFile ?? null);
+    migrationPending = false; // v4→v5 전환분이 영속됨(specs/023 FR-4)
     // 방금 저장한 내용을 캐시에 반영 → 자기 저장 직후 조회가 디스크를 다시 읽지 않는다.
     try {
       const stat = fs.statSync(INDEX_PATH);
@@ -354,6 +562,7 @@ function resetIndex(): void {
     const tmp = `${INDEX_PATH}.tmp-${process.pid}`;
     fs.writeFileSync(tmp, JSON.stringify(empty));
     fs.renameSync(tmp, INDEX_PATH);
+    gcSidecars(null); // 빈 색인 — 잔존 사이드카 정리(직전 1개 유예, specs/023)
     try {
       const stat = fs.statSync(INDEX_PATH);
       cachedIndex = empty;
@@ -745,8 +954,29 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
   // 스로틀로 놓친 최종 커밋 포함) 또는 삭제 1건 이상. embeddingModel/dims 스탬프-only
   // 변화는 세지 않는다(FR-2 — dims는 pending에 종속, 무-op 재세팅은 저장 트리거 아님).
   // 색인 파일이 아직 없으면(첫 실행) 저장한다 — 파일 생성 자체가 변경이고, 013 AC-8
-  // (빈 vault 재색인도 모델 스탬프를 기록)의 기존 계약을 유지한다.
-  const dirty = pending.length > 0 || deletedCount > 0 || !fs.existsSync(INDEX_PATH);
+  // (빈 vault 재색인도 모델 스탬프를 기록)의 기존 계약을 유지한다. v4→v5 마이그레이션
+  // (specs/023 FR-4)도 디스크 포맷 변경이므로 dirty다(스탬프-only와 다름).
+  // 사이드카 유실 수복(specs/023 — codex 교차 리뷰 차단 결함): 캐시를 쥔 장수 프로세스는
+  // 사이드카가 지워져도 loadIndex가 캐시를 반환해 자가 치유를 못 본다 — 여기서 참조
+  // 사이드카의 존재를 확인하고, 없으면 저장으로 수복한다(메모리에 벡터가 있으므로
+  // 재임베딩 0건 — 다음 프로세스의 전량 재임베딩을 막는다).
+  const sidecarMissing = (() => {
+    if (idx.vectorFile === undefined) return false;
+    try {
+      const st = fs.statSync(sidecarAbs(idx.vectorFile));
+      if (idx.dims === undefined) return false;
+      // O(1) 크기 대조 — truncate 부분 손상도 in-place 수복(전량 읽기 없이, 리뷰 잔여 HOLE-D).
+      // clean 실행에서 인메모리 files == 디스크 files이므로 기대 크기 산식이 성립한다
+      // (변경이 있었다면 pending·deleted로 이미 dirty).
+      let chunks = 0;
+      for (const fe of Object.values(idx.files)) chunks += fe.chunks.length;
+      return st.size !== SIDECAR_HEADER + chunks * idx.dims * 4;
+    } catch {
+      return true; // 부재
+    }
+  })();
+  const dirty =
+    pending.length > 0 || deletedCount > 0 || migrationPending || sidecarMissing || !fs.existsSync(INDEX_PATH);
   if (dirty) saveIndex(idx);
   return idx;
 }

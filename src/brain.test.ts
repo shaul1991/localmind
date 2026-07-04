@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 import { execFileSync, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import http from "node:http";
+import crypto from "node:crypto";
 import {
   extractSearchQuery,
   removeFromIndex,
@@ -1051,7 +1052,7 @@ async function runReindexCli(
   idxPath: string,
   base: string,
   env: Record<string, string | undefined>,
-): Promise<{ stdout: string }> {
+): Promise<{ stdout: string; stderr: string }> {
   const childEnv: NodeJS.ProcessEnv = {
     ...process.env,
     BRAIN_INDEX: idxPath,
@@ -1064,12 +1065,12 @@ async function runReindexCli(
   delete childEnv.REINDEX_FALLBACK;
   delete childEnv.REINDEX_PRUNE_LABELS;
   for (const [k, v] of Object.entries(env)) if (v !== undefined) childEnv[k] = v;
-  const { stdout } = await execFileP("node", ["--import", "tsx/esm", "scripts/reindex.ts"], {
+  const { stdout, stderr } = await execFileP("node", ["--import", "tsx/esm", "scripts/reindex.ts"], {
     cwd: REPO_ROOT,
     env: childEnv,
     encoding: "utf8",
   });
-  return { stdout };
+  return { stdout, stderr };
 }
 
 function indexKeys(idxPath: string): string[] {
@@ -1502,6 +1503,367 @@ describe("색인 쓰기 위생 (022)", () => {
       });
     } finally {
       fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+});
+
+// ── specs/023 — 색인 포맷 v5: 벡터 바이너리 사이드카 (FR-1~5, AC-1~9) ───────
+
+function readSidecarHeaderT(p: string): { magic: string; dims: number; count: number; size: number } {
+  const buf = fs.readFileSync(p);
+  return { magic: buf.toString("ascii", 0, 4), dims: buf.readUInt32LE(4), count: buf.readUInt32LE(8), size: buf.length };
+}
+function vecFiles(idxPath: string): string[] {
+  const dir = path.dirname(idxPath);
+  const prefix = `${path.basename(idxPath)}.vec-`;
+  return fs.readdirSync(dir).filter((n) => n.startsWith(prefix) && !n.includes(".tmp-"));
+}
+function diskJson(idxPath: string): any {
+  return JSON.parse(fs.readFileSync(idxPath, "utf8"));
+}
+
+async function runBrainScript(
+  base: string,
+  env: Record<string, string>,
+  body: string,
+): Promise<{ stdout: string; stderr: string }> {
+  const script = [
+    `import * as fsx from "node:fs";`,
+    `import * as pathx from "node:path";`,
+    `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+    body,
+    `}).catch((e) => { console.error(e); process.exit(1); });`,
+  ].join("\n");
+  const childEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    EMBEDDINGS_URL: base,
+    EMBEDDINGS_KEY: "test-key",
+    EMBED_RETRIES: "1",
+    ...env,
+  };
+  delete childEnv.REINDEX_FALLBACK;
+  const { stdout, stderr } = await execFileP("node", ["--import", "tsx/esm", "-e", script], {
+    cwd: REPO_ROOT,
+    env: childEnv,
+    encoding: "utf8",
+  });
+  return { stdout, stderr };
+}
+
+describe("색인 포맷 v5 — 벡터 사이드카 (023)", () => {
+  it("AC-1: v5 디스크 JSON엔 벡터가 없고 slot·사이드카(16B 헤더)가 정확하다", async () => {
+    const f = makeBatchFixture(2);
+    try {
+      await withEmbedStub(async (base) => {
+        await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
+        const idx = diskJson(f.idxPath);
+        assert.equal(idx.version, 5);
+        let chunkCount = 0;
+        for (const fe of Object.values(idx.files) as any[])
+          for (const c of fe.chunks) {
+            assert.equal(c.vector, undefined, "디스크 청크에 인라인 벡터 없음");
+            assert.equal(typeof c.slot, "number", "slot 참조 존재");
+            chunkCount++;
+          }
+        assert.ok(idx.vectorFile, "vectorFile 기록");
+        const h = readSidecarHeaderT(path.join(path.dirname(f.idxPath), idx.vectorFile));
+        assert.equal(h.magic, "LMV1");
+        assert.equal(h.dims, 4);
+        assert.equal(h.count, chunkCount);
+        assert.equal(h.size, 16 + chunkCount * 4 * 4, "크기 = 16 + count×dims×4");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-2·4: 별도 프로세스가 디스크(JSON+사이드카)만으로 벡터 복원 + 검색 정상", async () => {
+    const f = makeBatchFixture(2);
+    try {
+      await withEmbedStub(async (base) => {
+        await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
+        const { stdout } = await runBrainScript(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath }, `
+          const idx = m.loadIndex();
+          const allVec = Object.values(idx.files).every((fe) => fe.chunks.every((c) => Array.isArray(c.vector) && c.vector.length === 4));
+          const hits = await m.searchNotes("노트 내용");
+          process.stdout.write(JSON.stringify({ n: Object.keys(idx.files).length, allVec, hitPaths: hits.map((h) => h.path).sort() }));
+        `);
+        const r = JSON.parse(stdout);
+        assert.equal(r.n, 2, "전 항목 로드");
+        assert.equal(r.allVec, true, "전 청크 벡터 복원(cosine 가능)");
+        assert.deepEqual(r.hitPaths, ["n/f0.md", "n/f1.md"], "저장 전과 동일한 히트 집합(스텁 벡터 동일 → 전 노트 히트)");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-3: 3회 저장 후 사이드카는 2개 이하(keep=2 유예 GC)", async () => {
+    const f = makeBatchFixture(2);
+    try {
+      await withEmbedStub(async (base) => {
+        await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
+        fs.writeFileSync(path.join(f.root, "n", "f0.md"), "두 번째 저장 유발 내용");
+        await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
+        fs.writeFileSync(path.join(f.root, "n", "f0.md"), "세 번째 저장 유발 내용");
+        await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
+        const files = vecFiles(f.idxPath);
+        assert.ok(files.length <= 2, `사이드카 ${files.length}개 — keep=2 초과 GC`);
+        assert.ok(files.includes(diskJson(f.idxPath).vectorFile), "참조 중인 사이드카는 항상 존재");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-3b: reader 경합(파싱 후 GC·신규 커밋) — 재시도로 복원, 자가 치유 미발생", async () => {
+    const f = makeBatchFixture(2);
+    try {
+      await withEmbedStub(async (base) => {
+        await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
+        const { stdout, stderr } = await runBrainScript(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath }, `
+          const idxPath = process.env.BRAIN_INDEX;
+          m._setAfterJsonParseHookForTest(() => {
+            // 동시 writer 재현: 새 gen 커밋 + 옛 gen GC — reader는 옛 gen 참조를 쥔 상태
+            const raw = JSON.parse(fsx.readFileSync(idxPath, "utf8"));
+            const dir = pathx.dirname(idxPath);
+            const oldVec = pathx.join(dir, raw.vectorFile);
+            const newName = raw.vectorFile + "x"; // 새 generation basename(접두 유지)
+            fsx.copyFileSync(oldVec, pathx.join(dir, newName));
+            raw.vectorFile = newName;
+            fsx.writeFileSync(idxPath, JSON.stringify(raw));
+            fsx.rmSync(oldVec);
+            m._setAfterJsonParseHookForTest(null); // 재파싱에는 미적용
+          });
+          m._resetIndexCacheForTest();
+          const idx = m.loadIndex();
+          const allVec = Object.values(idx.files).every((fe) => fe.chunks.every((c) => Array.isArray(c.vector)));
+          process.stdout.write(JSON.stringify({ n: Object.keys(idx.files).length, allVec }));
+        `);
+        const r = JSON.parse(stdout);
+        assert.equal(r.n, 2, "항목 보존(자가 치유로 제거되지 않음)");
+        assert.equal(r.allVec, true, "새 generation에서 벡터 복원");
+        assert.doesNotMatch(stderr, /자가 치유/, "양성 경합을 자가 치유로 오판하지 않음");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-5: 사이드카 유실·손상 → 영향 파일 재임베딩(자가 치유) + 안내 1회", async () => {
+    const f = makeBatchFixture(2);
+    try {
+      await withEmbedStub(async (base, calls) => {
+        await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
+        const vec = path.join(path.dirname(f.idxPath), diskJson(f.idxPath).vectorFile);
+        fs.rmSync(vec); // 유실(재파싱해도 같은 gen → 재시도 실패 → 자가 치유)
+        const before = calls();
+        const { stderr } = await runReindexCli(f.idxPath, base, { NOTES_DIR: f.nd });
+        assert.ok(calls() - before > 0, "영향 파일 재임베딩");
+        assert.equal((stderr.match(/자가 치유/g) ?? []).length, 1, "사유 안내는 1회만(notify-once)");
+        const { stdout } = await runBrainScript(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath }, `
+          const hits = await m.searchNotes("노트 내용");
+          process.stdout.write(JSON.stringify({ hits: hits.length }));
+        `);
+        assert.ok(JSON.parse(stdout).hits > 0, "치유 후 검색 정상");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-6: 디스크 v4 · 인메모리 v5 — reload-merge가 병합하지 않는다(교차버전 가드)", async () => {
+    const f = makeBatchFixture(1);
+    try {
+      await withEmbedStub(async (base) => {
+        await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
+        const { stdout } = await runBrainScript(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath }, `
+          const idx = m.loadIndex(); // v5 인메모리(n/f0.md)
+          // 구버전 프로세스의 v4 저장 재현 — 다른 항목(ghost) 포함
+          fsx.writeFileSync(process.env.BRAIN_INDEX, JSON.stringify({
+            version: 4, embeddingModel: idx.embeddingModel, dims: 4,
+            files: { "ghost/g.md": { hash: "h", folder: "ghost", chunks: [{ path: "ghost/g.md", text: "고스트", vector: [1,0,0,0] }], linksOut: [] } },
+          }));
+          m.saveIndex(idx); // stat 변화 → 병합 시도 → 버전 가드로 스킵돼야 함
+          const disk = JSON.parse(fsx.readFileSync(process.env.BRAIN_INDEX, "utf8"));
+          process.stdout.write(JSON.stringify({ keys: Object.keys(disk.files), version: disk.version }));
+        `);
+        const r = JSON.parse(stdout);
+        assert.ok(!r.keys.includes("ghost/g.md"), "v4 항목이 병합되지 않음");
+        assert.ok(r.keys.includes("n/f0.md"), "내 항목 유지");
+        assert.equal(r.version, 5);
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-7: 두 로드가 각자 다른 파일을 저장해도 양쪽 벡터가 모두 복원 가능(reload-merge)", async () => {
+    const f = makeBatchFixture(1);
+    try {
+      await withEmbedStub(async (base) => {
+        await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
+        const { stdout } = await runBrainScript(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath }, `
+          const a = m.loadIndex();       // 스냅샷 A
+          m._resetIndexCacheForTest();
+          const b = m.loadIndex();       // 스냅샷 B(별도 객체 — 다중 프로세스 재현, 013 관례)
+          b.files["y/b.md"] = { hash: "hb", folder: "y", chunks: [{ path: "y/b.md", text: "비", vector: [0,1,0,0] }], linksOut: [] };
+          m.saveIndex(b);                // 디스크: {n/f0, y/b}
+          a.files["z/a.md"] = { hash: "ha", folder: "z", chunks: [{ path: "z/a.md", text: "에이", vector: [0,0,1,0] }], linksOut: [] };
+          m.saveIndex(a);                // reload-merge가 y/b를 보존해야 함
+          m._resetIndexCacheForTest();
+          const fin = m.loadIndex();
+          const allVec = Object.values(fin.files).every((fe) => fe.chunks.every((c) => Array.isArray(c.vector)));
+          process.stdout.write(JSON.stringify({ keys: Object.keys(fin.files).sort(), allVec }));
+        `);
+        const r = JSON.parse(stdout);
+        assert.deepEqual(r.keys, ["n/f0.md", "y/b.md", "z/a.md"], "양쪽 저장분 모두 보존");
+        assert.equal(r.allVec, true, "전 벡터 디스크에서 복원 가능");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-8: v4 색인 무재임베딩 마이그레이션 — 임베딩 0건 + v5 영속", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "lm-migrate-"));
+    const idxPath = path.join(root, "index.json");
+    try {
+      fs.mkdirSync(path.join(root, "n"));
+      const text = "마이그레이션 노트 본문입니다";
+      fs.writeFileSync(path.join(root, "n", "m.md"), text);
+      const hash = crypto.createHash("sha256").update(text).digest("hex");
+      fs.writeFileSync(
+        idxPath,
+        JSON.stringify({
+          version: 4,
+          dims: 4,
+          files: { "n/m.md": { hash, folder: "n", chunks: [{ path: "n/m.md", text, vector: [1, 0, 0, 0] }], linksOut: [] } },
+        }),
+      );
+      await withEmbedStub(async (base, calls) => {
+        const before = calls();
+        const { stderr } = await runReindexCli(idxPath, base, { NOTES_DIR: `n=${path.join(root, "n")}` });
+        assert.equal(calls() - before, 0, "무재임베딩(인라인 벡터 재사용)");
+        assert.match(stderr, /새 형식/, "마이그레이션 안내");
+        const idx = diskJson(idxPath);
+        assert.equal(idx.version, 5, "v5로 영속");
+        assert.equal(idx.files["n/m.md"].chunks[0].slot, 0, "slot 참조");
+        assert.ok(idx.vectorFile && fs.existsSync(path.join(root, idx.vectorFile)), "사이드카 생성");
+        const h = readSidecarHeaderT(path.join(root, idx.vectorFile));
+        assert.equal(h.count, 1);
+        // 마이그레이션된 v5로 검색 정상(쿼리 임베딩 1건은 재색인 카운트와 분리 계측)
+        const { stdout } = await runBrainScript(base, { NOTES_DIR: `n=${path.join(root, "n")}`, BRAIN_INDEX: idxPath }, `
+          const hits = await m.searchNotes("마이그레이션 노트");
+          process.stdout.write(JSON.stringify({ hitPaths: hits.map((h) => h.path) }));
+        `);
+        assert.deepEqual(JSON.parse(stdout).hitPaths, ["n/m.md"], "마이그레이션 후 검색 정상");
+      });
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("사이드카 유실 수복: 캐시 보유 프로세스의 재색인이 재임베딩 0건으로 디스크를 수복한다", async () => {
+    // codex 교차 리뷰 차단 결함 재현 — 장수 MCP 프로세스: loadIndex 캐시가 살아 있는 채
+    // 사이드카가 지워지면, 같은 프로세스 재색인은 캐시(벡터 보유)를 보므로 자가 치유
+    // 경로를 타지 않는다. dirty의 sidecarMissing 수복이 없으면 디스크가 깨진 채 남아
+    // 다음 프로세스가 전량 재임베딩을 문다.
+    const f = makeBatchFixture(2);
+    try {
+      await withEmbedStub(async (base, calls) => {
+        await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
+        const before = calls();
+        const { stdout } = await runBrainScript(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath }, `
+          m.loadIndex(); // 캐시 하이드레이션(벡터 보유)
+          const vec = pathx.join(pathx.dirname(process.env.BRAIN_INDEX), JSON.parse(fsx.readFileSync(process.env.BRAIN_INDEX, "utf8")).vectorFile);
+          fsx.rmSync(vec); // 사이드카 유실 — 캐시는 그대로
+          const r = await m.reindex();
+          const disk = JSON.parse(fsx.readFileSync(process.env.BRAIN_INDEX, "utf8"));
+          const restored = disk.vectorFile && fsx.existsSync(pathx.join(pathx.dirname(process.env.BRAIN_INDEX), disk.vectorFile));
+          process.stdout.write(JSON.stringify({ files: r.files, restored }));
+        `);
+        const r = JSON.parse(stdout);
+        assert.equal(calls() - before, 0, "재임베딩 0건(메모리 벡터로 수복)");
+        assert.equal(r.files, 2, "항목 무손실");
+        assert.equal(r.restored, true, "사이드카 디스크 수복");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("사이드카 값 왕복: distinct 벡터가 slot 순서대로 정확히 복원된다", async () => {
+    // 균일 스텁([1,0,0,0])만으로는 slot 오프셋·aliasing·엔디안 회귀를 못 잡는다(리뷰
+    // 경미-4). float32로 정확히 표현되는 값(2^-k 배수)이라 무허용오차 비교가 결정적.
+    const f = makeBatchFixture(1);
+    try {
+      await withEmbedStub(async (base) => {
+        const { stdout } = await runBrainScript(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath }, `
+          const idx = m.loadIndex();
+          idx.dims = 4;
+          idx.files["a/x.md"] = { hash: "h1", folder: "a", chunks: [
+            { path: "a/x.md", text: "하나", vector: [0.125, -1.5, 3.25, 42] },
+            { path: "a/x.md", text: "둘", vector: [9.75, 0.0625, -2.25, 7] },
+          ], linksOut: [] };
+          idx.files["b/y.md"] = { hash: "h2", folder: "b", chunks: [
+            { path: "b/y.md", text: "셋", vector: [5.5, 6.5, -7.5, 8.5] },
+          ], linksOut: [] };
+          m.saveIndex(idx);
+          m._resetIndexCacheForTest();
+          const fin = m.loadIndex();
+          process.stdout.write(JSON.stringify({
+            a: fin.files["a/x.md"].chunks.map((c) => c.vector),
+            b: fin.files["b/y.md"].chunks.map((c) => c.vector),
+          }));
+        `);
+        const r = JSON.parse(stdout);
+        assert.deepEqual(r.a, [[0.125, -1.5, 3.25, 42], [9.75, 0.0625, -2.25, 7]], "청크별 distinct 벡터 정확 복원");
+        assert.deepEqual(r.b, [[5.5, 6.5, -7.5, 8.5]], "파일 간 slot 매핑 정확");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("사이드카 truncate 수복: 캐시 보유 프로세스의 재색인이 크기 불일치를 감지해 수복한다", async () => {
+    const f = makeBatchFixture(2);
+    try {
+      await withEmbedStub(async (base, calls) => {
+        await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
+        const before = calls();
+        const { stdout } = await runBrainScript(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath }, `
+          m.loadIndex(); // 캐시 하이드레이션
+          const vec = pathx.join(pathx.dirname(process.env.BRAIN_INDEX), JSON.parse(fsx.readFileSync(process.env.BRAIN_INDEX, "utf8")).vectorFile);
+          fsx.truncateSync(vec, 8); // 부분 손상 — 파일은 존재
+          await m.reindex();
+          const disk = JSON.parse(fsx.readFileSync(process.env.BRAIN_INDEX, "utf8"));
+          const p2 = pathx.join(pathx.dirname(process.env.BRAIN_INDEX), disk.vectorFile);
+          process.stdout.write(JSON.stringify({ size: fsx.statSync(p2).size }));
+        `);
+        assert.equal(calls() - before, 0, "재임베딩 0건(메모리 벡터로 수복)");
+        assert.equal(JSON.parse(stdout).size, 16 + 2 * 4 * 4, "수복된 사이드카 크기 정상(2파일×1청크)");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-9: 손상 v4 색인은 기존 관례대로 전량 재빌드(재임베딩) 후 v5", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "lm-migrate-bad-"));
+    const idxPath = path.join(root, "index.json");
+    try {
+      fs.mkdirSync(path.join(root, "n"));
+      fs.writeFileSync(path.join(root, "n", "m.md"), "재빌드 대상 노트입니다");
+      fs.writeFileSync(idxPath, "not json {{{");
+      await withEmbedStub(async (base, calls) => {
+        const before = calls();
+        await runReindexCli(idxPath, base, { NOTES_DIR: `n=${path.join(root, "n")}` });
+        assert.ok(calls() - before > 0, "전량 재빌드(재임베딩)");
+        assert.equal(diskJson(idxPath).version, 5, "최종 포맷 v5");
+      });
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
     }
   });
 });
