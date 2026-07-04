@@ -14,24 +14,33 @@ import { seedAgents } from "./seed.js";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const TPL_AGENTS = path.join(REPO_ROOT, "templates", "agents");
-const TEN = [
+const ALL = [
   "analyst",
+  "android-dev",
   "architect",
+  "auth-dev",
+  "backend-dev",
   "critic",
   "curator",
+  "data-platform",
+  "dba",
   "designer",
+  "frontend-dev",
+  "infra",
   "interviewer",
+  "ios-dev",
   "librarian",
   "researcher",
+  "security-reviewer",
   "ux-reviewer",
   "worker",
 ];
 
 describe("026 페르소나 templates·시드", () => {
-  it("026 AC-1: templates/agents 10종이 loadRegistry 검증을 통과한다(problems 0·유효 target)", () => {
+  it("026 AC-1 = 028 AC-1: templates/agents 19종이 loadRegistry 검증을 통과한다(problems 0·유효 target)", () => {
     const reg = loadRegistry(TPL_AGENTS);
     assert.equal(reg.problems.length, 0, JSON.stringify(reg.problems));
-    assert.deepEqual(reg.personas.map((p) => p.name).sort(), TEN, "정확히 10종");
+    assert.deepEqual(reg.personas.map((p) => p.name).sort(), ALL, "정확히 19종");
     for (const p of reg.personas) assert.ok(p.targets.claude, `${p.name}: claude target 필요`);
   });
 
@@ -57,12 +66,12 @@ describe("026 페르소나 templates·시드", () => {
     }
   });
 
-  it("026 AC-3: 빈 노트 폴더에 10종 전부 시드 + 기존 정본은 절대 덮지 않음", () => {
+  it("026 AC-3 = 028 AC-7: 빈 노트 폴더에 19종 전부 시드 + 기존 정본은 절대 덮지 않음", () => {
     const dest = fs.mkdtempSync(path.join(os.tmpdir(), "lm-seed-"));
     try {
       const items = seedAgents({ agentsDir: dest });
-      assert.equal(items.filter((i) => i.status === "seeded").length, 10, "신규 설치 → 10종 시드");
-      assert.deepEqual(fs.readdirSync(dest).sort(), TEN.map((n) => `${n}.md`), "파일 목록 일치");
+      assert.equal(items.filter((i) => i.status === "seeded").length, 19, "신규 설치 → 19종 시드");
+      assert.deepEqual(fs.readdirSync(dest).sort(), ALL.map((n) => `${n}.md`), "파일 목록 일치");
       // 사용자 수정 보호
       fs.writeFileSync(path.join(dest, "designer.md"), "사용자 수정본");
       const again = seedAgents({ agentsDir: dest });
@@ -87,12 +96,12 @@ describe("026 페르소나 templates·시드", () => {
     }
   });
 
-  it("026 AC-4: 부분 존재 시 없는 것만 채움(fill-missing-only)", () => {
+  it("026 AC-4 = 028 AC-7: 부분 존재 시 없는 것만 채움(fill-missing-only)", () => {
     const dest = fs.mkdtempSync(path.join(os.tmpdir(), "lm-seed-partial-"));
     try {
       fs.writeFileSync(path.join(dest, "critic.md"), "내 크리틱");
       const items = seedAgents({ agentsDir: dest });
-      assert.equal(items.filter((i) => i.status === "seeded").length, 9, "없는 9종만 시드");
+      assert.equal(items.filter((i) => i.status === "seeded").length, 18, "없는 18종만 시드");
       assert.equal(fs.readFileSync(path.join(dest, "critic.md"), "utf8"), "내 크리틱", "기존 critic 보호");
     } finally {
       fs.rmSync(dest, { recursive: true, force: true });
@@ -120,11 +129,11 @@ describe("026 페르소나 templates·시드", () => {
     }
   });
 
-  it("026 AC-6: personas.md SSoT가 10종·능동적 재조정을 반영한다", () => {
+  it("026 AC-6: personas.md SSoT가 19종·능동적 재조정을 반영한다", () => {
     const ssot = fs.readFileSync(path.join(REPO_ROOT, "docs", "personas.md"), "utf8");
     assert.ok(ssot.includes("`designer`") && ssot.includes("`ux-reviewer`"), "구성표에 2행 존재");
     assert.ok(!/총 8개|이 8개/.test(ssot), "'총 8/이 8개' 잔존 표기 없음");
-    assert.ok(ssot.includes("10"), "총원 10 갱신");
+    assert.ok(/총 19/.test(ssot), "총원 19 갱신(028 — 상세 정합은 028 AC-10)");
     assert.ok(/무대 확장.*디자인|디자인 무대/.test(ssot), "디자인 무대 확장 정당화");
   });
 });
@@ -208,5 +217,192 @@ describe("027 디자인 툴·검증 연동", () => {
       for (const line of body.split("\n"))
         if (line.includes("/home/")) assert.ok(line.includes("/home/<"), `${path.basename(f)}: /home/은 플레이스홀더만`);
     }
+  });
+});
+
+describe("028 도메인 스페셜리스트 페르소나", () => {
+  const NEW9 = [
+    "backend-dev",
+    "frontend-dev",
+    "ios-dev",
+    "android-dev",
+    "infra",
+    "data-platform",
+    "auth-dev",
+    "dba",
+    "security-reviewer",
+  ];
+  // spec 배정표 — 각 신규 페르소나의 배정 트리거 noun(description 포함 필수 + 타 description 부재)
+  const NOUNS: Record<string, string[]> = {
+    "backend-dev": ["백엔드", "서버사이드", "API", "엔드포인트"],
+    "frontend-dev": ["프론트엔드", "웹 UI", "브라우저", "컴포넌트 구현"],
+    "ios-dev": ["iOS", "Swift", "SwiftUI", "아이폰 앱"],
+    "android-dev": ["안드로이드", "Kotlin", "Jetpack", "안드로이드 앱"],
+    infra: ["인프라", "배포", "CI/CD", "컨테이너", "쿠버네티스", "IaC", "프로비저닝"],
+    "data-platform": ["데이터 파이프라인", "ETL", "데이터 웨어하우스", "스트리밍"],
+    "auth-dev": ["인증", "인가", "로그인", "세션 관리", "액세스 토큰", "OAuth", "RBAC"],
+    dba: ["데이터베이스", "물리 스키마", "인덱스 최적화", "쿼리 최적화", "마이그레이션"],
+    "security-reviewer": ["보안 리뷰", "취약점", "위협 모델링", "시큐어 코딩", "공급망 보안"],
+  };
+  // 공통 금지어(기존 소유자의 배정 noun) — 신규 9종 description에만 부재 검사(AC-3 ③)
+  const BANNED = [
+    "설계",
+    "self-review",
+    "결함 검증",
+    "품질 게이트",
+    "디자인 시스템",
+    "디자인 토큰",
+    "컴포넌트 정의",
+    "사용성",
+    "접근성",
+  ];
+  // spec AC-2 — 도메인별 필수 인접 핸드오프(본문에 상대 이름 존재)
+  const HANDOFFS: Record<string, string[]> = {
+    "backend-dev": ["dba", "auth-dev", "infra"],
+    "frontend-dev": ["designer", "ux-reviewer", "backend-dev"],
+    "ios-dev": ["designer"],
+    "android-dev": ["designer"],
+    infra: ["backend-dev"],
+    "data-platform": ["dba"],
+    "auth-dev": ["security-reviewer"],
+    dba: ["data-platform", "architect"],
+    "security-reviewer": ["auth-dev", "critic"],
+  };
+
+  function descOf(name: string): string {
+    const reg = loadRegistry(TPL_AGENTS);
+    return reg.personas.find((p) => p.name === name)!.description;
+  }
+  function bodyOf(name: string): string {
+    return fs.readFileSync(path.join(TPL_AGENTS, `${name}.md`), "utf8");
+  }
+  function skillDesc(): string {
+    const raw = fs.readFileSync(
+      path.join(REPO_ROOT, "templates", "skills", "sdd-self-review", "SKILL.md"),
+      "utf8",
+    );
+    const m = raw.match(/^description:\s*(.+)$/m);
+    return m ? m[1] : "";
+  }
+
+  it("028 AC-2: 신규 9종 본문 4절 + 공통·인접 핸드오프 + auth↔security 대칭", () => {
+    for (const name of NEW9) {
+      const body = bodyOf(name);
+      for (const sec of ["## 소유", "## 비소유", "## 원칙", "## 출력 형식"])
+        assert.ok(body.includes(sec), `${name}: ${sec}`);
+      assert.ok(/아키텍트|architect/.test(body) && /크리틱|critic/.test(body), `${name}: 공통 핸드오프`);
+      if (name !== "security-reviewer")
+        assert.ok(/인터뷰어|interviewer/.test(body), `${name}: 요구 발굴 핸드오프(interviewer)`);
+      for (const h of HANDOFFS[name]) assert.ok(body.includes(h), `${name}: →${h} 인접 핸드오프`);
+    }
+    assert.ok(bodyOf("auth-dev").includes("security-reviewer"), "auth→security 대칭");
+    assert.ok(bodyOf("security-reviewer").includes("auth-dev"), "security→auth 대칭");
+  });
+
+  it("028 AC-3: 어휘 서로소 — 신규 lane 대(對) 전체(단방향이 역방향 커버)", () => {
+    const reg = loadRegistry(TPL_AGENTS);
+    const descs = new Map(reg.personas.map((p) => [p.name, p.description]));
+    const skill = skillDesc();
+    assert.ok(skill.length > 0, "스킬 description 확보");
+    for (const name of NEW9) {
+      const own = descs.get(name)!;
+      for (const noun of NOUNS[name]) assert.ok(own.includes(noun), `${name}: 자기 noun "${noun}" 포함`);
+      for (const b of BANNED) assert.ok(!own.includes(b), `${name}: 금지어 "${b}" 부재`);
+    }
+    for (const name of NEW9) {
+      for (const noun of NOUNS[name]) {
+        for (const [other, d] of descs) {
+          if (other === name) continue;
+          assert.ok(!d.includes(noun), `"${noun}"(${name} 소유)이 ${other} description에 존재`);
+        }
+        assert.ok(!skill.includes(noun), `"${noun}"이 스킬 description에 존재`);
+      }
+    }
+  });
+
+  it("028 AC-4: critic 보안 트리거 양도(load-bearing) + 핸드오프", () => {
+    const critic = descOf("critic");
+    assert.ok(!critic.includes("보안"), "critic description에 '보안' 부재(양도 실증)");
+    for (const w of ["취약점", "위협 모델링", "시큐어 코딩", "공급망 보안"])
+      assert.ok(!critic.includes(w), `critic description에 "${w}" 부재(회귀 보조)`);
+    assert.ok(bodyOf("critic").includes("security-reviewer"), "critic 본문 핸드오프");
+  });
+
+  it("028 AC-5: 모델 티어 — 구현 8종 opus·tools 없음, security-reviewer opus+읽기 도구", () => {
+    const reg = loadRegistry(TPL_AGENTS);
+    for (const name of NEW9) {
+      const p = reg.personas.find((x) => x.name === name)!;
+      assert.equal(p.targets.claude!.model, "opus", `${name}: opus`);
+      if (name === "security-reviewer")
+        assert.equal(p.targets.claude!.tools, "Read, Grep, Glob, Bash", "리뷰어는 쓰기 없음");
+      else assert.equal(p.targets.claude!.tools, undefined, `${name}: tools 생략(구현자 기본 도구)`);
+    }
+  });
+
+  it("028 AC-6: 가이드 템플릿 4섹션 + AGENTS.md 바이브 코딩 절 + 완화 게이트·design.md 우선", () => {
+    const tpl = fs.readFileSync(path.join(REPO_ROOT, "templates", "guides", "guide.template.md"), "utf8");
+    for (const sec of ["스택", "컨벤션", "금지사항", "참조"]) assert.ok(tpl.includes(sec), `가이드 ${sec} 섹션`);
+    const agentsMd = fs.readFileSync(path.join(REPO_ROOT, "AGENTS.md"), "utf8");
+    assert.ok(agentsMd.includes("바이브 코딩"), "AGENTS.md 절");
+    assert.ok(/cp templates\/guides\/guide\.template\.md/.test(agentsMd), "가이드 cp 안내");
+    assert.ok(/없으면[\s\S]{0,80}(일반|모범)[\s\S]{0,40}명시/.test(agentsMd), "완화 게이트 문구");
+    const devs = NEW9.filter((n) => n !== "security-reviewer");
+    for (const name of devs) {
+      const body = bodyOf(name);
+      assert.ok(body.includes("guides/"), `${name}: 가이드 참조`);
+      assert.ok(/없으면[\s\S]{0,120}명시/.test(body), `${name}: 완화 게이트`);
+    }
+    for (const name of ["frontend-dev", "ios-dev", "android-dev"])
+      assert.ok(/design\.md[\s\S]{0,200}(우선|먼저)/.test(bodyOf(name)), `${name}: design.md 게이트 우선 규칙`);
+  });
+
+  it("028 AC-8: worker 경계 — 도메인 위임 + UI 소유 분할 + description 불변", () => {
+    const body = bodyOf("worker");
+    assert.ok(/도메인 페르소나|frontend-dev/.test(body), "도메인 위임 문구");
+    assert.ok(body.includes("frontend-dev") && /ios-dev|android-dev/.test(body), "UI 소유 분할");
+    const desc = descOf("worker");
+    for (const noun of ["백엔드", "프론트엔드", "안드로이드", "인프라"])
+      assert.ok(!desc.includes(noun), `worker description에 "${noun}" 없음(역-충돌 방지)`);
+  });
+
+  it("028 AC-9: 위생 — templates/agents·guides 전수에 개인 절대경로 부재", () => {
+    const guidesDir = path.join(REPO_ROOT, "templates", "guides");
+    const files = [
+      ...fs.readdirSync(TPL_AGENTS).map((n) => path.join(TPL_AGENTS, n)),
+      ...fs.readdirSync(guidesDir).map((n) => path.join(guidesDir, n)),
+    ];
+    for (const f of files) {
+      const body = fs.readFileSync(f, "utf8");
+      assert.ok(!body.includes("/Users/"), `${path.basename(f)}: /Users/ 없음`);
+      for (const line of body.split("\n"))
+        if (line.includes("/home/")) assert.ok(line.includes("/home/<"), `${path.basename(f)}: 플레이스홀더만`);
+    }
+  });
+
+  it("028 AC-10: personas.md SSoT 19종·성분 정합·구성표 모델/핸드오프·바이브 코딩 무대", () => {
+    const ssot = fs.readFileSync(path.join(REPO_ROOT, "docs", "personas.md"), "utf8");
+    // 구성표 9행 — 각 행에 모델(opus)과 핸드오프 표기(codex 교차 검증 block 2)
+    const ROW_HANDOFF: Record<string, string> = {
+      "backend-dev": "dba",
+      "frontend-dev": "designer",
+      "ios-dev": "designer",
+      "android-dev": "designer",
+      infra: "backend-dev",
+      "data-platform": "analyst",
+      "auth-dev": "security-reviewer",
+      dba: "아키텍트",
+      "security-reviewer": "크리틱",
+    };
+    for (const name of NEW9) {
+      const row = ssot.split("\n").find((l) => l.includes("`" + name + "`"));
+      assert.ok(row, `구성표 ${name} 행`);
+      assert.ok(row!.includes("opus"), `${name} 행에 모델(opus)`);
+      assert.ok(row!.includes(ROW_HANDOFF[name]), `${name} 행에 핸드오프(${ROW_HANDOFF[name]})`);
+    }
+    assert.ok(!/총 10개|이 10개/.test(ssot), "스테일 총원 표기 없음");
+    // TL;DR 성분합 = 총원(5+5+9=19) — 성분 표기 전부 존재(codex 조언)
+    for (const part of ["코어 5개", "무대 확장 5개", "9개", "총 19개"])
+      assert.ok(ssot.includes(part), `TL;DR 성분 "${part}"`);
+    assert.ok(ssot.includes("바이브 코딩"), "바이브 코딩 무대");
   });
 });
