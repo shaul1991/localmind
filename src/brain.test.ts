@@ -1540,6 +1540,7 @@ async function runBrainScript(
     EMBEDDINGS_URL: base,
     EMBEDDINGS_KEY: "test-key",
     EMBED_RETRIES: "1",
+    QUERY_LOG: "/dev/null", // 테스트 검색이 실사용 쿼리 로그(~/.localmind)를 오염시키지 않게(004 분석 신뢰성)
     ...env,
   };
   delete childEnv.REINDEX_FALLBACK;
