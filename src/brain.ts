@@ -57,6 +57,11 @@ function parseFolders(): NoteFolder[] {
 
 const FOLDERS = parseFolders();
 const FOLDER_BY_LABEL = new Map(FOLDERS.map((f) => [f.label, f]));
+// specs/020 FR-3 — 후퇴 판정: NOTES_DIR가 이 프로세스 env에 없어 FOLDERS가 기본값으로
+// 재계산된 상태(자체 폴백), 또는 셸 진입점이 폴백을 썼다는 신호(REINDEX_FALLBACK=1 —
+// reindex.sh가 REINDEX_FALLBACK_DIR로 NOTES_DIR를 재할당한 경우 NOTES_DIR만으로는 구분
+// 불가라 별도 신호가 필요). 후퇴 중엔 폴더·라벨 구성이 신뢰 불가 — 삭제 반영 전면 보류.
+const REINDEX_FALLBACK = process.env.REINDEX_FALLBACK === "1" || !process.env.NOTES_DIR?.trim();
 // 인덱스는 기본적으로 첫 노트 폴더 안에 두되(기존 호환), git/싱크 볼트를 더럽히지
 // 않도록 BRAIN_INDEX로 위치를 바꿀 수 있다.
 const INDEX_PATH = process.env.BRAIN_INDEX ?? path.join(FOLDERS[0].dir, ".brain-index.json");
@@ -353,14 +358,20 @@ function resetIndex(): void {
   }
 }
 
-// specs/019 AC-10 테스트를 위해 export
-export function listMarkdown(dir: string, isRoot = true): string[] {
+// specs/019 AC-10 테스트를 위해 export.
+// rootEntries — 호출자가 이미 readdir한 결과(specs/020 FR-2: 대상/부재 판정과 스캔이
+// 같은 결과를 쓰도록). 하위 디렉토리의 readdir 실패는 여전히 조용히 건너뛴다(020 알려진 한계).
+export function listMarkdown(dir: string, isRoot = true, rootEntries?: fs.Dirent[]): string[] {
   const out: string[] = [];
   let entries: fs.Dirent[];
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return out;
+  if (rootEntries) {
+    entries = rootEntries;
+  } else {
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return out;
+    }
   }
   for (const e of entries) {
     if (e.name.startsWith(".")) continue; // 숨김 파일/디렉토리 제외(인덱스 포함)
@@ -522,16 +533,58 @@ function ensureIndexed(): Promise<BrainIndex> {
   return indexingInFlight;
 }
 
+/** specs/020 — 명시적 재색인 경로에 돌려줄 요약(고아·부재·보류·탈출구 처리 내역).
+ *  반환형 변경 없이 모듈 레벨로만 올린다 — ensureIndexed의 기존 호출자(검색·캡처·링크)로
+ *  파급 없음. 출력은 scripts/reindex.ts만 한다(brain stdout 금지, MCP 경로 침묵 — FR-4). */
+export interface ReindexSummary {
+  fallback: boolean;
+  missing: { label: string; dir: string }[];
+  orphans: { label: string; files: number }[];
+  pruned: { label: string; files: number }[];
+  pruneIgnored: string[];
+  pruneUnknown: string[];
+}
+let lastReindexSummary: ReindexSummary | null = null;
+
 async function doEnsureIndexed(): Promise<BrainIndex> {
   indexRunCount++; // 테스트 계측(single-flight 검증)
-  ensureDirs();
   const idx = loadIndex();
   idx.embeddingModel = EMB_MODEL; // 인덱스가 자기 임베딩 모델을 안다(013 FR-5)
   const seen = new Set<string>();
 
+  // specs/020 FR-2 — 대상/부재 판정은 readdir 성공 여부(존재 검사만으로는 권한 거부를
+  // 못 거른다). 판정에 성공한 그 결과(rootEntries)로 스캔해 판정과 스캔이 갈라지지 않게 한다.
+  // 주의: 여기서 ensureDirs()(전체 폴더 mkdir -p)를 부르면 부재 폴더(미마운트·클론 전)가
+  // 빈 폴더로 되살아나 "존재하는 빈 폴더"로 오판 → 그 라벨이 전량 프루닝된다. 재색인
+  // 경로에서는 일괄 생성하지 않고, 지킬 색인 키가 없는 라벨(첫 실행)만 부트스트랩 생성한다.
+  const scanned = new Set<string>();
+  const missing: { label: string; dir: string }[] = [];
+  const readDirOrNull = (dir: string): fs.Dirent[] | null => {
+    try {
+      return fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return null;
+    }
+  };
+
   const pending: { key: string; folder: string; hash: string; chunks: string[]; linksOut: string[] }[] = [];
   for (const f of FOLDERS) {
-    for (const full of listMarkdown(f.dir)) {
+    let rootEntries = readDirOrNull(f.dir);
+    if (rootEntries === null && !Object.values(idx.files).some((fe) => fe.folder === f.label)) {
+      // 첫 실행 부트스트랩(기존 ensureDirs 동작 보존) — 보존할 색인이 없을 때만 생성
+      try {
+        fs.mkdirSync(f.dir, { recursive: true });
+      } catch {
+        /* 생성 불가 → 아래 missing 처리 */
+      }
+      rootEntries = readDirOrNull(f.dir);
+    }
+    if (rootEntries === null) {
+      missing.push({ label: f.label, dir: f.dir });
+      continue; // 부재 라벨 — 스캔도 프루닝도 하지 않는다(보존)
+    }
+    scanned.add(f.label);
+    for (const full of listMarkdown(f.dir, true, rootEntries)) {
       const key = `${f.label}/${path.relative(f.dir, full)}`;
       seen.add(key);
       let text: string;
@@ -599,8 +652,52 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
     await Promise.all(Array.from({ length: Math.min(conc, batches.length) }, () => worker()));
   }
 
-  // 삭제된 파일 제거
-  for (const key of Object.keys(idx.files)) if (!seen.has(key)) delete idx.files[key];
+  // specs/020 — 프루닝 가드: "스캔 안 됨"은 "삭제됨"이 아니다. 삭제 반영은 실제로 읽은
+  // (대상) 라벨 안에서만 하고(FR-1), 후퇴 재색인은 전면 보류한다(FR-3 — 폴백 라벨이
+  // 등록 라벨과 우연히 같으면 라벨 스코프 가드가 뚫리므로 라벨 단위가 아니라 전면 보류).
+  // 라벨 판정은 FileEntry.folder 정본 — 라벨에 '/'가 허용되어 키 문자열 파싱은 금지.
+  const summary: ReindexSummary = {
+    fallback: REINDEX_FALLBACK,
+    missing,
+    orphans: [],
+    pruned: [],
+    pruneIgnored: [],
+    pruneUnknown: [],
+  };
+  if (!REINDEX_FALLBACK) {
+    const registered = new Set(FOLDERS.map((f) => f.label));
+    const indexLabels = new Set(Object.values(idx.files).map((fe) => fe.folder));
+    const pruneReq = (process.env.REINDEX_PRUNE_LABELS ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const pruneSet = new Set<string>();
+    for (const l of pruneReq) {
+      if (registered.has(l)) summary.pruneIgnored.push(l); // 대상·부재 라벨은 탈출구로 못 지운다(AC-8)
+      else if (!indexLabels.has(l)) summary.pruneUnknown.push(l); // 오타를 조용히 성공 처리하지 않는다(AC-9)
+      else pruneSet.add(l);
+    }
+    const prunedCount = new Map<string, number>();
+    for (const [key, fe] of Object.entries(idx.files)) {
+      if (!fe.folder) {
+        // 손상·수기 편집으로만 생기는 folder 없는 엔트리 — 라벨 판정이 불가능하므로
+        // 기존 프루닝의 자가 치유를 유지한다(스캔 미매칭이면 삭제, 요약·안내에서 제외).
+        if (!seen.has(key)) delete idx.files[key];
+        continue;
+      }
+      if (scanned.has(fe.folder) && !seen.has(key)) delete idx.files[key]; // 대상 라벨 내 삭제 반영(FR-1)
+      else if (pruneSet.has(fe.folder)) {
+        delete idx.files[key]; // 명시적 고아 정리(FR-5)
+        prunedCount.set(fe.folder, (prunedCount.get(fe.folder) ?? 0) + 1);
+      }
+    }
+    summary.pruned = [...prunedCount].map(([label, files]) => ({ label, files }));
+    const orphanCount = new Map<string, number>();
+    for (const fe of Object.values(idx.files))
+      if (fe.folder && !registered.has(fe.folder)) orphanCount.set(fe.folder, (orphanCount.get(fe.folder) ?? 0) + 1);
+    summary.orphans = [...orphanCount].map(([label, files]) => ({ label, files }));
+  }
+  lastReindexSummary = summary;
 
   saveIndex(idx);
   return idx;
@@ -1113,12 +1210,15 @@ export function watchNotes(): { close(): void } {
   };
 }
 
-/** 모든 노트 폴더를 (재)인덱싱하고 통계를 돌려준다. 복구·대량추가 후 인덱스를 미리 데운다. */
-export async function reindex(): Promise<{ files: number; chunks: number }> {
+/** 모든 노트 폴더를 (재)인덱싱하고 통계를 돌려준다. 복구·대량추가 후 인덱스를 미리 데운다.
+ *  summary — 이번 실행의 프루닝 요약(specs/020 FR-4). single-flight로 다른 실행에 합류하면
+ *  그 실행의 요약(같은 프로세스·같은 구성)을 받거나 null일 수 있다 — 안내 생략은 허용. */
+export async function reindex(): Promise<{ files: number; chunks: number; summary: ReindexSummary | null }> {
+  lastReindexSummary = null;
   const idx = await ensureIndexed();
   let chunks = 0;
   for (const fe of Object.values(idx.files)) chunks += fe.chunks.length;
-  return { files: Object.keys(idx.files).length, chunks };
+  return { files: Object.keys(idx.files).length, chunks, summary: lastReindexSummary };
 }
 
 /** 설정된 노트 폴더 목록(라벨+경로). whoami/검증용. */

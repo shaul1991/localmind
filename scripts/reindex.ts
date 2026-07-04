@@ -12,8 +12,23 @@ import { listFolders, reindex } from "../src/brain.js";
 async function main(): Promise<void> {
   const folders = listFolders();
   console.log(`인덱싱 대상 폴더: ${folders.map((f) => `${f.label}:${f.dir}`).join(", ")}`);
-  const { files, chunks } = await reindex();
+  const { files, chunks, summary } = await reindex();
   console.log(`인덱싱 완료: ${files}개 파일 · ${chunks}개 청크`);
+  // specs/020 FR-4 — 프루닝 요약은 이 명시적 재색인 경로에서만 안내한다(MCP 검색 경로 침묵).
+  if (summary) {
+    if (summary.fallback)
+      console.log("! 노트 폴더 설정(NOTES_DIR)이 확정되지 않아 삭제 반영은 보류했어요 — 색인 추가·갱신만 진행했습니다.");
+    for (const m of summary.missing)
+      console.log(`! ${m.label}: 폴더를 열 수 없어 이 폴더의 색인은 그대로 보존했어요 (${m.dir}) — 연결(마운트)·권한을 확인해 주세요.`);
+    for (const o of summary.orphans)
+      console.log(
+        `! ${o.label}: 지금 설정에 없는 폴더의 색인 ${o.files}건을 보존 중이에요 — 더 안 쓰는 폴더면 'REINDEX_PRUNE_LABELS=${o.label} make reindex'로 정리할 수 있어요.`,
+      );
+    for (const l of summary.pruneIgnored)
+      console.log(`! ${l}: 지금 노트 폴더 설정에 있는 라벨이라 정리하지 않았어요 — 파일은 폴더 안에서 지우면 자동 반영돼요.`);
+    for (const l of summary.pruneUnknown) console.log(`! ${l}: 그런 라벨은 색인에 없어요.`);
+    for (const p of summary.pruned) console.log(`✓ ${p.label}: 색인에서 정리했어요(${p.files}건).`);
+  }
 }
 
 main().catch((e) => {

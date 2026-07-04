@@ -75,6 +75,8 @@ cat > "$TMP/bin/npm" <<'S'
 #!/bin/sh
 printf 'NOTES_DIR=%s\n' "${NOTES_DIR:-}" >> "$NPM_LOG"
 printf 'KEY=%s\n' "${LITELLM_MASTER_KEY:-}" >> "$NPM_LOG"
+printf 'FALLBACK=%s\n' "${REINDEX_FALLBACK:-}" >> "$NPM_LOG"
+printf 'PRUNE=%s\n' "${REINDEX_PRUNE_LABELS:-}" >> "$NPM_LOG"
 exit 0
 S
 chmod +x "$TMP/bin/npm"
@@ -100,6 +102,17 @@ assert "AC-26: 경고 후에도 색인은 진행" 'grep -q "^NOTES_DIR=$" "$TMP/
 
 run_reindex "$ENV" LOCALMIND_MCP_CONFIG="$TMP/none.json" REINDEX_FALLBACK_DIR="$TMP/bk"
 assert "restore 폴백: REINDEX_FALLBACK_DIR가 최후 폴백으로 쓰임" 'grep -q "NOTES_DIR=$TMP/bk" "$TMP/npm.log"'
+assert "020 AC-11: 폴백 재할당 경로에서도 REINDEX_FALLBACK=1 신호 전달" 'grep -q "^FALLBACK=1$" "$TMP/npm.log"'
+
+# ── 020 AC-11: 후퇴 신호·정리 라벨의 배선 ────────────────────────────────────
+printf 'NOTES_DIR="a=/x"\nLITELLM_MASTER_KEY=k1\n' > "$ENV"
+run_reindex "$ENV" REINDEX_PRUNE_LABELS=old
+assert "020 AC-11: REINDEX_PRUNE_LABELS 명시 전달" 'grep -q "^PRUNE=old$" "$TMP/npm.log"'
+assert "020 AC-11: 정상 해석 시 후퇴 신호 없음" 'grep -q "^FALLBACK=$" "$TMP/npm.log"'
+printf 'LITELLM_MASTER_KEY=k1\n' > "$ENV"
+run_reindex "$ENV" LOCALMIND_MCP_CONFIG="$TMP/none.json"
+assert "020 AC-11: env·.env 모두 부재(재할당 없음)도 REINDEX_FALLBACK=1" 'grep -q "^FALLBACK=1$" "$TMP/npm.log"'
+assert "020 AC-11 배선: Makefile reindex가 REINDEX_PRUNE_LABELS 전달" 'sed -n "/^reindex:/,/^$/p" "$ROOT/Makefile" | grep -q "REINDEX_PRUNE_LABELS"'
 
 # ── AC-22: doctor의 NOTES_DIR 정합 점검(FR-5) ────────────────────────────
 run_doctor() { # run_doctor <env파일> <mcp설정|없는경로>

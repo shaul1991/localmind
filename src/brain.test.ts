@@ -18,7 +18,9 @@ import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { execFileSync } from "node:child_process";
+import { execFileSync, execFile } from "node:child_process";
+import { promisify } from "node:util";
+import http from "node:http";
 import {
   extractSearchQuery,
   removeFromIndex,
@@ -992,6 +994,292 @@ describe("listMarkdown 미러 제외 (019 AC-10)", () => {
       assert.ok(files.some((f) => f.endsWith("doc.md")));
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+// ── specs/020 — 색인 프루닝 가드 (FR-1~5, AC-1~9) ──────────────────────────
+//
+// 검증 대상은 "명시적 재색인 경로"이므로 scripts/reindex.ts 자체를 자식 프로세스로
+// 실행한다(출력 문구 AC까지 커버). 임베딩은 부모 프로세스의 HTTP 스텁이 처리하고
+// 호출 횟수를 계측한다(AC-2 재임베딩 0건). execFileSync는 부모 이벤트 루프를 막아
+// 스텁이 응답할 수 없으므로 비동기 execFile을 쓴다. BRAIN_INDEX를 명시해 같은 색인
+// 파일을 NOTES_DIR 조합만 바꾼 여러 실행이 공유한다(plan 테스트 전략).
+
+const execFileP = promisify(execFile);
+
+function makePruneFixture(): { root: string; idxPath: string; nd: (labels: string[]) => string } {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "lm-prune-"));
+  const idxPath = path.join(root, "index.json");
+  for (const l of ["a", "b", "c"]) {
+    fs.mkdirSync(path.join(root, l), { recursive: true });
+    fs.writeFileSync(path.join(root, l, `${l}1.md`), `# ${l} 노트\n${l} 폴더의 내용입니다`);
+  }
+  return { root, idxPath, nd: (labels) => labels.map((l) => `${l}=${path.join(root, l)}`).join(",") };
+}
+
+async function withEmbedStub(fn: (base: string, calls: () => number) => Promise<void>): Promise<void> {
+  let count = 0;
+  const srv = http.createServer((req, res) => {
+    let raw = "";
+    req.on("data", (c) => (raw += c));
+    req.on("end", () => {
+      count++;
+      const n = (JSON.parse(raw || "{}").input || []).length;
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ data: Array.from({ length: n }, (_, i) => ({ index: i, embedding: [1, 0, 0, 0] })) }));
+    });
+  });
+  await new Promise<void>((r) => srv.listen(0, r));
+  const port = (srv.address() as { port: number }).port;
+  try {
+    await fn(`http://127.0.0.1:${port}/v1`, () => count);
+  } finally {
+    srv.close();
+  }
+}
+
+async function runReindexCli(
+  idxPath: string,
+  base: string,
+  env: Record<string, string | undefined>,
+): Promise<{ stdout: string }> {
+  const childEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    BRAIN_INDEX: idxPath,
+    EMBEDDINGS_URL: base,
+    EMBEDDINGS_KEY: "test-key",
+    EMBED_RETRIES: "1",
+  };
+  // 상속 env의 잔여값이 판정을 오염시키지 않게 관련 키를 먼저 비운다.
+  delete childEnv.NOTES_DIR;
+  delete childEnv.REINDEX_FALLBACK;
+  delete childEnv.REINDEX_PRUNE_LABELS;
+  for (const [k, v] of Object.entries(env)) if (v !== undefined) childEnv[k] = v;
+  const { stdout } = await execFileP("node", ["--import", "tsx/esm", "scripts/reindex.ts"], {
+    cwd: REPO_ROOT,
+    env: childEnv,
+    encoding: "utf8",
+  });
+  return { stdout };
+}
+
+function indexKeys(idxPath: string): string[] {
+  return Object.keys(JSON.parse(fs.readFileSync(idxPath, "utf8")).files);
+}
+
+describe("색인 프루닝 가드 (020)", () => {
+  it("AC-1: 후퇴 신호(REINDEX_FALLBACK=1) 재색인은 키를 1건도 지우지 않고 보류를 안내한다", async () => {
+    const f = makePruneFixture();
+    try {
+      await withEmbedStub(async (base) => {
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: f.nd(["a", "b", "c"]) });
+        assert.equal(indexKeys(f.idxPath).length, 3, "사전 색인 3키");
+        const fb = path.join(f.root, "fb");
+        fs.mkdirSync(fb);
+        fs.writeFileSync(path.join(fb, "f.md"), "폴백 폴더의 노트입니다");
+        const { stdout } = await runReindexCli(f.idxPath, base, { NOTES_DIR: `fb=${fb}`, REINDEX_FALLBACK: "1" });
+        const keys = indexKeys(f.idxPath);
+        for (const k of ["a/a1.md", "b/b1.md", "c/c1.md", "fb/f.md"]) assert.ok(keys.includes(k), `${k} 보존/추가`);
+        assert.match(stdout, /보류/, "삭제 반영 보류 안내");
+        assert.doesNotMatch(stdout, /REINDEX_PRUNE_LABELS/, "후퇴 중 고아 정리 명령 미포함");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-1(자체 폴백): NOTES_DIR 완전 부재도 무프루닝 — HOME 격리로 검증", async () => {
+    const f = makePruneFixture();
+    const home = path.join(f.root, "home");
+    fs.mkdirSync(path.join(home, ".localmind"), { recursive: true });
+    try {
+      await withEmbedStub(async (base) => {
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: f.nd(["a", "b"]) });
+        assert.equal(indexKeys(f.idxPath).length, 2);
+        const { stdout } = await runReindexCli(f.idxPath, base, { HOME: home });
+        const keys = indexKeys(f.idxPath);
+        assert.ok(keys.includes("a/a1.md") && keys.includes("b/b1.md"), "자체 폴백에서도 보존");
+        assert.match(stdout, /보류/);
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-2: 후퇴 후 정상 재색인은 재임베딩 0건 + 삭제 반영 재개", async () => {
+    const f = makePruneFixture();
+    try {
+      await withEmbedStub(async (base, calls) => {
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: f.nd(["a", "b", "c"]) });
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: `a=${path.join(f.root, "a")}`, REINDEX_FALLBACK: "1" });
+        fs.rmSync(path.join(f.root, "c", "c1.md")); // 정상 실행에서 삭제 반영이 재개되는지
+        const before = calls();
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: f.nd(["a", "b", "c"]) });
+        assert.equal(calls() - before, 0, "해시 불변 → 재임베딩 0건");
+        const keys = indexKeys(f.idxPath);
+        assert.ok(keys.includes("a/a1.md") && keys.includes("b/b1.md"), "보존");
+        assert.ok(!keys.includes("c/c1.md"), "정상 실행에서 삭제 반영 재개");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-3: 등록됐지만 readdir 실패(부재·권한)한 폴더의 키는 보존 + 경로 경고", async () => {
+    const f = makePruneFixture();
+    const cDir = path.join(f.root, "c");
+    try {
+      await withEmbedStub(async (base) => {
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: f.nd(["a", "b", "c"]) });
+        fs.renameSync(cDir, `${cDir}.away`); // 디렉토리 부재(미마운트·클론 전)
+        const { stdout } = await runReindexCli(f.idxPath, base, { NOTES_DIR: f.nd(["a", "b", "c"]) });
+        let keys = indexKeys(f.idxPath);
+        assert.ok(keys.includes("c/c1.md"), "부재 라벨 보존");
+        assert.ok(keys.includes("a/a1.md") && keys.includes("b/b1.md"), "나머지 정상 색인");
+        assert.ok(stdout.includes(cDir), "경고에 폴더 경로 표시");
+        assert.doesNotMatch(stdout, /REINDEX_PRUNE_LABELS=c/, "부재 라벨에 정리 안내 금지");
+        fs.renameSync(`${cDir}.away`, cDir);
+        fs.chmodSync(cDir, 0o000); // 권한 거부도 같은 가드
+        try {
+          await runReindexCli(f.idxPath, base, { NOTES_DIR: f.nd(["a", "b", "c"]) });
+          keys = indexKeys(f.idxPath);
+          assert.ok(keys.includes("c/c1.md"), "권한 거부 라벨 보존");
+        } finally {
+          fs.chmodSync(cDir, 0o755);
+        }
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-4: 대상 폴더 안의 파일 삭제는 그 키만 반영된다", async () => {
+    const f = makePruneFixture();
+    try {
+      await withEmbedStub(async (base) => {
+        fs.writeFileSync(path.join(f.root, "a", "a2.md"), "곧 삭제될 노트입니다");
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: f.nd(["a", "b", "c"]) });
+        assert.equal(indexKeys(f.idxPath).length, 4);
+        fs.rmSync(path.join(f.root, "a", "a2.md"));
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: f.nd(["a", "b", "c"]) });
+        const keys = indexKeys(f.idxPath);
+        assert.ok(!keys.includes("a/a2.md"), "삭제 키만 제거");
+        for (const k of ["a/a1.md", "b/b1.md", "c/c1.md"]) assert.ok(keys.includes(k), `${k} 보존`);
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-5: readdir 가능한 빈 폴더는 기존대로 전량 삭제 반영된다(회귀 고정)", async () => {
+    const f = makePruneFixture();
+    try {
+      await withEmbedStub(async (base) => {
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: f.nd(["a", "b", "c"]) });
+        fs.rmSync(path.join(f.root, "a", "a1.md")); // a는 존재하는 빈 폴더가 됨
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: f.nd(["a", "b", "c"]) });
+        const keys = indexKeys(f.idxPath);
+        assert.ok(!keys.includes("a/a1.md"), "빈 폴더 라벨은 삭제 반영");
+        assert.ok(keys.includes("b/b1.md") && keys.includes("c/c1.md"), "다른 라벨 보존");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-6: 고아 라벨은 요약에 라벨·건수·보존·정리 명령으로 안내된다", async () => {
+    const f = makePruneFixture();
+    try {
+      await withEmbedStub(async (base) => {
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: f.nd(["a", "b", "c"]) });
+        const { stdout } = await runReindexCli(f.idxPath, base, { NOTES_DIR: f.nd(["a"]) });
+        const keys = indexKeys(f.idxPath);
+        assert.ok(keys.includes("b/b1.md") && keys.includes("c/c1.md"), "고아 라벨 키 보존");
+        assert.match(stdout, /b.*1건.*보존/, "라벨·건수·보존 문구");
+        assert.match(stdout, /REINDEX_PRUNE_LABELS=b/, "정리 명령 안내");
+        assert.match(stdout, /REINDEX_PRUNE_LABELS=c/);
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-7: REINDEX_PRUNE_LABELS는 고아 라벨만 제거하며 공백 표기도 트림된다", async () => {
+    const f = makePruneFixture();
+    try {
+      await withEmbedStub(async (base) => {
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: f.nd(["a", "b", "c"]) });
+        const { stdout } = await runReindexCli(f.idxPath, base, {
+          NOTES_DIR: f.nd(["a"]),
+          REINDEX_PRUNE_LABELS: " b , ", // 트림 + 빈 항목 무시
+        });
+        const keys = indexKeys(f.idxPath);
+        assert.ok(!keys.some((k) => k.startsWith("b/")), "지정한 고아 라벨 b 제거");
+        assert.ok(keys.includes("c/c1.md"), "지정 안 한 고아 라벨 c 보존");
+        assert.ok(keys.includes("a/a1.md"), "대상 라벨 불변");
+        assert.match(stdout, /b.*정리/, "정리 결과 안내");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-8: 대상·부재 라벨은 탈출구로 지울 수 없고 사유가 안내된다", async () => {
+    const f = makePruneFixture();
+    const cDir = path.join(f.root, "c");
+    try {
+      await withEmbedStub(async (base) => {
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: f.nd(["a", "b", "c"]) });
+        fs.renameSync(cDir, `${cDir}.away`); // c = 부재 라벨
+        const { stdout } = await runReindexCli(f.idxPath, base, {
+          NOTES_DIR: f.nd(["a", "b", "c"]),
+          REINDEX_PRUNE_LABELS: "a,c",
+        });
+        const keys = indexKeys(f.idxPath);
+        assert.ok(keys.includes("a/a1.md"), "대상 라벨 a 보존");
+        assert.ok(keys.includes("c/c1.md"), "부재 라벨 c 보존");
+        assert.match(stdout, /a.*정리하지 않았/, "대상 라벨 무시 사유");
+        assert.match(stdout, /c.*정리하지 않았/, "부재 라벨 무시 사유");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("손상 색인 방어: folder 필드 없는 엔트리는 undefined 노출 없이 자가 치유된다", async () => {
+    // 정상 업그레이드 경로로는 생기지 않는 손상·수기 편집 엣지(구현 리뷰 D-1) — 기존
+    // 프루닝의 자가 치유(스캔 미매칭 키 삭제)를 회귀 없이 유지하는지 고정한다.
+    const f = makePruneFixture();
+    try {
+      await withEmbedStub(async (base) => {
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: f.nd(["a", "b", "c"]) });
+        const idx = JSON.parse(fs.readFileSync(f.idxPath, "utf8"));
+        idx.files["ghost/old.md"] = { hash: "deadbeef", chunks: [], linksOut: [] }; // folder 없음 + 대응 파일 없음
+        fs.writeFileSync(f.idxPath, JSON.stringify(idx));
+        const { stdout } = await runReindexCli(f.idxPath, base, { NOTES_DIR: f.nd(["a", "b", "c"]) });
+        assert.ok(!indexKeys(f.idxPath).includes("ghost/old.md"), "미매칭 folderless 엔트리 자가 치유(삭제)");
+        assert.doesNotMatch(stdout, /undefined/, "사용자 안내에 undefined 노출 금지");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-9: 색인에 없는 라벨은 안내, 빈 값은 조용한 no-op이다", async () => {
+    const f = makePruneFixture();
+    try {
+      await withEmbedStub(async (base) => {
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: f.nd(["a", "b", "c"]) });
+        const r1 = await runReindexCli(f.idxPath, base, { NOTES_DIR: f.nd(["a", "b", "c"]), REINDEX_PRUNE_LABELS: "x" });
+        assert.match(r1.stdout, /x.*색인에 없어요/, "미지 라벨 안내");
+        assert.equal(indexKeys(f.idxPath).length, 3, "아무것도 제거되지 않음");
+        const r2 = await runReindexCli(f.idxPath, base, { NOTES_DIR: f.nd(["a", "b", "c"]), REINDEX_PRUNE_LABELS: "" });
+        assert.doesNotMatch(r2.stdout, /색인에 없어요|정리/, "빈 값은 조용한 no-op");
+        assert.equal(indexKeys(f.idxPath).length, 3);
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
     }
   });
 });
