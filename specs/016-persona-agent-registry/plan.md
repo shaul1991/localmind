@@ -76,7 +76,9 @@ targets:                       # 최소 1개 대상 필수
   `deploy_agents`(배포 실행·결과 한국어 요약).
 - **수정** `src/brain.ts` — 노트 파일 수집에서 데이터 폴더 직하 `agents/` 제외(FR-10).
 - **수정** `Makefile` — `agents-deploy` 타깃.
-- **신규** `templates/agents/sample-persona.md` — 주석 포함 샘플(FR-11).
+- **신규** `templates/agents/sample-persona.md` — 주석 포함 샘플(FR-11). *(026 개정:
+  `templates/sample-persona.md`로 이전 — templates/agents가 시드·파싱 스캔 대상이 되면서
+  샘플이 11번째 페르소나로 승격되는 부작용 차단.)*
 - **신규** `docs/agents.md` + README 링크 — 정의·배포 방법, 민감정보 경고, "파생은
   정본에서 고친다" 안내.
 - **무변경** 백업·복원(Makefile backup/restore/recover) — 레지스트리가 `BACKUP_DIR`

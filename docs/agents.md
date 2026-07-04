@@ -12,11 +12,19 @@
 
 ## 1. 페르소나 정의하기
 
-`~/.localmind/agents/` 폴더에 `.md` 파일을 만듭니다. 시작은 샘플 복사가 쉽습니다:
+**처음이라면 만들 필요가 없습니다** — `make agents-deploy`가 기본 페르소나 10종
+(아키텍트·크리틱·워커·디자이너·UX 리뷰어 등)을 `~/.localmind/agents/`에 자동으로
+채워 줍니다(specs/026 시드). 규칙 두 가지:
+
+- 시드는 **없는 파일만** 만듭니다 — 이미 있는 정본(수정본 포함)은 절대 덮지 않아요.
+- 시드된 정본은 자유롭게 편집해도 됩니다. "덮어써진다" 경고는 배포 산출물
+  (`~/.claude/agents/`)에만 해당합니다 — 정본(`~/.localmind/agents/`)은 항상 여러분 것.
+
+직접 새 페르소나를 만들 때는 샘플 복사가 쉽습니다:
 
 ```bash
 mkdir -p ~/.localmind/agents
-cp templates/agents/sample-persona.md ~/.localmind/agents/critic.md
+cp templates/sample-persona.md ~/.localmind/agents/my-persona.md
 ```
 
 파일 형식(위 머리말 + 아래 본문 = 시스템 프롬프트):
