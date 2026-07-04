@@ -30,7 +30,9 @@ rm -f "$ENV"
 printf '# 예시\nOTHER=1\n' > "$EXAMPLE"
 record_notes_dir "l=/n1" "$ENV" "$EXAMPLE"
 assert "record: .env가 .env.example에서 생성됨(다른 키 포함)" 'grep -q "^OTHER=1" "$ENV"'
-perm="$(stat -f %Lp "$ENV" 2>/dev/null || stat -c %a "$ENV" 2>/dev/null)"
+# GNU(-c) 먼저 — BSD식 'stat -f %Lp'는 GNU에서 파일시스템 정보를 stdout에 찍으며 실패해
+# 폴백 출력이 그 뒤에 붙는다(CI ubuntu 실측). BSD에선 -c가 stderr로만 실패해 폴백이 깨끗하다.
+perm="$(stat -c %a "$ENV" 2>/dev/null || stat -f %Lp "$ENV" 2>/dev/null)"
 assert "record: 생성된 .env 권한 600(015 FR-9 계승)" '[ "$perm" = "600" ]'
 assert "record: NOTES_DIR 기록" '[ "$(read_env_val NOTES_DIR "$ENV")" = "l=/n1" ]'
 record_notes_dir "l=/n2,m=/n3" "$ENV" "$EXAMPLE"

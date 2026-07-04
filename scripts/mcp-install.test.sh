@@ -75,7 +75,9 @@ LOG4="$TMP/calls4.log"; ENV4="$TMP/ac23.env"
 rm -f "$ENV4"
 run_install 0 "$LOG4" "$TMP/n1,$TMP/n2,$TMP/n3" "$ENV4"
 assert "AC-23: .env가 example에서 생성됨" 'grep -q "^# example" "$ENV4"'
-perm="$(stat -f %Lp "$ENV4" 2>/dev/null || stat -c %a "$ENV4" 2>/dev/null)"
+# GNU(-c) 먼저 — BSD식 'stat -f %Lp'는 GNU에서 파일시스템 정보를 stdout에 찍으며 실패해
+# 폴백 출력이 그 뒤에 붙는다(CI ubuntu 실측). BSD에선 -c가 stderr로만 실패해 폴백이 깨끗하다.
+perm="$(stat -c %a "$ENV4" 2>/dev/null || stat -f %Lp "$ENV4" 2>/dev/null)"
 assert "AC-23: 생성된 .env 권한 600" '[ "$perm" = "600" ]'
 assert "AC-23: NOTES_DIR가 .env에 기록됨" 'grep -q "^NOTES_DIR=$TMP/n1,$TMP/n2,$TMP/n3$" "$ENV4"'
 assert "AC-23: 등록 인자(-e NOTES_DIR)와 .env 기록이 일치" 'grep -q -- "-e NOTES_DIR=$TMP/n1,$TMP/n2,$TMP/n3" "$LOG4"'
