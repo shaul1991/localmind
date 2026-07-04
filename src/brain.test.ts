@@ -769,6 +769,7 @@ describe("쿼리 로그 (004)", () => {
       assert.equal(ask.length, 1, "ask_brain 레코드는 1건");
       assert.equal(ask[0].success, true);
       assert.ok(Array.isArray(ask[0].sources) && ask[0].sources.length >= 1, "sources가 기록된다");
+      assert.equal(typeof ask[0].topScore, "number", "025 AC-3: ask_brain에 topScore 기록(확장)");
       // D-1: askBrain 경유 검색은 search_notes 레코드를 만들지 않는다(이중 기록·빈도 왜곡 방지)
       const search = r.lines.filter((x: any) => x.tool === "search_notes");
       assert.equal(search.length, 0, "위임 검색이 search_notes로 중복 기록되면 안 된다");
@@ -2067,6 +2068,93 @@ describe("라벨↔경로 바인딩 (024)", () => {
       });
     } finally {
       fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+});
+
+// ── specs/025 — 검색 관측성: topScore·sources 기록 (AC-1·2) ─────────────────
+//
+// AC-1은 균일 스텁으로는 "최상위" 검증이 안 되므로(모든 코사인 동일) 내용 기반
+// distinct 벡터 스텁을 쓴다 — 노트별로 다른 벡터를 줘 스코어를 가른다.
+
+function runScoredLogProbe(notesDir: string, body: string): any {
+  const script = [
+    `const http = require("node:http");`,
+    `const fsx = require("node:fs");`,
+    `const srv = http.createServer((req, res) => {`,
+    `  let raw = ""; req.on("data", (c) => (raw += c));`,
+    `  req.on("end", () => {`,
+    `    res.setHeader("content-type", "application/json");`,
+    `    const inputs = JSON.parse(raw).input || [];`,
+    `    const vec = (t) => t.includes("첫번째") ? [1, 0, 0, 0] : t.includes("두번째") ? [0, 1, 0, 0] : [0.8, 0.6, 0, 0];`,
+    `    res.end(JSON.stringify({ data: inputs.map((t, i) => ({ index: i, embedding: vec(String(t)) })) }));`,
+    `  });`,
+    `});`,
+    `srv.listen(0, async () => {`,
+    `  const base = "http://127.0.0.1:" + srv.address().port;`,
+    `  process.env.EMBEDDINGS_URL = base + "/v1";`,
+    `  const m = await import(${JSON.stringify(BRAIN_JS)});`,
+    `  try {`,
+    body,
+    `  } catch (e) { console.error(e); process.exit(1); }`,
+    `  srv.close();`,
+    `});`,
+  ].join("\n");
+  const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      NOTES_DIR: `notes=${notesDir}`,
+      BRAIN_INDEX: path.join(notesDir, ".brain-index.json"),
+      QUERY_LOG: path.join(notesDir, "query-log.jsonl"),
+      EMBEDDINGS_KEY: "test-key",
+      EMBED_RETRIES: "1",
+    },
+  });
+  return JSON.parse(out);
+}
+
+describe("검색 관측성 (025)", () => {
+  it("025 AC-1: search_notes 로그에 topScore(정말 최상위)·sources가 기록된다", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lm-obs-ac1-"));
+    try {
+      fs.writeFileSync(path.join(dir, "one.md"), "첫번째 노트의 본문입니다");
+      fs.writeFileSync(path.join(dir, "two.md"), "두번째 노트의 본문입니다");
+      const r = runScoredLogProbe(dir, `
+        const hits = await m.searchNotes("찾아줘");
+        const ready = () => { try { return fsx.readFileSync(process.env.QUERY_LOG, "utf8").trim().length > 0; } catch { return false; } };
+        for (let i = 0; i < 100 && !ready(); i++) await new Promise((r) => setTimeout(r, 20));
+        const lines = fsx.readFileSync(process.env.QUERY_LOG, "utf8").trim().split("\\n").filter(Boolean).map(JSON.parse);
+        process.stdout.write(JSON.stringify({ lines, hits }));
+      `);
+      const rec = r.lines.find((x: any) => x.tool === "search_notes");
+      assert.ok(rec, "search_notes 레코드 존재");
+      const scores = r.hits.map((h: any) => h.score);
+      assert.ok(new Set(scores).size > 1, "스텁이 distinct 스코어를 만들었다(검증 전제)");
+      assert.equal(rec.topScore, Math.max(...scores), "topScore = 전 히트의 최댓값");
+      assert.deepEqual(rec.sources.sort(), [...new Set(r.hits.map((h: any) => h.path))].sort(), "sources = 반환 노트 키(중복 제거)");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("025 AC-2: 히트 없는 검색은 topScore null·sources 빈 배열", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lm-obs-ac2-"));
+    try {
+      const r = runQueryLogProbe(dir, `
+        await m.searchNotes("아무것도 없는 주제");
+        const ready = () => { try { return fsx.readFileSync(process.env.QUERY_LOG, "utf8").trim().length > 0; } catch { return false; } };
+        for (let i = 0; i < 100 && !ready(); i++) await new Promise((r) => setTimeout(r, 20));
+        const lines = fsx.readFileSync(process.env.QUERY_LOG, "utf8").trim().split("\\n").filter(Boolean).map(JSON.parse);
+        process.stdout.write(JSON.stringify(lines));
+      `);
+      const rec = r.find((x: any) => x.tool === "search_notes");
+      assert.equal(rec.success, false);
+      assert.equal(rec.topScore, null, "히트 없음 → null(필드는 존재)");
+      assert.deepEqual(rec.sources, [], "sources 빈 배열");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 });

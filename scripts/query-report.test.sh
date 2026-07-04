@@ -24,6 +24,13 @@ rec() { # rec <로그> <일전> <tool> <query> <hit> <success> [sources-json]
     "$ts" "$3" "$4" "$5" "$6" "${7:-[]}" >> "$1"
 }
 
+rec_scored() { # rec_scored <로그> <일전> <query> <topScore>  — 025 신규 라인(스코어 보유 성공)
+  local ts
+  ts="$(node -e "process.stdout.write(new Date(Date.now()-$2*86400000).toISOString())")"
+  printf '{"ts":"%s","tool":"search_notes","query":"%s","hitCount":2,"success":true,"folder":null,"sources":["n/a.md"],"topScore":%s}\n' \
+    "$ts" "$3" "$4" >> "$1"
+}
+
 # ── AC-5: 로그 없음 → 안내 + exit 0 ─────────────────────────────────────────
 run_report "$TMP/none.jsonl"
 assert "AC-5: 로그 없으면 exit 0" '[ "$RC" -eq 0 ]'
@@ -36,6 +43,21 @@ for i in 4 5; do rec "$L6" 1 search_notes "쿼리$i" 2 true; done
 run_report "$L6"
 assert "AC-6: exit 0" '[ "$RC" -eq 0 ]'
 assert "AC-6: '데이터 부족' 경고 + 건수 표기" 'printf %s "$OUT" | grep -q "데이터 부족" && printf %s "$OUT" | grep -q "5"'
+
+# ── 025 AC-5: 스코어 분포 게이트(SCORE_MIN_SAMPLES=10, 모집단 = topScore 보유 성공분) ──
+L25A="$TMP/scored.jsonl"
+for i in $(seq 1 10); do rec_scored "$L25A" 1 "스코어질의$i" "0.$i"; done
+for i in $(seq 1 12); do rec "$L25A" 1 search_notes "레거시$i" 1 true; done   # 총 22건(전체 게이트도 통과)
+run_report "$L25A"
+assert "025 AC-5: 보유 10건 → 스코어 분포 섹션 출력" 'printf %s "$OUT" | grep -q "스코어 분포"'
+assert "025 AC-5: 중앙값 표기" 'printf %s "$OUT" | grep -q "중앙값"'
+assert "025 AC-5: 스코어 미기록(레거시) 건수 부기" 'printf %s "$OUT" | grep -q "미기록 12건"'
+L25B="$TMP/scored-few.jsonl"
+for i in $(seq 1 9); do rec_scored "$L25B" 1 "스코어질의$i" "0.$i"; done
+for i in $(seq 1 20); do rec "$L25B" 1 search_notes "레거시$i" 1 true; done   # 전체 29건(insufficient 아님)
+run_report "$L25B"
+assert "025 AC-5: 보유 9건(<10)이면 전체 표본이 충분해도 분포 미출력(모집단 분리)" '! printf %s "$OUT" | grep -q "스코어 분포"'
+assert "025 AC-5: 기존 집계는 불변(총 29건 표기·exit 0)" '[ "$RC" -eq 0 ] && printf %s "$OUT" | grep -q "29"'
 
 # ── AC-4: 20건 이상 → 성공률·실패 키워드 Top·개선 제안 ──────────────────────
 L4="$TMP/full.jsonl"

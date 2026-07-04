@@ -25,6 +25,8 @@ export interface QueryLogRecord {
   model?: string;
   /** specs/017 — 합성에 개입한 페르소나 이름(사서 개입 시 "librarian"). */
   persona?: string;
+  /** specs/025 — 반환 결과의 최상위 코사인 스코어(히트 없으면 null, 구형 로그엔 필드 없음). */
+  topScore?: number | null;
 }
 
 // 한국어 조사·불용어 간이 제거(형태소 분석 없이 — 데이터가 부족을 증명하면 재론).
@@ -83,6 +85,11 @@ export interface QueryAnalysis {
   suggestions: string[];
   /** searches < minSamples */
   insufficient: boolean;
+  /** specs/025 — 성공 레코드 중 topScore 보유분의 분포(소프트 실패 관측 기준선).
+   *  분위는 정렬 후 결정적 인덱스(round((n-1)·p)) — 보간 없음. count 0이면 나머지는 0. */
+  scoreStats: { count: number; min: number; p25: number; median: number; max: number };
+  /** specs/025 — 성공 레코드인데 topScore가 없는(구형 로그) 수 — 하위호환 가시화. */
+  scoredMissing: number;
 }
 
 export function analyze(records: QueryLogRecord[], opts: AnalysisOptions): QueryAnalysis {
@@ -106,6 +113,25 @@ export function analyze(records: QueryLogRecord[], opts: AnalysisOptions): Query
 
   const verifyStats = { pass: 0, warn: 0, skipped: 0 };
   for (const r of rs) if (r.verify) verifyStats[r.verify]++;
+
+  // specs/025 — 스코어 분포: 성공 레코드(search_notes+ask_brain — 같은 코사인 스케일) 중
+  // topScore 보유분만. 레거시(미기록) 성공분은 scoredMissing으로 따로 센다(투명성).
+  // 모집단은 기존 실패 판정(!success || hitCount===0)의 여집합과 정합하게(교차 리뷰) —
+  // 비정상 라인(success:true + hitCount:0)이 분포에 섞이지 않는다.
+  const succeeded = rs.filter((r) => r.success && r.hitCount > 0);
+  const scores = succeeded
+    .filter((r) => typeof r.topScore === "number")
+    .map((r) => r.topScore as number)
+    .sort((a, b) => a - b);
+  const q = (pq: number) => (scores.length ? scores[Math.min(scores.length - 1, Math.round((scores.length - 1) * pq))] : 0);
+  const scoreStats = {
+    count: scores.length,
+    min: scores.length ? scores[0] : 0,
+    p25: q(0.25),
+    median: q(0.5),
+    max: scores.length ? scores[scores.length - 1] : 0,
+  };
+  const scoredMissing = succeeded.length - scores.length;
 
   // 개선 제안(휴리스틱) — CLI 기존 문구를 그대로 보존한다(출력 회귀 금지).
   const suggestions: string[] = [];
@@ -133,6 +159,8 @@ export function analyze(records: QueryLogRecord[], opts: AnalysisOptions): Query
     verifyStats,
     suggestions,
     insufficient: rs.length < opts.minSamples,
+    scoreStats,
+    scoredMissing,
   };
 }
 

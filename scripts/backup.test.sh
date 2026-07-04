@@ -121,6 +121,7 @@ QL2="$TMP/alt-query.jsonl"; printf '{"ts":"2026-01-02T00:00:00.000Z","query":"al
 run_backup "$TMP/bin-host" "$D7" BACKUP_QUERY_LOG=1 QUERY_LOG="$QL2"
 assert "AC-16: opt-in + QUERY_LOG 재지정 경로가 백업됨" 'grep -q "alt" "$D7/query-log.my-macbook-pro.jsonl" 2>/dev/null'
 assert "AC-17: 기기 식별자 정제(소문자·하이픈)" '[ -f "$D7/query-log.my-macbook-pro.jsonl" ]'
+assert "025 AC-6: 최초 고지에 노트 경로 포함 명시" 'printf %s "$OUT" | grep -q "노트 경로"'
 assert "AC-18: 최초 생성 시 git 이력 비가역 경고 출력" 'printf %s "$OUT" | grep -q "지워지지 않아요"'
 run_backup "$TMP/bin-host" "$D7" BACKUP_QUERY_LOG=1 QUERY_LOG="$QL2"
 assert "AC-18: 두 번째 백업부터는 경고 반복 없음" '! printf %s "$OUT" | grep -q "지워지지 않아요"'

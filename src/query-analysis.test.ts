@@ -121,3 +121,56 @@ describe("brain-report 순수 함수", () => {
     assert.match(md, /## 분석가 해석\n\n- 경고율이 높다/);
   });
 });
+
+describe("scoreStats — 스코어 분포 (025)", () => {
+  it("025 AC-4: topScore 보유 성공 레코드만 집계하고 scoredMissing이 레거시를 센다", () => {
+    const a = analyze(
+      [
+        rec({ tool: "search_notes", topScore: 0.8 }),
+        rec({ tool: "search_notes", topScore: 0.2 }),
+        rec({ tool: "ask_brain", topScore: 0.5 }), // ask_brain도 모집단(FR-3 — 같은 코사인 스케일)
+        rec({ tool: "search_notes" }), // 레거시(topScore 미기록) — scoredMissing
+        rec({ tool: "search_notes", success: false, hitCount: 0, topScore: null }), // 실패 — 제외
+        rec({ tool: "capture_note", query: "캡처", topScore: 0.9 }), // capture — 제외
+      ],
+      { days: 7, minSamples: 1, now: NOW },
+    );
+    assert.equal(a.scoreStats.count, 3);
+    assert.equal(a.scoreStats.min, 0.2);
+    assert.equal(a.scoreStats.max, 0.8);
+    assert.equal(a.scoreStats.median, 0.5);
+    assert.equal(a.scoredMissing, 1, "성공인데 topScore 없는 레코드 수");
+  });
+
+  it("025: 분위(p25·median)는 정렬 후 결정적 인덱스로 계산한다", () => {
+    const a = analyze(
+      [0.1, 0.2, 0.3, 0.4, 0.5].map((v) => rec({ tool: "search_notes", topScore: v })),
+      { days: 7, minSamples: 1, now: NOW },
+    );
+    assert.equal(a.scoreStats.count, 5);
+    assert.equal(a.scoreStats.median, 0.3);
+    assert.equal(a.scoreStats.p25, 0.2);
+  });
+
+  it("025: 비정상 라인(success:true·hitCount:0)은 분포 모집단에서 제외(기존 실패 판정과 정합)", () => {
+    const a = analyze(
+      [
+        rec({ tool: "search_notes", topScore: 0.7 }),
+        rec({ tool: "search_notes", hitCount: 0, success: true, topScore: 0.9 }), // 비정상 — 제외
+      ],
+      { days: 7, minSamples: 1, now: NOW },
+    );
+    assert.equal(a.scoreStats.count, 1);
+    assert.equal(a.scoreStats.max, 0.7);
+  });
+
+  it("025 하위호환: topScore 전무(전부 레거시)면 count 0 + 기존 집계 불변", () => {
+    const a = analyze(
+      [rec({}), rec({ success: false, hitCount: 0 })],
+      { days: 7, minSamples: 1, now: NOW },
+    );
+    assert.equal(a.scoreStats.count, 0);
+    assert.equal(a.scoredMissing, 1);
+    assert.equal(a.searches, 2); // 기존 필드 불변
+  });
+});

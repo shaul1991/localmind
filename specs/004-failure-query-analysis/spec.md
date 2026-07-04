@@ -1,5 +1,9 @@
 # Spec: Failure Query Analysis
 
+> **025 개정**: 로그 레코드에 `topScore`(최상위 스코어)가 additive로 추가되고 search_notes에도
+> `sources`가 기록된다 — [specs/025](../025-search-observability/spec.md) FR-1·2. 백업 고지도
+> "노트 경로" 포함으로 확장(FR-5).
+
 상위: [goal](goal.md)
 
 ## Scope

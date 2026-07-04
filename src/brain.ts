@@ -1083,6 +1083,9 @@ export async function searchNotes(query: string, limit = 5, folder?: string): Pr
     hitCount: out.length,
     success: out.length > 0,
     folder: folder ?? null,
+    // specs/025 — 이미 계산된 값의 재사용(소프트 실패 관측): out은 스코어 내림차순.
+    topScore: out[0]?.score ?? null,
+    sources: [...new Set(out.map((h) => h.path))],
   });
   return out;
 }
@@ -1419,6 +1422,7 @@ export async function askBrain(question: string, k = 5, folder?: string): Promis
       success: sources.length > 0,
       folder: folder ?? null,
       sources,
+      topScore: hits[0]?.score ?? null, // specs/025 — hits는 스코어 내림차순(클로저 재사용)
       ...extra,
     });
   if (!hits.length) {

@@ -20,6 +20,7 @@ const LOG_PATH =
   process.env.QUERY_LOG ?? path.join(process.env.HOME ?? ".", ".localmind", "query-log.jsonl");
 const DAYS = 30;
 const MIN_SAMPLES = 20;
+const SCORE_MIN_SAMPLES = 10; // specs/025 — 스코어 분포 전용 게이트(전체 표본과 모집단이 다름)
 
 // ── --clean: 30일 이전 항목 제거(FR-6) ──────────────────────────
 if (process.argv.includes("--clean")) {
@@ -75,6 +76,19 @@ if (a.captures) {
 
 console.log("\n노트 갭(자주 찾지만 노트가 없는 주제):");
 console.log(a.gapWords.length ? `  ${a.gapWords.join(", ")}` : "  (없음)");
+
+// specs/025 — 스코어 분포(소프트 실패 관측 기준선). 게이트는 topScore 보유 성공분
+// 기준(SCORE_MIN_SAMPLES) — 레거시 라인이 많아 전체 표본이 충분해도 보유분이 적으면
+// N=1짜리 무의미한 분포를 내지 않는다.
+if (a.scoreStats.count >= SCORE_MIN_SAMPLES) {
+  const f = (v: number) => v.toFixed(2);
+  console.log("\n스코어 분포(성공 검색의 최상위 스코어):");
+  console.log(
+    `  중앙값 ${f(a.scoreStats.median)} · p25 ${f(a.scoreStats.p25)} · 최소 ${f(a.scoreStats.min)} · 최대 ${f(a.scoreStats.max)} (${a.scoreStats.count}건)`,
+  );
+  console.log("  • 낮을수록 '결과는 나왔지만 어정쩡한' 검색이 많다는 뜻 — 검색 개선의 기준선이에요.");
+  if (a.scoredMissing > 0) console.log(`  • 스코어 미기록 ${a.scoredMissing}건(업데이트 이전 기록)은 제외했어요.`);
+}
 
 console.log("\n개선 제안:");
 for (const s of a.suggestions) console.log(`  • ${s}`);
