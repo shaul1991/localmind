@@ -79,6 +79,7 @@ printf 'NOTES_DIR=%s\n' "${NOTES_DIR:-}" >> "$NPM_LOG"
 printf 'KEY=%s\n' "${LITELLM_MASTER_KEY:-}" >> "$NPM_LOG"
 printf 'FALLBACK=%s\n' "${REINDEX_FALLBACK:-}" >> "$NPM_LOG"
 printf 'PRUNE=%s\n' "${REINDEX_PRUNE_LABELS:-}" >> "$NPM_LOG"
+printf 'ADOPT=%s\n' "${REINDEX_ADOPT_REBIND:-}" >> "$NPM_LOG"
 printf 'BATCH=%s\n' "${BRAIN_BATCH:-}" >> "$NPM_LOG"
 exit 0
 S
@@ -116,6 +117,12 @@ printf 'LITELLM_MASTER_KEY=k1\n' > "$ENV"
 run_reindex "$ENV" LOCALMIND_MCP_CONFIG="$TMP/none.json"
 assert "020 AC-11: env·.env 모두 부재(재할당 없음)도 REINDEX_FALLBACK=1" 'grep -q "^FALLBACK=1$" "$TMP/npm.log"'
 assert "020 AC-11 배선: Makefile reindex가 REINDEX_PRUNE_LABELS 전달" 'sed -n "/^reindex:/,/^$/p" "$ROOT/Makefile" | grep -q "REINDEX_PRUNE_LABELS"'
+
+# ── 024 AC-9: 재바인딩 수락(REINDEX_ADOPT_REBIND) 배선 ──────────────────────
+printf 'NOTES_DIR="a=/x"\nLITELLM_MASTER_KEY=k1\n' > "$ENV"
+run_reindex "$ENV" REINDEX_ADOPT_REBIND=moved
+assert "024 AC-9: REINDEX_ADOPT_REBIND 명시 전달" 'grep -q "^ADOPT=moved$" "$TMP/npm.log"'
+assert "024 AC-9 배선: Makefile reindex가 REINDEX_ADOPT_REBIND 전달" 'sed -n "/^reindex:/,/^$/p" "$ROOT/Makefile" | grep -q "REINDEX_ADOPT_REBIND"'
 
 # ── 021 AC-5: 호스트 라우팅 배치 프로파일(판정 입력 = $ENV_FILE 하나, 격리 존중) ──
 printf 'NOTES_DIR="a=/x"\nOLLAMA_API_BASE=http://host.docker.internal:11434/v1\n' > "$ENV"

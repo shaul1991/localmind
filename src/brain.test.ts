@@ -1064,6 +1064,7 @@ async function runReindexCli(
   delete childEnv.NOTES_DIR;
   delete childEnv.REINDEX_FALLBACK;
   delete childEnv.REINDEX_PRUNE_LABELS;
+  delete childEnv.REINDEX_ADOPT_REBIND;
   for (const [k, v] of Object.entries(env)) if (v !== undefined) childEnv[k] = v;
   const { stdout, stderr } = await execFileP("node", ["--import", "tsx/esm", "scripts/reindex.ts"], {
     cwd: REPO_ROOT,
@@ -1864,6 +1865,207 @@ describe("색인 포맷 v5 — 벡터 사이드카 (023)", () => {
       });
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+// ── specs/024 — 라벨↔경로 바인딩 (FR-1~4, AC-1~8) ───────────────────────────
+//
+// 재바인딩 재현은 기존 관례 그대로: 같은 BRAIN_INDEX에 NOTES_DIR의 경로만 바꿔
+// 자식 프로세스(runReindexCli)를 다시 실행한다. 안내 문구는 reindex CLI stdout.
+
+function makeRebindFixture(): { root: string; idxPath: string; dirA: string; dirB: string } {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "lm-rebind-"));
+  const idxPath = path.join(root, "index.json");
+  const dirA = path.join(root, "locA");
+  const dirB = path.join(root, "locB");
+  fs.mkdirSync(dirA);
+  fs.mkdirSync(dirB);
+  fs.writeFileSync(path.join(dirA, "old-only.md"), "이전 위치에만 있는 노트");
+  fs.writeFileSync(path.join(dirB, "new-only.md"), "새 위치에만 있는 노트"); // relpath 비중첩(AC-1)
+  return { root, idxPath, dirA, dirB };
+}
+
+function diskBindings(idxPath: string): Record<string, string> | undefined {
+  return diskJson(idxPath).bindings;
+}
+
+describe("라벨↔경로 바인딩 (024)", () => {
+  it("AC-1: 재바인딩은 이전 위치 항목을 보존하고 수락 명령을 안내한다", async () => {
+    const f = makeRebindFixture();
+    try {
+      await withEmbedStub(async (base) => {
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: `a=${f.dirA}` });
+        assert.equal(diskBindings(f.idxPath)?.a, fs.realpathSync(f.dirA), "바인딩 기록(realpath)");
+        const { stdout } = await runReindexCli(f.idxPath, base, { NOTES_DIR: `a=${f.dirB}` });
+        const keys = indexKeys(f.idxPath);
+        assert.ok(keys.includes("a/old-only.md"), "이전 위치 항목 보존(프루닝 안 됨)");
+        assert.ok(keys.includes("a/new-only.md"), "새 위치 파일은 같은 라벨로 추가");
+        assert.match(stdout, /a.*위치가 바뀌/, "재바인딩 안내(라벨·경로)");
+        assert.ok(stdout.includes(fs.realpathSync(f.dirA)), "기록 경로 표기");
+        assert.ok(stdout.includes(fs.realpathSync(f.dirB)), "현재 경로 표기");
+        assert.match(stdout, /1건.*보존/, "보존 건수 안내");
+        assert.match(stdout, /REINDEX_ADOPT_REBIND=a/, "수락 명령 안내");
+        assert.equal(diskBindings(f.idxPath)?.a, fs.realpathSync(f.dirA), "보존 중엔 바인딩 미갱신(반복 안내 근거)");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-2: 경로 불변 라벨의 파일 삭제는 기존대로 그 키만 프루닝(오판 없음)", async () => {
+    const f = makeRebindFixture();
+    try {
+      await withEmbedStub(async (base) => {
+        fs.writeFileSync(path.join(f.dirA, "second.md"), "두 번째 노트");
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: `a=${f.dirA}` });
+        fs.rmSync(path.join(f.dirA, "second.md"));
+        const { stdout } = await runReindexCli(f.idxPath, base, { NOTES_DIR: `a=${f.dirA}` });
+        const keys = indexKeys(f.idxPath);
+        assert.ok(!keys.includes("a/second.md"), "삭제 키 프루닝");
+        assert.ok(keys.includes("a/old-only.md"), "나머지 보존");
+        assert.doesNotMatch(stdout, /위치가 바뀌/, "재바인딩 오판 없음");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-3: 바인딩 없는 기존 색인(구버전)은 오판 없이 현재 경로를 기록한다", async () => {
+    const f = makeRebindFixture();
+    try {
+      await withEmbedStub(async (base) => {
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: `a=${f.dirA}` });
+        const idx = diskJson(f.idxPath);
+        delete idx.bindings; // 구버전 색인 재현
+        fs.writeFileSync(f.idxPath, JSON.stringify(idx));
+        const before = indexKeys(f.idxPath).sort();
+        const { stdout } = await runReindexCli(f.idxPath, base, { NOTES_DIR: `a=${f.dirA}` });
+        assert.deepEqual(indexKeys(f.idxPath).sort(), before, "항목 불변(보존 오판·프루닝 없음)");
+        assert.doesNotMatch(stdout, /위치가 바뀌/, "재바인딩 아님");
+        assert.equal(diskBindings(f.idxPath)?.a, fs.realpathSync(f.dirA), "현재 경로 기록");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-4: REINDEX_ADOPT_REBIND 수락 — 옛 항목 제거 + 바인딩 갱신 + 안내 종료", async () => {
+    const f = makeRebindFixture();
+    try {
+      await withEmbedStub(async (base) => {
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: `a=${f.dirA}` });
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: `a=${f.dirB}` }); // 재바인딩(보존)
+        const { stdout } = await runReindexCli(f.idxPath, base, { NOTES_DIR: `a=${f.dirB}`, REINDEX_ADOPT_REBIND: "a" });
+        const keys = indexKeys(f.idxPath);
+        assert.ok(!keys.includes("a/old-only.md"), "옛 위치 항목(seen 아님) 제거");
+        assert.ok(keys.includes("a/new-only.md"), "새 위치 항목 유지");
+        assert.match(stdout, /a.*수락/, "수락 결과 안내");
+        assert.equal(diskBindings(f.idxPath)?.a, fs.realpathSync(f.dirB), "바인딩 갱신");
+        const again = await runReindexCli(f.idxPath, base, { NOTES_DIR: `a=${f.dirB}` });
+        assert.doesNotMatch(again.stdout, /위치가 바뀌/, "수락 후 재바인딩 안내 종료");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-5: 비재바인딩·미지 라벨 수락 지정은 무시 + 사유 안내, 빈 값은 no-op", async () => {
+    const f = makeRebindFixture();
+    try {
+      await withEmbedStub(async (base) => {
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: `a=${f.dirA}` });
+        const before = indexKeys(f.idxPath).sort();
+        const r1 = await runReindexCli(f.idxPath, base, { NOTES_DIR: `a=${f.dirA}`, REINDEX_ADOPT_REBIND: " a , x ," });
+        assert.deepEqual(indexKeys(f.idxPath).sort(), before, "아무것도 제거되지 않음");
+        assert.match(r1.stdout, /a.*수락할 것이 없/, "비재바인딩 라벨 사유");
+        assert.match(r1.stdout, /x.*수락할 것이 없/, "미지 라벨 사유");
+        const r2 = await runReindexCli(f.idxPath, base, { NOTES_DIR: `a=${f.dirA}`, REINDEX_ADOPT_REBIND: "" });
+        assert.doesNotMatch(r2.stdout, /수락/, "빈 값은 조용한 no-op");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-6: 새 경로 미마운트 상태의 수락은 보류 — 무삭제·바인딩 불변·사유 안내", async () => {
+    const f = makeRebindFixture();
+    try {
+      await withEmbedStub(async (base) => {
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: `a=${f.dirA}` });
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: `a=${f.dirB}` }); // 재바인딩 상태
+        fs.rmSync(f.dirB, { recursive: true }); // 미마운트 재현
+        const { stdout } = await runReindexCli(f.idxPath, base, { NOTES_DIR: `a=${f.dirB}`, REINDEX_ADOPT_REBIND: "a" });
+        const keys = indexKeys(f.idxPath);
+        assert.ok(keys.includes("a/old-only.md") && keys.includes("a/new-only.md"), "어떤 항목도 제거되지 않음");
+        assert.equal(diskBindings(f.idxPath)?.a, fs.realpathSync(f.dirA), "바인딩 불변");
+        assert.match(stdout, /a.*열 수 없어.*보류/, "보류 사유 안내");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-7: 후퇴 재색인은 바인딩을 기록·변경하지 않는다(수락도 무시)", async () => {
+    const f = makeRebindFixture();
+    try {
+      await withEmbedStub(async (base) => {
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: `a=${f.dirA}` });
+        const bindingsBefore = JSON.stringify(diskBindings(f.idxPath));
+        const keysBefore = indexKeys(f.idxPath).sort();
+        const { stdout } = await runReindexCli(f.idxPath, base, {
+          NOTES_DIR: `a=${f.dirB}`,
+          REINDEX_FALLBACK: "1",
+          REINDEX_ADOPT_REBIND: "a",
+        });
+        assert.deepEqual(JSON.stringify(diskBindings(f.idxPath)), bindingsBefore, "bindings 1건도 변경 없음");
+        for (const k of keysBefore) assert.ok(indexKeys(f.idxPath).includes(k), `${k} 보존(후퇴 무프루닝)`);
+        assert.match(stdout, /보류/, "020 보류 안내");
+        assert.doesNotMatch(stdout, /수락/, "후퇴 중 수락 무시");
+        // 강화(codex 조언): 바인딩이 아예 없는 색인의 후퇴 실행도 bindings를 만들지 않는다
+        const bare = diskJson(f.idxPath);
+        delete bare.bindings;
+        fs.writeFileSync(f.idxPath, JSON.stringify(bare));
+        fs.writeFileSync(path.join(f.dirA, "extra.md"), "후퇴 중 신규 노트(저장 유발)");
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: `a=${f.dirA}`, REINDEX_FALLBACK: "1" });
+        assert.equal(diskBindings(f.idxPath), undefined, "후퇴 저장이 bindings를 생성하지 않음");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-8: reload-merge가 서로 다른 라벨의 바인딩을 모두 보존한다(??= 규칙)", async () => {
+    const f = makeRebindFixture();
+    try {
+      await withEmbedStub(async (base) => {
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: `a=${f.dirA}` });
+        const { stdout } = await runBrainScript(base, { NOTES_DIR: `a=${f.dirA}`, BRAIN_INDEX: f.idxPath }, `
+          const one = m.loadIndex();
+          m._resetIndexCacheForTest();
+          const two = m.loadIndex(); // 별도 스냅샷(다중 프로세스 재현)
+          two.bindings = { ...(two.bindings ?? {}), y: "/notes/y" };
+          m.saveIndex(two);
+          one.bindings = { ...(one.bindings ?? {}), z: "/notes/z" };
+          m.saveIndex(one); // reload-merge가 y를 보존해야 함
+          m._resetIndexCacheForTest();
+          process.stdout.write(JSON.stringify(m.loadIndex().bindings));
+        `);
+        const b = JSON.parse(stdout);
+        assert.ok(b.a, "원 바인딩 유지");
+        assert.equal(b.y, "/notes/y", "다른 스냅샷의 바인딩 보존");
+        assert.equal(b.z, "/notes/z", "내 바인딩 유지");
+        // 강화(codex 조언): 실제 두 자식 프로세스가 각자 다른 라벨을 색인·저장(AC-8 원문)
+        const dirY = path.join(f.root, "locY");
+        fs.mkdirSync(dirY);
+        fs.writeFileSync(path.join(dirY, "y.md"), "와이 라벨 노트");
+        await runReindexCli(f.idxPath, base, { NOTES_DIR: `yy=${dirY}` });
+        const fin = diskBindings(f.idxPath);
+        assert.ok(fin?.a, "프로세스 1의 바인딩 보존(고아 항목과 함께)");
+        assert.equal(fin?.yy, fs.realpathSync(dirY), "프로세스 2의 바인딩 기록");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
     }
   });
 });

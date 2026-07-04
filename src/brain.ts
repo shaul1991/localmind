@@ -131,6 +131,9 @@ export interface BrainIndex {
   dims?: number;
   /** v5 — 현재 벡터 사이드카 파일 basename(specs/023 FR-1). files가 비면 생략. */
   vectorFile?: string;
+  /** 라벨 → 정규화된 원본 폴더 경로(specs/024 FR-1). 선택 필드(additive — 버전 불변,
+   *  구버전 코드는 무시). 라벨 재사용(재바인딩)과 폴더 내 파일 삭제를 구분하는 근거. */
+  bindings?: Record<string, string>;
   files: Record<string, FileEntry>;
 }
 
@@ -469,6 +472,11 @@ function mergeIndexFromDisk(ours: BrainIndex, disk: BrainIndex): void {
     }
   }
   if (ours.dims === undefined && disk.dims !== undefined) ours.dims = disk.dims;
+  // specs/024 FR-4 — bindings 병합: 내 기록 우선, 없는 라벨만 디스크에서 채움(??=).
+  for (const [label, dir] of Object.entries(disk.bindings ?? {})) {
+    ours.bindings ??= {};
+    ours.bindings[label] ??= dir;
+  }
 }
 
 /** 내부·테스트용: 인덱스 파일을 원자적으로 저장한다(락 + reload-merge + 캐시 갱신). */
@@ -762,6 +770,14 @@ export interface ReindexSummary {
   pruned: { label: string; files: number }[];
   pruneIgnored: string[];
   pruneUnknown: string[];
+  /** specs/024 — 재바인딩 감지(보존 중): 라벨·기록 경로·현재 경로·보존 건수. */
+  rebinds: { label: string; recordedPath: string; currentPath: string; preserved: number }[];
+  /** specs/024 FR-3 — 수락 처리 결과: 제거 건수. */
+  rebindAdopted: { label: string; removed: number }[];
+  /** 수락 지정됐지만 폴더를 열 수 없어 보류(미마운트 가드). */
+  adoptDeferred: string[];
+  /** 수락 지정됐지만 재바인딩 상태가 아님(미지 라벨 포함) — 무시 사유 안내. */
+  adoptIgnored: string[];
 }
 let lastReindexSummary: ReindexSummary | null = null;
 
@@ -905,9 +921,60 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
     pruned: [],
     pruneIgnored: [],
     pruneUnknown: [],
+    rebinds: [],
+    rebindAdopted: [],
+    adoptDeferred: [],
+    adoptIgnored: [],
   };
   let deletedCount = 0; // specs/022 FR-1 — 이번 실행의 삭제 반영 수(dirty 판정 재료)
+  let bindingsChanged = false; // specs/024 — 바인딩 기록·갱신은 dirty(색인 데이터 변경)
+  const rebindPreserve = new Set<string>(); // 재바인딩 감지·미수락 라벨 — 프루닝 보존(FR-2)
+  const rebindAdopt = new Set<string>(); // 수락된 라벨 — seen 아님 항목 제거(FR-3)
   if (!REINDEX_FALLBACK) {
+    // specs/024 FR-1~3 — 라벨↔경로 바인딩. 후퇴 중에는 기록·판정·수락 전부 보류
+    // (FOLDERS가 폴백 경로라 기록하면 다음 정상 재색인이 거짓 재바인딩으로 오판).
+    const adoptReq = new Set(
+      (process.env.REINDEX_ADOPT_REBIND ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
+    for (const f of FOLDERS) {
+      if (!scanned.has(f.label)) continue; // 부재 라벨 — 기존 바인딩 보존(덮어쓰기 금지)
+      let current: string;
+      try {
+        current = fs.realpathSync(f.dir); // 심링크 해소(셸 canon_path의 pwd -P와 동일 규칙)
+      } catch {
+        current = f.dir; // parseFolders가 이미 resolve+expandHome 적용한 lexical 값
+      }
+      const recorded = idx.bindings?.[f.label];
+      if (recorded !== undefined && recorded !== current) {
+        // 재바인딩 — 기본은 보존(파괴 금지). 수락은 scanned 성공 라벨에서만(여기 도달 자체가
+        // readdir 성공)이며 명시 지정 시에만.
+        if (adoptReq.has(f.label)) {
+          rebindAdopt.add(f.label);
+          adoptReq.delete(f.label);
+          (idx.bindings ??= {})[f.label] = current;
+          bindingsChanged = true;
+        } else {
+          rebindPreserve.add(f.label);
+          summary.rebinds.push({ label: f.label, recordedPath: recorded, currentPath: current, preserved: 0 });
+          // 보존 중엔 기록도 미갱신 — 수락 전까지 재바인딩 안내가 반복돼야 한다.
+        }
+      } else {
+        if (recorded !== current) bindingsChanged = true; // 첫 기록
+        (idx.bindings ??= {})[f.label] = current;
+        if (adoptReq.has(f.label)) {
+          adoptReq.delete(f.label);
+          summary.adoptIgnored.push(f.label); // 재바인딩 상태가 아님 — 수락할 것 없음
+        }
+      }
+    }
+    // 남은 수락 지정: 부재(미마운트) 라벨은 보류, 등록에 없는 라벨은 무시 사유 안내.
+    for (const l of adoptReq) {
+      if (missing.some((m) => m.label === l)) summary.adoptDeferred.push(l);
+      else summary.adoptIgnored.push(l);
+    }
     const registered = new Set(FOLDERS.map((f) => f.label));
     const indexLabels = new Set(Object.values(idx.files).map((fe) => fe.folder));
     const pruneReq = (process.env.REINDEX_PRUNE_LABELS ?? "")
@@ -932,8 +999,20 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
         continue;
       }
       if (scanned.has(fe.folder) && !seen.has(key)) {
-        delete idx.files[key]; // 대상 라벨 내 삭제 반영(FR-1)
+        if (rebindPreserve.has(fe.folder)) {
+          // specs/024 FR-2 — 재바인딩 보존: "seen 아님"은 폴더 내 삭제가 아니라
+          // 옛 경로에만 있던 항목이다. 프루닝하지 않고 건수만 집계(안내용).
+          const rb = summary.rebinds.find((r) => r.label === fe.folder);
+          if (rb) rb.preserved++;
+          continue;
+        }
+        delete idx.files[key]; // 대상 라벨 내 삭제 반영(020 FR-1 — 수락 라벨의 옛 항목 포함)
         deletedCount++;
+        if (rebindAdopt.has(fe.folder)) {
+          const ra = summary.rebindAdopted.find((r) => r.label === fe.folder);
+          if (ra) ra.removed++;
+          else summary.rebindAdopted.push({ label: fe.folder, removed: 1 });
+        }
       } else if (pruneSet.has(fe.folder)) {
         delete idx.files[key]; // 명시적 고아 정리(FR-5)
         deletedCount++;
@@ -941,6 +1020,8 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
       }
     }
     summary.pruned = [...prunedCount].map(([label, files]) => ({ label, files }));
+    for (const l of rebindAdopt)
+      if (!summary.rebindAdopted.some((r) => r.label === l)) summary.rebindAdopted.push({ label: l, removed: 0 });
     const orphanCount = new Map<string, number>();
     for (const fe of Object.values(idx.files))
       if (fe.folder && !registered.has(fe.folder)) orphanCount.set(fe.folder, (orphanCount.get(fe.folder) ?? 0) + 1);
@@ -976,7 +1057,12 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
     }
   })();
   const dirty =
-    pending.length > 0 || deletedCount > 0 || migrationPending || sidecarMissing || !fs.existsSync(INDEX_PATH);
+    pending.length > 0 ||
+    deletedCount > 0 ||
+    bindingsChanged || // specs/024 — 바인딩 첫 기록·수락 갱신은 색인 데이터 변경(스탬프-only와 다름)
+    migrationPending ||
+    sidecarMissing ||
+    !fs.existsSync(INDEX_PATH);
   if (dirty) saveIndex(idx);
   return idx;
 }

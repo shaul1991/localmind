@@ -28,6 +28,14 @@ async function main(): Promise<void> {
       console.log(`! ${l}: 지금 노트 폴더 설정에 있는 라벨이라 정리하지 않았어요 — 파일은 폴더 안에서 지우면 자동 반영돼요.`);
     for (const l of summary.pruneUnknown) console.log(`! ${l}: 그런 라벨은 색인에 없어요.`);
     for (const p of summary.pruned) console.log(`✓ ${p.label}: 색인에서 정리했어요(${p.files}건).`);
+    // specs/024 — 라벨↔경로 바인딩(재바인딩 보존·수락) 안내
+    for (const rb of summary.rebinds)
+      console.log(
+        `! ${rb.label}: 노트 폴더 위치가 바뀌었어요(${rb.recordedPath} → ${rb.currentPath}) — 이전 위치의 색인 ${rb.preserved}건을 보존 중이에요. 새 위치가 맞으면 'REINDEX_ADOPT_REBIND=${rb.label} make reindex'로 정리돼요.`,
+      );
+    for (const a of summary.rebindAdopted) console.log(`✓ ${a.label}: 새 위치를 수락했어요 — 이전 위치 색인 ${a.removed}건 정리.`);
+    for (const l of summary.adoptDeferred) console.log(`! ${l}: 폴더를 열 수 없어 수락을 보류했어요 — 연결(마운트)·권한 확인 후 다시 시도해 주세요.`);
+    for (const l of summary.adoptIgnored) console.log(`! ${l}: 위치가 바뀐 라벨이 아니라 수락할 것이 없어요.`);
   }
 }
 

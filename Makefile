@@ -122,8 +122,8 @@ backup-cron: ## 매일 자동 백업을 단계별로 crontab 에 등록(시간: 
 	@BACKUP_DIR="$(BACKUP_DIR)" BACKUP_EXTRA_FILES="$(BACKUP_EXTRA_FILES)" bash "$(CURDIR)/scripts/backup-cron.sh"
 
 .PHONY: reindex
-reindex: ## second-brain 노트 (재)인덱싱 (임베딩 :4000 필요; NOTES_DIR는 환경변수 → .env 순으로 해석; 고아 라벨 정리: REINDEX_PRUNE_LABELS=)
-	@REINDEX_PRUNE_LABELS="$(REINDEX_PRUNE_LABELS)" bash "$(CURDIR)/scripts/reindex.sh"
+reindex: ## second-brain 노트 (재)인덱싱 (임베딩 :4000 필요; NOTES_DIR는 환경변수 → .env 순으로 해석; 고아 정리: REINDEX_PRUNE_LABELS= · 위치 이동 수락: REINDEX_ADOPT_REBIND=)
+	@REINDEX_PRUNE_LABELS="$(REINDEX_PRUNE_LABELS)" REINDEX_ADOPT_REBIND="$(REINDEX_ADOPT_REBIND)" bash "$(CURDIR)/scripts/reindex.sh"
 
 .PHONY: query-report
 query-report: ## second-brain 검색 품질 리포트(실패 쿼리 분석 — 로그는 로컬 전용)

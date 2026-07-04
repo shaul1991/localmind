@@ -34,11 +34,14 @@ if [ -z "${BRAIN_BATCH:-}" ]; then
 fi
 
 cd "$PROJECT_DIR"
-# REINDEX_PRUNE_LABELS는 명시적으로 전달한다(make 암묵 export 의존 금지 — specs/020 AC-11).
+# REINDEX_PRUNE_LABELS·REINDEX_ADOPT_REBIND는 명시적으로 전달한다(make 암묵 export
+# 의존 금지 — specs/020 AC-11 · specs/024 AC-9).
 if [ -n "$resolved" ]; then
   NOTES_DIR="$resolved" LITELLM_MASTER_KEY="$key" \
-    REINDEX_FALLBACK="$FALLBACK" REINDEX_PRUNE_LABELS="${REINDEX_PRUNE_LABELS:-}" npm run reindex
+    REINDEX_FALLBACK="$FALLBACK" REINDEX_PRUNE_LABELS="${REINDEX_PRUNE_LABELS:-}" \
+    REINDEX_ADOPT_REBIND="${REINDEX_ADOPT_REBIND:-}" npm run reindex
 else
   LITELLM_MASTER_KEY="$key" \
-    REINDEX_FALLBACK="$FALLBACK" REINDEX_PRUNE_LABELS="${REINDEX_PRUNE_LABELS:-}" npm run reindex
+    REINDEX_FALLBACK="$FALLBACK" REINDEX_PRUNE_LABELS="${REINDEX_PRUNE_LABELS:-}" \
+    REINDEX_ADOPT_REBIND="${REINDEX_ADOPT_REBIND:-}" npm run reindex
 fi
