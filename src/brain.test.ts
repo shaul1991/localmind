@@ -1018,13 +1018,21 @@ function makePruneFixture(): { root: string; idxPath: string; nd: (labels: strin
   return { root, idxPath, nd: (labels) => labels.map((l) => `${l}=${path.join(root, l)}`).join(",") };
 }
 
-async function withEmbedStub(fn: (base: string, calls: () => number) => Promise<void>): Promise<void> {
+async function withEmbedStub(
+  fn: (base: string, calls: () => number) => Promise<void>,
+  opts: { failMarker?: string } = {}, // 요청 본문에 마커가 있으면 500 — 순번 기반보다 결정적(021 AC-3)
+): Promise<void> {
   let count = 0;
   const srv = http.createServer((req, res) => {
     let raw = "";
     req.on("data", (c) => (raw += c));
     req.on("end", () => {
       count++;
+      if (opts.failMarker && raw.includes(opts.failMarker)) {
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: "stub failure" }));
+        return;
+      }
       const n = (JSON.parse(raw || "{}").input || []).length;
       res.setHeader("content-type", "application/json");
       res.end(JSON.stringify({ data: Array.from({ length: n }, (_, i) => ({ index: i, embedding: [1, 0, 0, 0] })) }));
@@ -1280,6 +1288,130 @@ describe("색인 프루닝 가드 (020)", () => {
       });
     } finally {
       fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+});
+
+// ── specs/021 — 색인 저장 성능 (FR-1~3, AC-1~5) ─────────────────────────────
+//
+// AC-1·2는 저장 횟수 계측이 필요해 reindex CLI 대신 카운터(_saveRunCountForTest)를
+// 출력하는 node -e 프로브를 쓴다(같은 reindex() 경로). AC-3은 CLI 그대로 —
+// 마커 실패 스텁 + BRAIN_CONCURRENCY=1 + EMBED_RETRIES=1로 결정화(스펙 AC-3).
+
+async function runSaveProbe(
+  base: string,
+  env: Record<string, string | undefined>,
+): Promise<{ files: number; saves: number }> {
+  const script = [
+    `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+    `  const r = await m.reindex();`,
+    `  process.stdout.write(JSON.stringify({ files: r.files, saves: m._saveRunCountForTest() }));`,
+    `}).catch((e) => { console.error(e); process.exit(1); });`,
+  ].join("\n");
+  const childEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    EMBEDDINGS_URL: base,
+    EMBEDDINGS_KEY: "test-key",
+    EMBED_RETRIES: "1",
+    BRAIN_BATCH: "1", // 파일 1개 = 배치 1개 — 배치 수를 결정적으로
+  };
+  delete childEnv.NOTES_DIR;
+  delete childEnv.BRAIN_SAVE_INTERVAL;
+  for (const [k, v] of Object.entries(env)) if (v !== undefined) childEnv[k] = v;
+  const { stdout } = await execFileP("node", ["--import", "tsx/esm", "-e", script], {
+    cwd: REPO_ROOT,
+    env: childEnv,
+    encoding: "utf8",
+  });
+  return JSON.parse(stdout);
+}
+
+function makeBatchFixture(n: number): { root: string; idxPath: string; nd: string } {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "lm-save-"));
+  const idxPath = path.join(root, "index.json");
+  fs.mkdirSync(path.join(root, "n"));
+  for (let i = 0; i < n; i++) fs.writeFileSync(path.join(root, "n", `f${i}.md`), `노트 ${i}의 짧은 내용입니다`);
+  return { root, idxPath, nd: `n=${path.join(root, "n")}` };
+}
+
+describe("색인 저장 성능 (021)", () => {
+  it("AC-1: 기본 간격에서 저장 횟수가 배치 수(≥8)에 비례하지 않는다(≤2회)", async () => {
+    const f = makeBatchFixture(9); // BRAIN_BATCH=1 → 9배치
+    try {
+      await withEmbedStub(async (base) => {
+        const r = await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
+        assert.equal(r.files, 9, "9파일 = 9배치 색인");
+        assert.ok(r.saves <= 2, `저장 ≤2회여야 함(진행 0~1 + 최종 1) — 실제 ${r.saves}회`);
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-2: BRAIN_SAVE_INTERVAL=0이면 배치마다 저장된다(기존 동작 복귀)", async () => {
+    const f = makeBatchFixture(9);
+    try {
+      await withEmbedStub(async (base) => {
+        const r = await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath, BRAIN_SAVE_INTERVAL: "0" });
+        assert.ok(r.saves >= 9, `배치(9)마다 저장돼야 함 — 실제 ${r.saves}회`);
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-3: 임베딩 실패 중단 시 커밋분이 저장되고, 재실행은 저장된 파일을 재임베딩하지 않는다", async () => {
+    const f = makePruneFixture(); // a,b,c 순서로 스캔·배치
+    const MARKER = "FAIL-MARKER-021";
+    fs.writeFileSync(path.join(f.root, "c", "c1.md"), `# c 노트\n${MARKER} 이 청크에서 실패한다`);
+    const stubOpts: { failMarker?: string } = { failMarker: MARKER };
+    try {
+      await withEmbedStub(async (base, calls) => {
+        const env = {
+          NOTES_DIR: f.nd(["a", "b", "c"]),
+          BRAIN_BATCH: "1",
+          BRAIN_CONCURRENCY: "1", // 워커 인터리빙 비결정 제거(스펙 AC-3)
+          EMBED_RETRIES: "1",
+        };
+        let failed = false;
+        try {
+          await runReindexCli(f.idxPath, base, env);
+        } catch {
+          failed = true; // CLI 비0 종료
+        }
+        assert.ok(failed, "마커 배치에서 비0으로 실패해야 함");
+        const keys = indexKeys(f.idxPath);
+        assert.ok(keys.includes("a/a1.md") && keys.includes("b/b1.md"), "커밋분(a·b)이 저장돼 있어야 함");
+        assert.ok(!keys.includes("c/c1.md"), "실패 파일은 미커밋");
+        stubOpts.failMarker = undefined; // 스텁 정상화
+        const before = calls();
+        await runReindexCli(f.idxPath, base, env);
+        assert.equal(calls() - before, 1, "재실행은 남은 파일(c, 1배치)만 임베딩");
+        assert.ok(indexKeys(f.idxPath).includes("c/c1.md"), "재실행으로 완결");
+      }, stubOpts);
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-4: 최종 색인 내용은 스로틀과 무관하게 동일하다", async () => {
+    const f0 = makeBatchFixture(5);
+    const f1 = makeBatchFixture(5);
+    try {
+      await withEmbedStub(async (base) => {
+        await runSaveProbe(base, { NOTES_DIR: f0.nd, BRAIN_INDEX: f0.idxPath, BRAIN_SAVE_INTERVAL: "0" });
+        await runSaveProbe(base, { NOTES_DIR: f1.nd, BRAIN_INDEX: f1.idxPath });
+        const shape = (p: string) => {
+          const idx = JSON.parse(fs.readFileSync(p, "utf8"));
+          return Object.entries(idx.files)
+            .map(([k, v]: [string, any]) => `${k}:${v.chunks.length}`)
+            .sort();
+        };
+        assert.deepEqual(shape(f0.idxPath), shape(f1.idxPath), "파일·청크 집합 동일");
+      });
+    } finally {
+      fs.rmSync(f0.root, { recursive: true, force: true });
+      fs.rmSync(f1.root, { recursive: true, force: true });
     }
   });
 });

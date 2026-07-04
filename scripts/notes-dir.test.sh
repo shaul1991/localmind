@@ -79,6 +79,7 @@ printf 'NOTES_DIR=%s\n' "${NOTES_DIR:-}" >> "$NPM_LOG"
 printf 'KEY=%s\n' "${LITELLM_MASTER_KEY:-}" >> "$NPM_LOG"
 printf 'FALLBACK=%s\n' "${REINDEX_FALLBACK:-}" >> "$NPM_LOG"
 printf 'PRUNE=%s\n' "${REINDEX_PRUNE_LABELS:-}" >> "$NPM_LOG"
+printf 'BATCH=%s\n' "${BRAIN_BATCH:-}" >> "$NPM_LOG"
 exit 0
 S
 chmod +x "$TMP/bin/npm"
@@ -115,6 +116,20 @@ printf 'LITELLM_MASTER_KEY=k1\n' > "$ENV"
 run_reindex "$ENV" LOCALMIND_MCP_CONFIG="$TMP/none.json"
 assert "020 AC-11: env·.env 모두 부재(재할당 없음)도 REINDEX_FALLBACK=1" 'grep -q "^FALLBACK=1$" "$TMP/npm.log"'
 assert "020 AC-11 배선: Makefile reindex가 REINDEX_PRUNE_LABELS 전달" 'sed -n "/^reindex:/,/^$/p" "$ROOT/Makefile" | grep -q "REINDEX_PRUNE_LABELS"'
+
+# ── 021 AC-5: 호스트 라우팅 배치 프로파일(판정 입력 = $ENV_FILE 하나, 격리 존중) ──
+printf 'NOTES_DIR="a=/x"\nOLLAMA_API_BASE=http://host.docker.internal:11434/v1\n' > "$ENV"
+run_reindex "$ENV"
+assert "021 AC-5: 호스트 라우팅이면 BRAIN_BATCH=32 기본 주입" 'grep -q "^BATCH=32$" "$TMP/npm.log"'
+run_reindex "$ENV" BRAIN_BATCH=4
+assert "021 AC-5: 명시 BRAIN_BATCH가 프로파일보다 우선" 'grep -q "^BATCH=4$" "$TMP/npm.log"'
+printf 'NOTES_DIR="a=/x"\n' > "$ENV"
+run_reindex "$ENV"
+assert "021 AC-5: 비호스트 라우팅이면 미주입(기존 기본 유지)" 'grep -q "^BATCH=$" "$TMP/npm.log"'
+# 오탐 방지(codex 교차 리뷰): 주석·비활성 라인의 host URL은 라우팅이 아니다 — 유효값만 판정
+printf '# OLLAMA_API_BASE=http://host.docker.internal:11434/v1 (예시)\nNOTES_DIR="a=/x"\nOLLAMA_API_BASE=http://ollama:11434/v1\n' > "$ENV"
+run_reindex "$ENV"
+assert "021 AC-5: 주석 속 host URL + 유효값 docker → 미주입(오탐 방지)" 'grep -q "^BATCH=$" "$TMP/npm.log"'
 
 # ── AC-22: doctor의 NOTES_DIR 정합 점검(FR-5) ────────────────────────────
 run_doctor() { # run_doctor <env파일> <mcp설정|없는경로>

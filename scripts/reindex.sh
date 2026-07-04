@@ -23,6 +23,16 @@ fi
 
 key="${LITELLM_MASTER_KEY:-$(read_env_val LITELLM_MASTER_KEY "$ENV_FILE")}"
 
+# specs/021 FR-3 — 임베딩 라우팅이 호스트(GPU)면 배치 기본 상향(명시 env가 항상 우선).
+# 판정 입력은 $ENV_FILE 하나(LOCALMIND_ENV_FILE 격리 존중) — litellm.config.yaml은
+# os.environ 참조라 리터럴이 존재할 수 없는 죽은 가지(spec FR-3)라 보지 않는다.
+# raw grep이 아니라 OLLAMA_API_BASE의 유효값만 본다 — 주석·예시 라인의 host URL로
+# Docker(CPU) 사용자의 배치를 올리면 안 된다(codex 교차 리뷰 오탐 방지).
+ollama_base="$(read_env_val OLLAMA_API_BASE "$ENV_FILE")"
+if [ -z "${BRAIN_BATCH:-}" ]; then
+  case "$ollama_base" in *host.docker.internal*) export BRAIN_BATCH=32;; esac
+fi
+
 cd "$PROJECT_DIR"
 # REINDEX_PRUNE_LABELS는 명시적으로 전달한다(make 암묵 export 의존 금지 — specs/020 AC-11).
 if [ -n "$resolved" ]; then

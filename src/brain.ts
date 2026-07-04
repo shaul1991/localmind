@@ -156,11 +156,20 @@ export function _resetIndexCacheForTest(): void {
   cachedIndex = null;
   cachedStat = null;
   indexRunCount = 0;
+  saveRunCount = 0;
 }
 
 /** 테스트 전용: doEnsureIndexed가 실제로 실행된 횟수. */
 export function _indexRunCountForTest(): number {
   return indexRunCount;
+}
+
+// 테스트 계측: saveIndex 실행 횟수(specs/021 진행 저장 스로틀 검증용).
+let saveRunCount = 0;
+
+/** 테스트 전용: saveIndex가 실행된 횟수. */
+export function _saveRunCountForTest(): number {
+  return saveRunCount;
 }
 
 /** 내부·테스트용: 인덱스 파일을 읽는다(캐시 경유). */
@@ -292,6 +301,7 @@ function mergeIndexFromDisk(ours: BrainIndex, disk: BrainIndex): void {
 
 /** 내부·테스트용: 인덱스 파일을 원자적으로 저장한다(락 + reload-merge + 캐시 갱신). */
 export function saveIndex(idx: BrainIndex): void {
+  saveRunCount++;
   acquireLock();
   try {
     // reload-merge: 이 객체의 로드 시점 이후 다른 프로세스가 저장했으면 병합(FR-6).
@@ -623,6 +633,11 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
     const batches: Ref[][] = [];
     for (let i = 0; i < flat.length; i += batchSize) batches.push(flat.slice(i, i + batchSize));
 
+    // specs/021 FR-1 — 진행 저장 간격(초). 잘못된 값(NaN 등)은 기본 10으로.
+    const rawInterval = Number(process.env.BRAIN_SAVE_INTERVAL ?? 10);
+    const SAVE_INTERVAL_MS = Math.max(0, Number.isFinite(rawInterval) ? rawInterval : 10) * 1000;
+    let lastSaveAt = Date.now();
+
     let cursor = 0;
     async function worker(): Promise<void> {
       while (cursor < batches.length) {
@@ -644,12 +659,30 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
             };
           }
         }
-        saveIndex(idx); // 완료된 파일만 반영해 진행 저장
+        // specs/021 FR-1 — 진행 저장 시간 스로틀: 저장은 색인 전량 직렬화라 비용이 색인
+        // 크기에 비례한다(대량 색인에서 O(n²) 쓰기 병목, 실측 66분). 배치마다가 아니라
+        // 마지막 저장 후 BRAIN_SAVE_INTERVAL초(기본 10, 0=매 배치) 경과 시에만 저장한다.
+        // lastSaveAt은 워커 간 공유지만 saveIndex가 락으로 직렬화되고 내용이 같은 idx라
+        // 경합은 "저장이 조금 더/덜" 수준 — 정합성 무관.
+        if (SAVE_INTERVAL_MS === 0 || Date.now() - lastSaveAt >= SAVE_INTERVAL_MS) {
+          saveIndex(idx); // 완료된 파일만 반영해 진행 저장
+          lastSaveAt = Date.now();
+        }
       }
     }
     // NUM_PARALLEL=1 ollama에선 동시 요청이 큐 적체로 행을 유발할 수 있어 기본 2.
     const conc = Math.max(1, Number(process.env.BRAIN_CONCURRENCY ?? 2));
-    await Promise.all(Array.from({ length: Math.min(conc, batches.length) }, () => worker()));
+    let completed = false;
+    try {
+      await Promise.all(Array.from({ length: Math.min(conc, batches.length) }, () => worker()));
+      completed = true;
+    } finally {
+      // specs/021 FR-2 — 오류 경로 전용: 임베딩 실패로 중단돼도 그때까지 커밋 완료된
+      // 파일 전량을 저장한다(유실 상한이 스로틀로 나빠지지 않게). 성공 경로에서는
+      // 저장하지 않는다 — 말미(프루닝 후) 저장이 전량 기록하므로 여기서도 저장하면
+      // 성공할 때마다 색인 전량 쓰기가 1회 낭비된다.
+      if (!completed) saveIndex(idx);
+    }
   }
 
   // specs/020 — 프루닝 가드: "스캔 안 됨"은 "삭제됨"이 아니다. 삭제 반영은 실제로 읽은
