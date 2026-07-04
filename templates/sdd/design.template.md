@@ -48,3 +48,12 @@
 ```
 {구현된 UI를 이 design.md와 대조하라 — 토큰 위반·상태 가시성 공백·접근성 기본. …}
 ```
+
+## 5. 토큰이 커지면: W3C DTCG tokens.json (선택)
+
+토큰 값 표가 이 문서로 관리하기 버거워지면(수십 개 이상·빌드 연동 필요) 표준 형식으로
+옮길 수 있다: **W3C DTCG tokens.json**(2025.10 첫 안정판 — Figma·Style Dictionary 등이
+소비). 변환 예: `npx style-dictionary build` (tokens.json → CSS/JS 변수).
+
+- **CI 강제 아님** — 원할 때만, 파이프라인 없이 시작해도 된다.
+- 옮겨도 **design.md가 정본**이라는 위계는 불변 — tokens.json은 파생·소비 형식이다.

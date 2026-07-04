@@ -139,7 +139,48 @@ make skills-deploy    # 스킬 정본 시드 + Claude Code로 복사 배포
   않습니다. 단, `LOCALMIND_SKILLS_DIR`로 정본을 노트 폴더 밖으로 옮기면 백업에서
   빠질 수 있으니 주의하세요.
 
-## 6. 주의
+## 6. 디자인 검증 도구 연동 (opt-in — specs/027)
+
+디자인 작업(specs/026의 design.md 워크플로우)에 외부 도구를 붙이고 싶을 때의 안내입니다.
+**전부 선택 사항**이고, localmind가 대신 설치·등록하지 않습니다 — 이 도구들은 opt-in
+성격(전제조건·계정 의존)이 강하고, localmind가 검증하지 않은 외부 소프트웨어를 자동으로
+끌어오지 않는다는 공급망 원칙 때문입니다. 아래 명령을 직접 실행해 연결하세요.
+
+**정본 위계(가장 중요한 규칙)**: 어떤 도구를 붙이든 **design.md가 정본**입니다. Figma·
+tokens.json은 참조·소비자일 뿐이며, Figma 변수와 design.md가 다르면 **design.md가
+이깁니다.** Figma에서 가져온 값은 design.md에 반영해야 비로소 정본이 됩니다.
+
+### Figma 공식 MCP (계정 필요 — 무료 플랜은 사실상 불가)
+
+> ⚠️ **무료(Starter) 플랜은 월 6회 도구 호출**로 제한돼 실무 사용이 어렵습니다.
+> 실사용에는 유료(Professional 이상) Dev/Full seat가 필요합니다(한도는 플랜에 따라 다름 — Figma 문서 확인).
+
+```bash
+claude mcp add --transport http figma https://mcp.figma.com/mcp
+# 이후 Claude Code에서 /mcp 로 OAuth 로그인
+```
+
+- 활용: `get_variable_defs`로 기존 Figma 변수·토큰을 추출해 design.md 토큰 표로
+  가져오기(1회성·수동 반영 — 자동 동기화 아님), `get_design_context`로 프레임 구조 참조.
+- ⚠️ 커뮤니티(비공식) Figma MCP 서버들은 유지가 보증되지 않아 localmind가 권장하지
+  않습니다 — 쓰더라도 직접 검토 후 자기 책임으로.
+
+### 브라우저 검증 (Playwright MCP · Claude in Chrome)
+
+> 전제: **실행 중인 로컬 UI**가 있어야 의미가 있습니다(design.md 문서 단계에선 불필요).
+
+```bash
+claude mcp add playwright -- npx @playwright/mcp@0.0.41   # 버전을 고정해 설치 권장
+```
+
+- Playwright MCP(Microsoft 공식·무료·로컬)로 스크린샷·접근성 검사·상호작용을 자동
+  수집해 UX 리뷰어의 검증에 쓸 수 있습니다.
+- Claude in Chrome(브라우저 확장)이 가용하면 라이브 화면·콘솔 확인에 활용됩니다 —
+  환경에 따라 없을 수 있어 조건부입니다.
+- UX 리뷰어 페르소나는 이 도구들이 없으면 제공된 스크린샷 대조(또는 정적 리뷰 +
+  "실제 구현 미검증" 명시)로 폴백합니다 — 검증 계층은 ux-reviewer 정본 참고.
+
+## 7. 주의
 
 - **민감정보 경고**: 페르소나 지침에 적은 내용은 백업 저장소에 그대로 커밋됩니다.
   비공개 repo라도 토큰·비밀번호 같은 민감정보는 넣지 마세요(백업 전반과 동일한 규칙 —

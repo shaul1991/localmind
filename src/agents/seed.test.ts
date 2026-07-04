@@ -128,3 +128,85 @@ describe("026 페르소나 templates·시드", () => {
     assert.ok(/무대 확장.*디자인|디자인 무대/.test(ssot), "디자인 무대 확장 정당화");
   });
 });
+
+describe("027 디자인 툴·검증 연동", () => {
+  // 단계 0 실측 baseline(026 커밋 2bd1ce5 시점의 targets.claude.tools) — 027은 본문만 편집
+  const TOOLS_BASELINE = "Read, Grep, Glob, Bash";
+  const uxrPath = path.join(TPL_AGENTS, "ux-reviewer.md");
+
+  it("027 AC-1: ux-reviewer 본문에 검증 도구 체인 절(계층 0/1/2·구동 주체·불일치=결함)", () => {
+    const body = fs.readFileSync(uxrPath, "utf8");
+    assert.ok(body.includes("## 검증 도구 체인"), "절 존재");
+    assert.ok(body.includes("계층 1") && /제공한[\s\S]{0,20}스크린샷/.test(body), "계층 1 전제(제공된 스크린샷)");
+    assert.ok(body.includes("계층 0") && body.includes("실제 구현 미검증"), "계층 0 폴백 + 한계 명시");
+    assert.ok(body.includes("실행 중") && body.includes("로컬 UI"), "계층 2 전제(실행 중 로컬 UI)");
+    assert.ok(/메인 세션|명시.*부여/.test(body), "구동 주체 단서(메인 세션/명시 부여)");
+    assert.ok(/불일치.*결함|결함.*보고/.test(body), "design.md 불일치=결함");
+  });
+
+  it("027 AC-2: 본문 편집 후에도 파싱·도구 최소성 불변(baseline 상대 비교)", () => {
+    const reg = loadRegistry(TPL_AGENTS);
+    assert.equal(reg.problems.length, 0, JSON.stringify(reg.problems));
+    const uxr = reg.personas.find((p) => p.name === "ux-reviewer")!;
+    assert.ok(uxr.targets.claude, "claude target 유효");
+    assert.equal(uxr.targets.claude!.tools, TOOLS_BASELINE, "targets.claude.tools 확장 금지(026 baseline)");
+  });
+
+  it("027 AC-3·4: docs 정본 위계·드리프트 규칙 + Figma 비용 정직성·커뮤니티 경고", () => {
+    const docs = fs.readFileSync(path.join(REPO_ROOT, "docs", "agents.md"), "utf8");
+    assert.ok(docs.includes("design.md가 정본"), "정본 위계");
+    assert.ok(/design\.md가[\s\S]{0,6}(이긴다|이깁니다)/.test(docs), "드리프트 판정 규칙");
+    assert.ok(/월\s*6/.test(docs), "무료 월 6회 한계 경고");
+    assert.ok(docs.includes("mcp.figma.com"), "Figma 연결 명령");
+    assert.ok(/커뮤니티[\s\S]{0,80}보증되지 않/.test(docs), "커뮤니티 서버 유지 미보증 경고");
+    assert.ok(/커뮤니티[\s\S]{0,120}권장하지/.test(docs), "커뮤니티 서버 비권장 문구");
+  });
+
+  it("027 AC-5: Playwright 전제·비대행 문구 + 실행 가능한 설치 레시피 부재 회귀", () => {
+    const docs = fs.readFileSync(path.join(REPO_ROOT, "docs", "agents.md"), "utf8");
+    assert.ok(docs.includes("실행 중인 로컬 UI"), "전제조건 첫 줄");
+    assert.ok(docs.includes("@playwright/mcp"), "Playwright 연결 명령");
+    assert.ok(/설치·등록하지 않|설치하지 않|대행하지 않/.test(docs), "비대행 문구");
+    assert.ok(/opt-in|공급망/.test(docs), "비대행 근거");
+    // 회귀: Makefile 타깃·scripts/ 비테스트 스크립트에 설치 레시피 없음
+    // (positive 어서션은 위처럼 하위문자열만 사용 — 회귀 패턴과 미겹침, 027 리뷰 결함 4)
+    const recipe = /claude\s+mcp\s+add[^\n]*(playwright|figma)/i;
+    const mk = fs.readFileSync(path.join(REPO_ROOT, "Makefile"), "utf8");
+    assert.ok(!recipe.test(mk), "Makefile에 설치 레시피 없음");
+    const scriptsDir = path.join(REPO_ROOT, "scripts");
+    for (const f of fs.readdirSync(scriptsDir)) {
+      const full = path.join(scriptsDir, f);
+      if (!fs.statSync(full).isFile() || f.endsWith(".test.sh")) continue;
+      assert.ok(!recipe.test(fs.readFileSync(full, "utf8")), `${f}에 설치 레시피 없음`);
+    }
+  });
+
+  it("027 AC-6: design.template.md에 tokens.json(DTCG) 이행 선택 섹션", () => {
+    const tpl = fs.readFileSync(path.join(REPO_ROOT, "templates", "sdd", "design.template.md"), "utf8");
+    assert.ok(tpl.includes("tokens.json") && tpl.includes("DTCG"), "이행 섹션 존재");
+    assert.ok(/CI 강제 아님|강제하지 않/.test(tpl), "CI 강제 아님");
+    assert.ok(/design\.md.*(정본|불변)/.test(tpl), "design.md 정본 불변");
+  });
+
+  it("027 AC-7b: spec이 라이브 외부 도구 동작 미검증을 한계로 명시한다", () => {
+    const spec = fs.readFileSync(
+      path.join(REPO_ROOT, "specs", "027-design-tool-verification", "spec.md"),
+      "utf8",
+    );
+    assert.ok(/라이브 외부 도구 동작[\s\S]{0,150}(검증하지 않|미검증)/.test(spec), "정직한 한계 명시");
+  });
+
+  it("027 AC-7: 콘텐츠 산출물 위생(개인 절대경로 부재 — 테스트 하니스 제외)", () => {
+    const targets = [
+      uxrPath,
+      path.join(REPO_ROOT, "docs", "agents.md"),
+      path.join(REPO_ROOT, "templates", "sdd", "design.template.md"),
+    ];
+    for (const f of targets) {
+      const body = fs.readFileSync(f, "utf8");
+      assert.ok(!body.includes("/Users/"), `${path.basename(f)}: /Users/ 없음`);
+      for (const line of body.split("\n"))
+        if (line.includes("/home/")) assert.ok(line.includes("/home/<"), `${path.basename(f)}: /home/은 플레이스홀더만`);
+    }
+  });
+});

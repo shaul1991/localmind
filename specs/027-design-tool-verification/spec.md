@@ -100,8 +100,10 @@ ux-reviewer 페르소나 본문에 **검증 도구 체인**을 규약화하고, 
   "다르면 design.md가 이긴다"(드리프트 판정) 취지 문구가 존재한다(grep).
 
 - **AC-4 (FR-2 Figma 비용 정직성)** Given `docs/agents.md`의 Figma 절, Then 무료 월 "6"
-  tool call 한계 경고와 연결 명령(`mcp.figma.com`) 문자열, 그리고 커뮤니티 서버
-  유지 미보증(T4) 경고가 존재한다(grep — 리뷰 결함 8 보강).
+  tool call 한계 경고와 연결 명령(`mcp.figma.com`) 문자열, 그리고 커뮤니티 서버에 대한
+  유지 미보증 경고가 존재한다(grep — 리뷰 결함 8 보강. "T4"는 리서처 조사의 출처 등급
+  주석이지 docs 요구 문자열이 아니다 — 사용자 문서는 비개발자용 평이 문구를 쓴다는
+  AGENTS.md 규약에 따라 "유지가 보증되지 않는다" 취지면 충족).
 
 - **AC-5 (FR-3 전제·비대행)** Given `docs/agents.md`의 검증 도구 절, Then "실행 중인 로컬
   UI" 전제조건과 Playwright 연결 명령이 존재하고, **localmind가 자동설치하지 않음을 밝히는
