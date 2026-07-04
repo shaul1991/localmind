@@ -62,13 +62,14 @@ if have ollama; then
 fi
 
 # ── 현재 임베딩 라우팅 ─────────────────────────────────────────
-# litellm.config.yaml(직접 하드코딩) 또는 .env(OLLAMA_API_BASE) 중 하나에
-# host.docker.internal 이 있으면 호스트 모드로 판정한다.
+# .env의 OLLAMA_API_BASE 유효값(주석·비활성 라인 제외)에 host.docker.internal이 있으면
+# 호스트 모드다(specs/022 FR-3 — raw grep은 주석·예시 라인에 오탐하고, litellm 설정은
+# os.environ 참조라 리터럴이 존재할 수 없는 죽은 가지. reindex.sh의 021 FR-3 판정과 동일).
+ENV_FILE="${LOCALMIND_ENV_FILE:-$DIR/.env}"
 route="docker"; route_label="Docker Ollama (litellm:4000 → ollama:11434)"
-if grep -q 'host.docker.internal' "$DIR/litellm.config.yaml" 2>/dev/null || \
-   grep -q 'host.docker.internal' "$DIR/.env" 2>/dev/null; then
-  route="host"; route_label="호스트 Ollama (litellm:4000 → host.docker.internal:11434)"
-fi
+case "$(read_env_val OLLAMA_API_BASE "$ENV_FILE")" in *host.docker.internal*)
+  route="host"; route_label="호스트 Ollama (litellm:4000 → host.docker.internal:11434)";;
+esac
 
 # 실효 백엔드(지금 임베딩이 실제로 도는 형태) 판정
 if [ "$route" = "host" ]; then
@@ -126,11 +127,14 @@ fi
 # ── 노트 폴더(NOTES_DIR) 정합(specs/019 FR-5) ──────────────────
 # 셸 명령(make reindex 등)과 Claude Code(MCP)가 같은 폴더 목록을 보는지 비교한다.
 # MCP 등록을 읽을 수 없는 환경(claude 미설치 등)에서는 조용히 건너뛴다(오탐 금지).
+# eff_nd(셸 유효값: 환경변수 → .env → 기본)는 이 섹션 밖(색인 라벨 안내)에서도 쓰므로
+# MCP 유무와 무관하게 여기서 해석한다(specs/022 FR-4 — 정합 블록 안에 두면 MCP 미등록
+# 사용자에게 라벨 진단이 무효화되고 set -u에서 unbound가 된다).
+eff_nd="$(resolve_notes_dir "$ENV_FILE")"
+eff_nd="${eff_nd:-$HOME/.localmind}"
 mcp_nd="$(mcp_notes_dir)"
 if [ -n "$mcp_nd" ]; then
   head "[노트 폴더 정합]  ← 셸 명령과 Claude Code가 같은 노트를 보는지"
-  eff_nd="$(resolve_notes_dir "${LOCALMIND_ENV_FILE:-$DIR/.env}")"
-  eff_nd="${eff_nd:-$HOME/.localmind}"   # 셸 유효값: 환경변수 → .env → 기본
   # 라벨·~·심링크·후행 슬래시 표기 차이는 같은 폴더로 본다 — 정규화된 경로 집합으로 비교(오탐 방지).
   if [ "$(notes_dir_paths "$eff_nd" | sort)" = "$(notes_dir_paths "$mcp_nd" | sort)" ]; then
     say "  ✓ 일치 — 셸(make reindex 등)과 Claude Code(MCP)가 같은 폴더 목록을 봅니다."
@@ -155,6 +159,25 @@ if [ -n "$mcp_nd" ]; then
       printf '%b\n' "$missing" | sed '/^$/d'
     fi
     say "  해결: .env에 NOTES_DIR를 추가하거나 $(b 'make mcp-install NOTES_DIR=<폴더 목록>')을 다시 실행하면 맞춰져요."
+  fi
+fi
+
+# ── 색인 라벨(specs/022 FR-4) ──────────────────────────────────
+# 지금 설정에 없는(고아) 또는 열 수 없는(부재) 폴더의 색인을 안내한다 — 읽기 전용,
+# 판정은 TS 단일 소스(scripts/index-labels.ts → brain.indexLabelReport). 색인 없음·
+# 손상·node 부재·0건이면 침묵(섹션 미출력 — 오탐 금지), exit 0 유지.
+if have node; then
+  labels_out="$(cd "$DIR" && NOTES_DIR="$eff_nd" node --import tsx/esm scripts/index-labels.ts 2>/dev/null || true)"
+  if [ -n "$labels_out" ]; then
+    head "[색인 라벨]  ← 지금 설정에 없는(또는 열 수 없는) 폴더의 색인"
+    while IFS="$(printf '\t')" read -r kind label f3 f4; do
+      case "$kind" in
+        orphan)  say "  ! $label: 지금 설정에 없는 폴더의 색인 ${f3}건을 보존 중이에요 — 안 쓰는 폴더면 'REINDEX_PRUNE_LABELS=$label make reindex'로 정리할 수 있어요.";;
+        missing) say "  ! $label: 폴더를 열 수 없어 색인 ${f4}건을 보존 중이에요 ($f3) — 연결(마운트)·권한을 확인해 주세요.";;
+      esac
+    done <<EOF_LABELS
+$labels_out
+EOF_LABELS
   fi
 fi
 

@@ -35,6 +35,8 @@ goal: [goal.md](goal.md) · plan: [plan.md](plan.md)
   - **020 후퇴 재색인**(`REINDEX_FALLBACK`)은 프루닝을 전면 보류하므로 삭제는 0이다. 후퇴
     재색인에서 신규 커밋도 없으면 clean → 말미 저장 생략(무변경 후퇴 재색인은 아무것도 쓰지
     않는다). 후퇴 중 신규 임베딩이 있으면 pending>0 → dirty → 저장.
+  - **색인 파일이 아직 없으면(첫 실행) 저장한다** — 파일 생성 자체가 변경이며, 빈 vault
+    재색인도 모델 스탬프를 기록하는 기존 계약(013 AC-8)을 유지한다(구현 중 회귀로 실증).
   - **embeddingModel/dims 스탬프-only 변화는 dirty로 세지 않는다**(파일 변경 없이 스탬프만
     바뀐 경우). `idx.dims`는 임베딩 구간(pending>0)에서만 설정되므로 파일 변경에 종속돼 이미
     dirty에 포함된다. `idx.embeddingModel` 무-op 재세팅은 저장을 만들지 않는다. 스탬프가 없던
@@ -54,7 +56,8 @@ goal: [goal.md](goal.md) · plan: [plan.md](plan.md)
   고아·부재 라벨을 읽기 전용으로 안내한다. 분류(고아 = 색인 라벨 ∖ 등록, 부재 = 등록됐으나
   readdir 실패)는 **TS 단일 소스**에서 계산한다 — doctor는 셸 정본(`resolve_notes_dir`)으로
   해석한 NOTES_DIR를 TS 리더에 넘기고, 리더는 brain의 FOLDERS 파서 + 색인 라벨 집계로
-  분류해 JSON을 돌려주며, doctor는 렌더만 한다(분류 로직 셸 재구현 금지). 규칙:
+  분류해 구조화된 결과(라인 단위 레코드 — 셸 파싱 용이)를 돌려주며, doctor는 렌더만
+  한다(분류 로직 셸 재구현 금지). 규칙:
   - 고아 라벨: 라벨명·항목 수·"보존 중"·정리 명령(`REINDEX_PRUNE_LABELS=<라벨> make reindex`)
     안내(020 FR-4·reindex.ts 문구와 정합).
   - 부재 라벨: "폴더를 열 수 없어 보존 중" 안내만 — **정리 명령을 내지 않는다**(020 FR-4와

@@ -132,9 +132,10 @@ run_reindex "$ENV"
 assert "021 AC-5: 주석 속 host URL + 유효값 docker → 미주입(오탐 방지)" 'grep -q "^BATCH=$" "$TMP/npm.log"'
 
 # ── AC-22: doctor의 NOTES_DIR 정합 점검(FR-5) ────────────────────────────
-run_doctor() { # run_doctor <env파일> <mcp설정|없는경로>
-  OUT="$(HOME="$TEST_HOME" LOCALMIND_ENV_FILE="$1" LOCALMIND_MCP_CONFIG="$2" \
-        env -u NOTES_DIR bash "$ROOT/scripts/doctor.sh" 2>&1)"
+run_doctor() { # run_doctor <env파일> <mcp설정|없는경로> [추가 env...]
+  local envf="$1" mcp="$2"; shift 2
+  OUT="$(HOME="$TEST_HOME" LOCALMIND_ENV_FILE="$envf" LOCALMIND_MCP_CONFIG="$mcp" \
+        env -u NOTES_DIR "$@" bash "$ROOT/scripts/doctor.sh" 2>&1)"
   RC=$?
 }
 printf '{"mcpServers":{"localmind":{"env":{"NOTES_DIR":"a=/x,b=/y,c=/z"}}}}' > "$CFG"
@@ -152,6 +153,41 @@ run_doctor "$ENV" "$CFG"
 assert "AC-22: 라벨만 달라도 폴더 집합이 같으면 일치" '! printf %s "$OUT" | grep -q "불일치"'
 run_doctor "$ENV" "$TMP/none.json"               # 조회 불가 → 점검 자체 생략
 assert "AC-22: 조회 불가 시 점검 출력 없음(오탐 금지)" '! printf %s "$OUT" | grep -q "노트 폴더 정합"'
+
+# ── 022 AC-6~9: doctor 라우팅 유효값 판정 + 고아·부재 라벨 안내 ────────────
+printf '# OLLAMA_API_BASE=http://host.docker.internal:11434/v1 (예시)\nNOTES_DIR="a=/x"\nOLLAMA_API_BASE=http://ollama:11434/v1\n' > "$ENV"
+run_doctor "$ENV" "$TMP/none.json"
+assert "022 AC-6: 주석 host URL + 유효값 docker → Docker 라우팅 표시" 'printf %s "$OUT" | grep -q "현재 라우팅.*Docker"'
+printf 'NOTES_DIR="a=/x"\nOLLAMA_API_BASE=http://host.docker.internal:11434/v1\n' > "$ENV"
+run_doctor "$ENV" "$TMP/none.json"
+assert "022 AC-6: 유효값 host → 호스트 라우팅 표시" 'printf %s "$OUT" | grep -q "현재 라우팅.*호스트"'
+assert "022 AC-7: doctor 라우팅이 read_env_val 유효값 판정 사용(배선)" 'grep -q "read_env_val OLLAMA_API_BASE" "$ROOT/scripts/doctor.sh"'
+assert "022 AC-7: litellm.config.yaml 죽은 가지 제거(배선)" '! grep -q "litellm.config.yaml" "$ROOT/scripts/doctor.sh"'
+
+IDX22="$TMP/labels-idx.json"; OK22="$TMP/ok22"; GONE22="$TMP/gone22"   # GONE22는 생성하지 않음
+mkdir -p "$OK22"
+printf '{"version":4,"files":{"old/a.md":{"hash":"h","folder":"old","chunks":[],"linksOut":[]},"gone22/b.md":{"hash":"h","folder":"gone22","chunks":[],"linksOut":[]},"ok22/c.md":{"hash":"h","folder":"ok22","chunks":[],"linksOut":[]}}}' > "$IDX22"
+printf 'NOTES_DIR="ok22=%s,gone22=%s"\n' "$OK22" "$GONE22" > "$ENV"
+printf '{"mcpServers":{"localmind":{"env":{"NOTES_DIR":"ok22=%s,gone22=%s"}}}}' "$OK22" "$GONE22" > "$CFG"
+run_doctor "$ENV" "$CFG" BRAIN_INDEX="$IDX22"
+assert "022 AC-8: 고아 라벨 안내(라벨·건수·보존)" 'printf %s "$OUT" | grep -q "old.*1건.*보존"'
+assert "022 AC-8: 고아 라벨 정리 명령 안내" 'printf %s "$OUT" | grep -q "REINDEX_PRUNE_LABELS=old"'
+assert "022 AC-8: 부재 라벨은 폴더 안내만" 'printf %s "$OUT" | grep -q "gone22.*열 수 없어"'
+assert "022 AC-8: 부재 라벨에 정리 명령 금지" '! printf %s "$OUT" | grep -q "REINDEX_PRUNE_LABELS=gone22"'
+assert "022 AC-8: RC 0 유지" '[ "$RC" -eq 0 ]'
+assert "022 AC-8: 부재 폴더를 생성하지 않음(읽기 전용)" '[ ! -d "$GONE22" ]'
+run_doctor "$ENV" "$TMP/none.json" BRAIN_INDEX="$IDX22"
+assert "022 AC-8b: MCP 미등록에서도 라벨 안내 동일 동작" 'printf %s "$OUT" | grep -q "REINDEX_PRUNE_LABELS=old" && [ "$RC" -eq 0 ]'
+assert "022 AC-8b: 부재 라벨 안내도 동일(정리 명령 금지 포함)" 'printf %s "$OUT" | grep -q "gone22.*열 수 없어" && ! printf %s "$OUT" | grep -q "REINDEX_PRUNE_LABELS=gone22"'
+assert "022 AC-8b: 부재 폴더 미생성 유지" '[ ! -d "$GONE22" ]'
+mkdir -p "$TMP/bin-nonode"; printf '#!/bin/sh\nexit 127\n' > "$TMP/bin-nonode/node"; chmod +x "$TMP/bin-nonode/node"
+run_doctor "$ENV" "$TMP/none.json" BRAIN_INDEX="$IDX22" PATH="$TMP/bin-nonode:$PATH"
+assert "022 AC-9: node 조회 불가(실패 스텁) → 라벨 안내 침묵 + RC 0" '! printf %s "$OUT" | grep -q "색인 라벨" && [ "$RC" -eq 0 ]'
+run_doctor "$ENV" "$TMP/none.json" BRAIN_INDEX="$TMP/no-such-idx.json"
+assert "022 AC-9: 색인 없음 → 라벨 안내 침묵 + RC 0" '! printf %s "$OUT" | grep -q "색인 라벨" && [ "$RC" -eq 0 ]'
+printf 'not json' > "$IDX22"
+run_doctor "$ENV" "$TMP/none.json" BRAIN_INDEX="$IDX22"
+assert "022 AC-9: 손상 색인 → 라벨 안내 침묵 + RC 0" '! printf %s "$OUT" | grep -q "색인 라벨" && [ "$RC" -eq 0 ]'
 
 # ── Makefile·notes-connect 배선 고정 ─────────────────────────────────────
 assert "Makefile: NOTES_DIR ?= 기본값 주입 제거(폴백 가림 방지)" '! grep -qE "^NOTES_DIR[[:space:]]*\?=" "$ROOT/Makefile"'

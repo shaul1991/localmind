@@ -1415,3 +1415,93 @@ describe("색인 저장 성능 (021)", () => {
     }
   });
 });
+
+// ── specs/022 — 색인 쓰기 위생: 무변경 말미 저장 생략 (FR-1·2, AC-1~4) ──────
+//
+// 저장 카운터는 021 하니스(runSaveProbe — 자식 프로세스 + _saveRunCountForTest)를
+// 재사용한다. AC-1은 두 자식 프로세스: 첫 프로세스가 색인을 만들고, 두 번째(카운터
+// 0에서 시작)가 무변경 재색인 → saves===0. 벽시계 의존 없음(결정적 상태·카운터).
+
+describe("색인 쓰기 위생 (022)", () => {
+  it("AC-1: 무변경 재색인은 저장 0회 — 색인 파일 불변", async () => {
+    const f = makeBatchFixture(3);
+    try {
+      await withEmbedStub(async (base) => {
+        await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
+        const before = fs.statSync(f.idxPath);
+        const contentBefore = fs.readFileSync(f.idxPath, "utf8");
+        const r = await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
+        assert.equal(r.saves, 0, "무변경 → 말미 저장 생략");
+        const after = fs.statSync(f.idxPath);
+        assert.equal(before.mtimeMs, after.mtimeMs, "색인 파일 mtime 불변");
+        assert.equal(contentBefore, fs.readFileSync(f.idxPath, "utf8"), "색인 파일 내용 바이트 불변");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-1b: 스탬프 없는 구형 색인의 무변경 재색인도 저장 0회(스탬프-only는 dirty 아님)", async () => {
+    const f = makeBatchFixture(2);
+    try {
+      await withEmbedStub(async (base) => {
+        await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
+        const idx = JSON.parse(fs.readFileSync(f.idxPath, "utf8"));
+        delete idx.embeddingModel; // pre-스탬프 v4 재현(loadIndex는 스탬프 없으면 그대로 로드)
+        fs.writeFileSync(f.idxPath, JSON.stringify(idx));
+        const r = await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
+        assert.equal(r.saves, 0, "스탬프-only 전이는 저장을 만들지 않음(현 기본 정책 고정)");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-2: 파일 내용 변경은 dirty — 저장 발생 + 반영", async () => {
+    const f = makeBatchFixture(2);
+    try {
+      await withEmbedStub(async (base) => {
+        await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
+        const hashBefore = JSON.parse(fs.readFileSync(f.idxPath, "utf8")).files["n/f0.md"].hash;
+        fs.writeFileSync(path.join(f.root, "n", "f0.md"), "바뀐 내용입니다 — dirty 판정 대상");
+        const r = await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
+        assert.ok(r.saves >= 1, `변경 → 저장 발생(실제 ${r.saves}회)`);
+        const entry = JSON.parse(fs.readFileSync(f.idxPath, "utf8")).files["n/f0.md"];
+        assert.notEqual(entry.hash, hashBefore, "변경 파일의 해시가 갱신됨");
+        assert.match(entry.chunks[0].text, /바뀐 내용/, "변경 내용이 색인에 반영됨");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-3: 파일 삭제(프루닝)도 dirty — 키 제거 + 저장 발생", async () => {
+    const f = makeBatchFixture(2);
+    try {
+      await withEmbedStub(async (base) => {
+        await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
+        fs.rmSync(path.join(f.root, "n", "f1.md"));
+        const r = await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
+        assert.ok(r.saves >= 1, "삭제 → 저장 발생");
+        assert.ok(!indexKeys(f.idxPath).includes("n/f1.md"), "삭제 키 반영");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-4: 후퇴 재색인 — 신규 있으면 저장, 무변경 재실행은 저장 0회", async () => {
+    const f = makeBatchFixture(2);
+    try {
+      await withEmbedStub(async (base) => {
+        const env = { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath, REINDEX_FALLBACK: "1" };
+        const r1 = await runSaveProbe(base, env);
+        assert.ok(r1.saves >= 1, "첫 후퇴 재색인(신규 커밋) → 저장");
+        const r2 = await runSaveProbe(base, env);
+        assert.equal(r2.saves, 0, "후퇴 + 무변경 → 삭제 보류 + 커밋 없음 → clean");
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+});

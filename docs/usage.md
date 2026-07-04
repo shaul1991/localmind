@@ -104,6 +104,6 @@ NOTES_DIR="work=/내/업무노트,life=/내/개인노트"
 - 도구가 안 보임 → **Claude Desktop/Cursor 재시작**(MCP는 시작 시 로드)
 - 재색인 후 "보존 중이에요" 안내가 보임 → 지금 설정에 없는 폴더의 색인을 지키고 있다는
   뜻(지워진 게 아님). 안 쓰는 폴더면 안내된 `REINDEX_PRUNE_LABELS=<라벨> make reindex`로
-  정리 👉 [FAQ](faq.md#5-운영--성능과-백업)
+  정리 — `make doctor`의 [색인 라벨] 섹션에서도 확인 가능 👉 [FAQ](faq.md#5-운영--성능과-백업)
 - `remember`가 `User not found` → MCP 설정의 `OPENMEMORY_USER`가 스택이 시드한 값과 일치해야 함(기본 `localmind`)
 - 더 많은 증상 👉 [README Troubleshooting](../README.md#문제-해결-troubleshooting)

@@ -697,6 +697,7 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
     pruneIgnored: [],
     pruneUnknown: [],
   };
+  let deletedCount = 0; // specs/022 FR-1 — 이번 실행의 삭제 반영 수(dirty 판정 재료)
   if (!REINDEX_FALLBACK) {
     const registered = new Set(FOLDERS.map((f) => f.label));
     const indexLabels = new Set(Object.values(idx.files).map((fe) => fe.folder));
@@ -715,12 +716,18 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
       if (!fe.folder) {
         // 손상·수기 편집으로만 생기는 folder 없는 엔트리 — 라벨 판정이 불가능하므로
         // 기존 프루닝의 자가 치유를 유지한다(스캔 미매칭이면 삭제, 요약·안내에서 제외).
-        if (!seen.has(key)) delete idx.files[key];
+        if (!seen.has(key)) {
+          delete idx.files[key];
+          deletedCount++;
+        }
         continue;
       }
-      if (scanned.has(fe.folder) && !seen.has(key)) delete idx.files[key]; // 대상 라벨 내 삭제 반영(FR-1)
-      else if (pruneSet.has(fe.folder)) {
+      if (scanned.has(fe.folder) && !seen.has(key)) {
+        delete idx.files[key]; // 대상 라벨 내 삭제 반영(FR-1)
+        deletedCount++;
+      } else if (pruneSet.has(fe.folder)) {
         delete idx.files[key]; // 명시적 고아 정리(FR-5)
+        deletedCount++;
         prunedCount.set(fe.folder, (prunedCount.get(fe.folder) ?? 0) + 1);
       }
     }
@@ -730,9 +737,17 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
       if (fe.folder && !registered.has(fe.folder)) orphanCount.set(fe.folder, (orphanCount.get(fe.folder) ?? 0) + 1);
     summary.orphans = [...orphanCount].map(([label, files]) => ({ label, files }));
   }
-  lastReindexSummary = summary;
+  lastReindexSummary = summary; // 요약은 저장 생략과 무관하게 항상 최신(020 반환 계약 유지)
 
-  saveIndex(idx);
+  // specs/022 FR-1 — 무변경(clean)이면 말미 저장을 생략한다: ensureIndexed는 검색·캡처마다
+  // 도는 경로라, 무변경 실행이 매번 색인 전량(실측 113MB)을 재기록하는 낭비를 없앤다.
+  // dirty 기준은 idx.files의 추가·삭제 사실뿐 — pending>0(커밋 발생, 021 진행 저장이
+  // 스로틀로 놓친 최종 커밋 포함) 또는 삭제 1건 이상. embeddingModel/dims 스탬프-only
+  // 변화는 세지 않는다(FR-2 — dims는 pending에 종속, 무-op 재세팅은 저장 트리거 아님).
+  // 색인 파일이 아직 없으면(첫 실행) 저장한다 — 파일 생성 자체가 변경이고, 013 AC-8
+  // (빈 vault 재색인도 모델 스탬프를 기록)의 기존 계약을 유지한다.
+  const dirty = pending.length > 0 || deletedCount > 0 || !fs.existsSync(INDEX_PATH);
+  if (dirty) saveIndex(idx);
   return idx;
 }
 
@@ -1257,6 +1272,35 @@ export async function reindex(): Promise<{ files: number; chunks: number; summar
 /** 설정된 노트 폴더 목록(라벨+경로). whoami/검증용. */
 export function listFolders(): NoteFolder[] {
   return FOLDERS.map((f) => ({ ...f }));
+}
+
+/** specs/022 FR-4 — doctor용 읽기 전용 라벨 분류(고아·부재). 재색인·임베딩을 유발하지
+ *  않고 폴더를 생성하지도 않는다(readdir만 — doEnsureIndexed의 부트스트랩 mkdir 미상속).
+ *  색인이 비어 있으면(파일 없음·손상 → loadIndex가 빈 색인 반환) 빈 결과 — 호출부(doctor)가
+ *  조용히 생략한다(오탐 금지). 부재 라벨은 보존할 색인 항목이 있을 때만 보고한다. */
+export function indexLabelReport(): {
+  orphans: { label: string; files: number }[];
+  missing: { label: string; dir: string; files: number }[];
+} {
+  const idx = loadIndex();
+  const byLabel = new Map<string, number>();
+  for (const fe of Object.values(idx.files))
+    if (fe.folder) byLabel.set(fe.folder, (byLabel.get(fe.folder) ?? 0) + 1);
+  if (byLabel.size === 0) return { orphans: [], missing: [] }; // 색인 없음·손상 → 조용한 생략
+  const registered = new Set(FOLDERS.map((f) => f.label));
+  const orphans = [...byLabel]
+    .filter(([label]) => !registered.has(label))
+    .map(([label, files]) => ({ label, files }));
+  const missing: { label: string; dir: string; files: number }[] = [];
+  for (const f of FOLDERS) {
+    try {
+      fs.readdirSync(f.dir);
+    } catch {
+      const files = byLabel.get(f.label) ?? 0;
+      if (files > 0) missing.push({ label: f.label, dir: f.dir, files });
+    }
+  }
+  return { orphans, missing };
 }
 
 /** 노트 폴더 요약 문자열(label:dir, ...). */
