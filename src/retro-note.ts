@@ -65,7 +65,9 @@ export function renderRetro(a: RetroAggregate, interpretation: string | null, ge
   const { promoted, observing } = classifyPatterns(a.commits.patterns);
   L.push(`## 2. 자동화 후보 (반복 ${PROMOTE_THRESHOLD}회 이상만 승격)`);
   L.push("");
-  if (promoted.length === 0) L.push("- 승격 기준을 넘은 반복 패턴이 없어요.");
+  L.push("> bare 타입(feat·docs 등 스코프 없는 반복)은 모든 저장소에서 자명해 승격에서 제외합니다(첫 실전 검증).");
+  L.push("");
+  if (promoted.length === 0) L.push("- 승격 기준을 넘은 scoped 반복 패턴이 없어요.");
   for (const p of promoted) L.push(`- **승격**: \`${p.pattern}\` — ${p.count}회 반복`);
   for (const p of observing) L.push(`- 관찰 중: \`${p.pattern}\` — ${p.count}회 (3회부터 승격)`);
   L.push("");
@@ -130,9 +132,12 @@ export function renderRetro(a: RetroAggregate, interpretation: string | null, ge
   L.push("## 7. 사용자 결정 대기 액션 리스트");
   L.push("");
   if (promoted.length === 0) {
-    L.push("- (제안 없음 — 승격된 자동화 후보가 생기면 여기에 '제안:'으로 나열됩니다)");
+    L.push("- (제안 없음 — 승격된 scoped 자동화 후보가 생기면 여기에 '제안:'으로 나열됩니다)");
   } else {
-    for (const p of promoted) L.push(`- 제안: \`${p.pattern}\` 반복(${p.count}회)의 자동화/규약화 검토 — 채택 여부는 사용자 결정, 개정은 SDD 스펙 경유.`);
+    // §2의 단순 복제 방지(첫 실전 검증) — 상위 5개만, 나머지는 §2 참조
+    for (const p of promoted.slice(0, 5))
+      L.push(`- 제안: \`${p.pattern}\` 반복(${p.count}회)의 자동화/규약화 검토 — 채택 여부는 사용자 결정, 개정은 SDD 스펙 경유.`);
+    if (promoted.length > 5) L.push(`- (그 외 ${promoted.length - 5}건은 §2 참조)`);
   }
   L.push("");
   return L.join("\n");

@@ -83,10 +83,12 @@ D2**: `capture()`/capture_note에 **선택적 `tags` 파라미터**를 추가한
     지정해 적재한다. 소급 태깅은 하지 않는다(신규 노트부터 — 초기 수집량이 낮은 진짜
     원인이 "생성 경로 부재"였음을 이번에 해소).
 
-- **FR-4 (자동화 후보 노이즈 임계)** *(goal: Objective, Success metrics)* — 반복 패턴
-  (예: 동일 conventional 커밋 타입/스코프 반복, 반복되는 실패 키워드)의 관찰 횟수가
-  **3회 이상**이면 "자동화 후보(승격)", 1~2회면 "관찰 중"으로 분류한다(임계 상수는
-  모듈에 명시, 오늘 회고의 판정 기준 계승).
+- **FR-4 (자동화 후보 노이즈 임계)** *(goal: Objective, Success metrics)* — 반복 패턴의
+  관찰 횟수가 **3회 이상**이면 "자동화 후보(승격)", 2회면 "관찰 중"으로 분류한다(임계
+  상수는 모듈에 명시, 오늘 회고의 판정 기준 계승). **bare 타입 제외(2026-07-05 첫 실전
+  개정)**: 스코프 없는 conventional 타입(feat·docs·기타 등)은 모든 저장소에서 자명하게
+  반복되는 노이즈라 승격·관찰 대상에서 제외한다 — 신호는 scoped 패턴(예: fix(test))에서만.
+  §7 액션 리스트는 §2의 복제를 피해 승격 상위 5건만 나열한다(초과분은 §2 참조 표기).
 
 - **FR-5 (analyst 위임 — 017 패턴)** *(goal: Objective)* — `resolvePersona("analyst")`가
   있으면 `personaChat`으로 집계를 해석해 노트의 "분석가 해석" 섹션을 채운다. 없거나
@@ -161,9 +163,9 @@ D2**: `capture()`/capture_note에 **선택적 `tags` 파라미터**를 추가한
   `tags: []` 불변 — 하위호환 회귀). 특수문자 tag(따옴표·대괄호 포함) 1건은 JSON
   이스케이프돼 frontmatter가 깨지지 않는다(리뷰 R5).
 
-- **AC-4 (FR-4 3회 임계)** Given fixture git log에 동일 타입/스코프 패턴이 3회 등장하고
-  다른 패턴이 2회 등장할 때, When 회고를 실행하면, Then 3회 패턴은 "자동화 후보(승격)"에,
-  2회 패턴은 "관찰 중"에 분류된다.
+- **AC-4 (FR-4 3회 임계 — 첫 실전 개정)** Given fixture에 bare 타입 다회(feat 53·docs 38)와
+  scoped 패턴(fix(test) 3회·docs(spec) 2회)이 함께 있을 때, When 회고를 실행하면, Then
+  **scoped 3회만 승격**, scoped 2회는 관찰, **bare 타입은 양쪽 다 제외**된다.
 
 - **AC-5 (FR-1 commit 집계)** Given fixture git log — feat 2·fix 3·test 1 + Merge 1 +
   `notes:` 비관례 1 + `docs(spec):` 3(단건·절 중간 3자리 함정 "cap 100 chars"·나열형

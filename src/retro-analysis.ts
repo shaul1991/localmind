@@ -139,14 +139,18 @@ export interface InventoryEntry {
   mtimeMs: number;
 }
 
-/** 자동화 후보 분류(FR-4) — 승격(≥3) / 관찰 중(<3). */
+/** 자동화 후보 분류(FR-4) — 승격(≥3) / 관찰 중(<3).
+ *  bare 타입(스코프 없는 feat·docs·기타 등)은 승격 대상에서 **제외**한다 — 모든 저장소에서
+ *  자명하게 반복되는 노이즈(2026-07-05 첫 실전 회고 검증: feat 53회 승격은 무의미, 신호는
+ *  fix(test) 5회 같은 scoped 패턴). */
 export function classifyPatterns(patterns: { pattern: string; count: number }[]): {
   promoted: { pattern: string; count: number }[];
   observing: { pattern: string; count: number }[];
 } {
+  const scoped = patterns.filter((p) => p.pattern.includes("("));
   return {
-    promoted: patterns.filter((p) => p.count >= PROMOTE_THRESHOLD),
-    observing: patterns.filter((p) => p.count < PROMOTE_THRESHOLD && p.count >= 2),
+    promoted: scoped.filter((p) => p.count >= PROMOTE_THRESHOLD),
+    observing: scoped.filter((p) => p.count < PROMOTE_THRESHOLD && p.count >= 2),
   };
 }
 

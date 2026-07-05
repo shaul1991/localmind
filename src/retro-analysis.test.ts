@@ -85,14 +85,15 @@ describe("032 회고 집계", () => {
     assert.equal(d[1].title, "결정 2");
   });
 
-  it("032 AC-4: 3회 임계 — 승격/관찰 분류", () => {
+  it("032 AC-4: 3회 임계 — scoped만 승격, bare 타입 제외(첫 실전 개정)", () => {
     const { promoted, observing } = classifyPatterns([
-      { pattern: "feat", count: 3 },
-      { pattern: "fix(test)", count: 2 },
-      { pattern: "docs", count: 1 },
+      { pattern: "feat", count: 53 }, // bare — 실전 노이즈 재현: 제외
+      { pattern: "fix(test)", count: 3 },
+      { pattern: "docs(spec)", count: 2 },
+      { pattern: "docs", count: 38 }, // bare — 제외
     ]);
-    assert.deepEqual(promoted.map((p) => p.pattern), ["feat"]);
-    assert.deepEqual(observing.map((p) => p.pattern), ["fix(test)"]);
+    assert.deepEqual(promoted.map((p) => p.pattern), ["fix(test)"], "scoped ≥3만 승격");
+    assert.deepEqual(observing.map((p) => p.pattern), ["docs(spec)"], "scoped 2회는 관찰");
   });
 
   it("032 FR-5: 표본 부족 — 전부 미만일 때만", () => {
@@ -106,7 +107,7 @@ describe("032 회고 집계", () => {
       days: 14,
       repoLabel: "fixture",
       isGitRepo: true,
-      commits: parseCommits("feat: a (031)\nfeat: b\nfeat: c"),
+      commits: parseCommits("fix(test): a (031)\nfix(test): b\nfix(test): c"),
       openQuestions: [{ spec: "031-x", text: "잔존 — 반복되면 재론", resolved: false }],
       hasSpecsDir: true,
       decisions: [],
@@ -120,7 +121,8 @@ describe("032 회고 집계", () => {
     assert.ok(md.includes("SDD 스펙"), "개정 경로 고지");
     assert.ok(md.includes("백업 저장소에 커밋"), "reports/ 주의(§4 계열)");
     assert.ok(md.includes("사람이 판별"), "OQ 대시보드 한계 헤더(AC-2b 정합)");
-    assert.ok(md.includes("제안: `feat`"), "액션 리스트 제안 표기(3회 승격)");
+    assert.ok(md.includes("제안: `fix(test)`"), "액션 리스트 제안 표기(scoped 3회 승격)");
+    assert.ok(!md.includes("제안: `feat`"), "bare 타입 미승격(첫 실전 개정)");
     assert.ok(/조건 도래|조건 충족/.test(md) === false, "자동 판정 문자열 없음(AC-2 — 대시보드 스코프)");
     assert.ok(md.includes("type: retro"), "frontmatter");
   });
