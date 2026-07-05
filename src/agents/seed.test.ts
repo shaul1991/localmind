@@ -514,3 +514,91 @@ describe("029 프로젝트 계약 저장소", () => {
     }
   });
 });
+
+describe("030 바이브 워크플로우 개정", () => {
+  const SEVEN = ["architect", "backend-dev", "infra", "frontend-dev", "ios-dev", "android-dev", "designer"];
+  const read = (f: string) => fs.readFileSync(f, "utf8");
+  const body = (n: string) => read(path.join(TPL_AGENTS, `${n}.md`));
+  const agentsMd = () => read(path.join(REPO_ROOT, "AGENTS.md"));
+  const CONTRACT_TPLS = ["context-map", "ubiquitous-language", "api-contract", "environments"];
+
+  it("030 AC-1: projects/ 포함 줄마다 '노트 폴더' 동반(7종) + 계약 템플릿 4종 무조건", () => {
+    for (const n of SEVEN) {
+      const lines = body(n).split("\n").filter((l) => l.includes("projects/<project>"));
+      assert.ok(lines.length > 0, `${n}: projects/<project> 참조 존재(공허 통과 방지 — 크리틱 경미 1)`);
+      for (const line of lines)
+        assert.ok(line.includes("노트 폴더"), `${n}: "${line.slice(0, 60)}…" 줄에 노트 폴더 부재`);
+    }
+    for (const t of CONTRACT_TPLS) {
+      const tpl = read(path.join(REPO_ROOT, "templates", "contracts", `${t}.template.md`));
+      // "노트 폴더" 단독은 environments 경고문의 기존 문구로 거짓 통과(codex block 2) —
+      // 위치 줄 패턴(위치 + projects/<프로젝트 이름>/ + 파일명)으로 강화
+      const locRe = new RegExp(`위치[\\s\\S]{0,40}노트 폴더[\\s\\S]{0,20}projects/<프로젝트 이름>/${t}\\.md`);
+      assert.ok(locRe.test(tpl), `${t} 템플릿: 위치 안내 줄(파일명 포함)`);
+    }
+  });
+
+  function section(md: string, heading: string): string {
+    const start = md.indexOf(`## ${heading}`);
+    assert.ok(start >= 0, `절 "${heading}" 존재`);
+    const rest = md.slice(start + 3);
+    const end = rest.indexOf("\n## ");
+    return end >= 0 ? rest.slice(0, end) : rest;
+  }
+
+  it("030 AC-2: 게이트 무대별 분기 — SDD 불변 + 바이브 즉시 구현·명시 + 절 스코프 앵커", () => {
+    const a = agentsMd();
+    const design = section(a, "디자인·UI/UX 작업");
+    const vibe = section(a, "바이브 코딩 — 도메인 스페셜리스트");
+    assert.ok(design.includes("사용자 확인 후 실행"), "SDD 불변 앵커(디자인 절 스코프)");
+    assert.ok(/바이브[\s\S]{0,200}즉시 구현/.test(design), "바이브 즉시 구현 분기(디자인 절)");
+    assert.ok(design.includes("맨 앞에 명시"), "생성 사실 명시 규칙");
+    assert.ok(vibe.includes("확인 규칙은 무대별"), "바이브 절 긍정 앵커(절 스코프 — codex block 3)");
+    assert.ok(!vibe.includes("사용자 확인 후 실행"), "바이브 절에 SDD 앵커 미등장(무대 간 어휘 가드)");
+    for (const n of ["frontend-dev", "ios-dev", "android-dev"]) {
+      const b = body(n);
+      assert.ok(/바이브[\s\S]{0,150}(즉시 구현|먼저 거친)/.test(b), `${n}: 바이브 분기(정의 선행)`);
+      assert.ok(b.includes("맨 앞에 명시"), `${n}: 생성 명시`);
+    }
+    const d = body("designer");
+    assert.ok(d.includes("확인을 받은 뒤에만"), "designer SDD 문구 불변(회귀)");
+    assert.ok(/바이브[\s\S]{0,60}즉시 핸드오프/.test(d), "designer 바이브 단서(라인랩 안전 범위)");
+    assert.ok(/바이브[\s\S]{0,160}맨 앞에 명시/.test(d), "designer 생성 명시 단서(codex 조언 — 삭제 검출)");
+    const vibeIdx = d.indexOf("바이브");
+    assert.ok(!d.slice(vibeIdx, vibeIdx + 200).includes("확인을 받은 뒤에만"), "바이브 단서에 SDD 앵커 미사용(어휘 가드)");
+  });
+
+  it("030 AC-3: 바이브 design.md 위치 규약 + SDD 병기", () => {
+    const a = agentsMd();
+    assert.ok(a.includes("projects/<project>/design.md"), "바이브 design.md 위치");
+    assert.ok(a.includes("specs/{NNN}-{slug}/design.md") || /specs\/[\s\S]{0,40}design\.md/.test(a), "SDD 위치 병기 유지");
+    const cm = read(path.join(REPO_ROOT, "templates", "contracts", "context-map.template.md"));
+    assert.ok(cm.includes("이 폴더의 design.md"), "context-map 바이브 포인터");
+    assert.ok(/specs\/[^\s]{0,40}design\.md/.test(cm), "context-map SDD 포인터 유지(codex block 3)");
+  });
+
+  it("030 AC-4: 회귀 — 파싱 19종 불변 + 편집 7종 description 불변(트리거 미도입)", () => {
+    const reg = loadRegistry(TPL_AGENTS);
+    assert.equal(reg.problems.length, 0, JSON.stringify(reg.problems));
+    assert.deepEqual(reg.personas.map((p) => p.name).sort(), ALL, "19종 불변");
+    for (const n of SEVEN) {
+      const desc = reg.personas.find((p) => p.name === n)!.description;
+      for (const t of ["노트 폴더", "바이브", "무대별", "design.md 위치"])
+        assert.ok(!desc.includes(t), `${n} description에 030 어휘 "${t}" 미도입(파싱 필드 스코프)`);
+    }
+  });
+
+  it("030 AC-5: 위생 — 편집 파일 개인 절대경로 부재", () => {
+    const files = [
+      ...SEVEN.map((n) => path.join(TPL_AGENTS, `${n}.md`)),
+      ...CONTRACT_TPLS.map((t) => path.join(REPO_ROOT, "templates", "contracts", `${t}.template.md`)),
+      path.join(REPO_ROOT, "AGENTS.md"),
+    ];
+    for (const f of files) {
+      const b = read(f);
+      assert.ok(!b.includes("/Users/"), `${path.basename(f)}: /Users/ 없음`);
+      for (const line of b.split("\n"))
+        if (line.includes("/home/")) assert.ok(line.includes("/home/<"), `${path.basename(f)}: 플레이스홀더만`);
+    }
+  });
+});

@@ -2,6 +2,7 @@
 
 > 소유: 아키텍트(architect)가 갱신합니다. 이 프로젝트의 진입점 — 어떤 경계 맥락(bounded
 > context)들이 있고 서로 어떤 관계인지, 관련 문서가 어디 있는지를 담습니다.
+> 위치: 노트 폴더의 `projects/<프로젝트 이름>/context-map.md`
 
 ## 1. bounded context 목록
 
@@ -21,5 +22,5 @@
 
 - API 계약: [api-contract.md](api-contract.md) · 환경: [environments.md](environments.md) ·
   용어집: [ubiquitous-language.md](ubiquitous-language.md)
-- 디자인 토큰 정본: {예: specs/012-checkout/design.md} — **여기 복제 금지, 위치만 가리킵니다**
+- 디자인 토큰 정본: {예: specs/012-checkout/design.md(SDD 무대) 또는 이 폴더의 design.md(바이브 코딩)} — **여기 복제 금지, 위치만 가리킵니다**
   (design.md가 정본).

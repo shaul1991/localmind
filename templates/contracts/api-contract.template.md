@@ -2,6 +2,7 @@
 
 > 소유: backend-dev — **API를 바꾸면 이 문서를 같은 작업에서 함께 갱신합니다**(계약이 정본 —
 > 코드와 다르면 계약이 이깁니다). 소비: frontend-dev·ios-dev·android-dev.
+> 위치: 노트 폴더의 `projects/<프로젝트 이름>/api-contract.md`
 
 ## 공통
 
