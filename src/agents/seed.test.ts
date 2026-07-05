@@ -406,3 +406,111 @@ describe("028 도메인 스페셜리스트 페르소나", () => {
     assert.ok(ssot.includes("바이브 코딩"), "바이브 코딩 무대");
   });
 });
+
+describe("029 프로젝트 계약 저장소", () => {
+  const CONTRACTS = path.join(REPO_ROOT, "templates", "contracts");
+  const read = (f: string) => fs.readFileSync(f, "utf8");
+  const tpl = (n: string) => path.join(CONTRACTS, `${n}.template.md`);
+  const agentsMd = () => read(path.join(REPO_ROOT, "AGENTS.md"));
+  const docsAgents = () => read(path.join(REPO_ROOT, "docs", "agents.md"));
+  const body = (n: string) => read(path.join(TPL_AGENTS, `${n}.md`));
+
+  it("029 AC-1: 계약 템플릿 4종 존재 + 구체 다어절 앵커", () => {
+    const anchors: Record<string, string[]> = {
+      "context-map": ["bounded context", "관련 문서"],
+      "ubiquitous-language": ["bounded context", "금지 동의어"],
+      "api-contract": ["엔드포인트", "상태 코드"],
+      environments: ["환경변수", "시크릿"],
+    };
+    for (const [name, keys] of Object.entries(anchors)) {
+      const t = read(tpl(name));
+      for (const k of keys) assert.ok(t.includes(k), `${name}: "${k}"`);
+    }
+  });
+
+  it("029 AC-2: 시크릿 금지 — 경고 문구(1차 방어=사람 검토) + 보조 grep", () => {
+    const env = read(tpl("environments"));
+    const head = env.split("\n").slice(0, 6).join("\n");
+    assert.ok(/시크릿[\s\S]{0,20}금지/.test(head), "최상단 시크릿 금지 경고");
+    assert.ok(env.includes("이름") && /백업[\s\S]{0,15}커밋/.test(env), "이름만·백업 커밋 경고");
+    assert.ok(/백업[\s\S]{0,30}커밋/.test(docsAgents()) && /백업[\s\S]{0,30}커밋/.test(agentsMd()), "docs·AGENTS 백업 경고 계승");
+    // 보조 grep(완결 가드 아님 — 1차 방어는 사람 전수 검토, spec AC-2)
+    assert.ok(!/[A-Z_]{2,}=[^\s{<`|]{8,}/.test(env), "키=값 형태 실값 없음");
+    assert.ok(!/[A-Z_]{2,}:\s*[A-Za-z0-9+/]{8,}/.test(env), "키: 값 형태 실값 없음(스펙 8자+ 기준)");
+    assert.ok(!/sk-[A-Za-z0-9]{8,}/.test(env), "sk-류 접두 없음");
+  });
+
+  it("029 AC-3: owner 소유 매트릭스 + architect 기존 단언 불변", () => {
+    const arch = body("architect");
+    assert.ok(arch.includes("context-map") && /ubiquitous-language|용어집/.test(arch), "architect 소유");
+    assert.ok(arch.includes("화면 상태 전이") || arch.includes("시스템 데이터 흐름"), "026 경계 문구 불변");
+    assert.ok(body("backend-dev").includes("api-contract"), "backend-dev 소유");
+    assert.ok(body("infra").includes("environments"), "infra 소유");
+  });
+
+  it("029 AC-4: AGENTS.md 게이트 조합·충돌·식별 + 소비자 게이트 문구", () => {
+    const a = agentsMd();
+    assert.ok(a.includes("프로젝트 계약 저장소"), "절 존재");
+    assert.ok(/없으면[\s\S]{0,60}명시/.test(a), "부재=완화");
+    assert.ok(/계약이 정본|계약이 이긴다/.test(a), "드리프트 규칙");
+    assert.ok(/표면화[\s\S]{0,40}(사용자|결정)/.test(a), "충돌 처리");
+    assert.ok(a.includes("cwd") && /모호[\s\S]{0,40}(묻는다|질문)/.test(a), "프로젝트 식별");
+    for (const n of ["frontend-dev", "ios-dev", "android-dev"]) {
+      const b = body(n);
+      assert.ok(/계약이 이긴다|드리프트/.test(b) && /없으면[\s\S]{0,80}명시/.test(b), `${n}: 게이트 조합`);
+    }
+  });
+
+  it("029 AC-5: 소비자 확인 + frontend design.md 게이트 불변", () => {
+    for (const n of ["frontend-dev", "ios-dev", "android-dev"])
+      assert.ok(/api-contract|API 계약/.test(body(n)), `${n}: 계약 소비`);
+    assert.ok(/design\.md[\s\S]{0,200}(우선|먼저)/.test(body("frontend-dev")), "027 게이트 불변");
+  });
+
+  it("029 AC-6: 용어집 DDD 규율(4요소·소유·제안·판정)", () => {
+    const u = read(tpl("ubiquitous-language"));
+    for (const k of ["용어", "정의", "bounded context", "금지 동의어"]) assert.ok(u.includes(k), `요소 "${k}"`);
+    assert.ok(/아키텍트|architect/.test(u) && u.includes("제안"), "소유·제안 규율");
+    assert.ok(/판정/.test(u), "충돌 판정");
+  });
+
+  it("029 AC-7: designer 토큰 포인터(026 정본 방어)", () => {
+    const d = body("designer");
+    assert.ok(/복제하지 않/.test(d) && /design\.md가 정본/.test(d) && d.includes("포인터"), "포인터 규율");
+  });
+
+  it("029 AC-8: 파싱 19종 불변 + 편집 7종 description에 계약 트리거 부재", () => {
+    const reg = loadRegistry(TPL_AGENTS);
+    assert.equal(reg.problems.length, 0, JSON.stringify(reg.problems));
+    assert.deepEqual(reg.personas.map((p) => p.name).sort(), ALL, "ALL 목록 그대로(자기완결 — codex 조언)");
+    for (const p of reg.personas) assert.ok(p.targets.claude, `${p.name}: 유효 claude target`);
+    const edited = ["architect", "backend-dev", "infra", "frontend-dev", "ios-dev", "android-dev", "designer"];
+    const triggers = ["계약", "컨텍스트 맵", "용어집", "환경 정보", "계약 저장소"];
+    for (const n of edited) {
+      // 파싱된 description 필드만 — raw 파일/본문 grep 금지(spec AC-8: backend-dev 본문의
+      // 기존 "API 계약" 문구가 있어 파일 grep은 반드시 오탐)
+      const desc = reg.personas.find((p) => p.name === n)!.description;
+      for (const t of triggers) assert.ok(!desc.includes(t), `${n} description에 "${t}" 없음`);
+    }
+  });
+
+  it("029 AC-9: localmind 자체 예외", () => {
+    assert.ok(/specs\/[\s\S]{0,40}계약 역할/.test(agentsMd()) && /강제하지 않/.test(agentsMd()), "AGENTS.md 예외");
+    assert.ok(/specs\/[\s\S]{0,60}(계약|명세)/.test(docsAgents()) && /강제하지 않/.test(docsAgents()), "docs 예외");
+  });
+
+  it("029 AC-10: 위생 — 계약 템플릿·편집 페르소나 개인 절대경로 부재", () => {
+    const files = [
+      ...fs.readdirSync(CONTRACTS).map((n) => path.join(CONTRACTS, n)),
+      ...["architect", "backend-dev", "infra", "frontend-dev", "ios-dev", "android-dev", "designer"].map(
+        (n) => path.join(TPL_AGENTS, `${n}.md`),
+      ),
+    ];
+    for (const f of files) {
+      const b = read(f);
+      assert.ok(!b.includes("/Users/"), `${path.basename(f)}: /Users/ 없음`);
+      for (const line of b.split("\n"))
+        if (line.includes("/home/")) assert.ok(line.includes("/home/<"), `${path.basename(f)}: 플레이스홀더만`);
+    }
+  });
+});

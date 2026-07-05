@@ -144,7 +144,7 @@ dev(dba·auth-dev·data-platform 등)는 AGENTS.md 보편 규칙으로 상속한
 
 - **FR-8 (docs 갱신)** *(goal: Success metrics)* — `docs/agents.md`에 "프로젝트 계약 저장소
   (바이브 코딩)" 절을 추가한다: 구조·소유 매트릭스 요약·**시크릿 금지 + 백업 커밋 경고**
-  (§7 계승)·`cp` 안내·localmind 예외. `docs/personas.md`는 신규 페르소나가 없어 로스터 불변
+  ("주의" 절 계승)·`cp` 안내·localmind 예외. `docs/personas.md`는 신규 페르소나가 없어 로스터 불변
   이되, 계약 소유(architect·backend-dev·infra) 각주를 더한다(구성 원칙 재조정 아님).
 
 ## Acceptance Criteria
@@ -161,7 +161,7 @@ dev(dba·auth-dev·data-platform 등)는 AGENTS.md 보편 규칙으로 상속한
 - **AC-2 (FR-2·8 시크릿 금지)** Given `templates/contracts/environments.template.md`와
   `docs/agents.md`·`AGENTS.md`, Then environments 템플릿 최상단에 "시크릿 값 금지" 취지
   경고 + "값이 아니라 이름"·"백업 저장소에 커밋됨" 문구가 있고, docs/AGENTS.md에 동일 취지
-  백업 커밋 경고(§7 계승)가 있다(grep). **시크릿 부재의 1차 방어는 grep이 아니라 plan 단계
+  백업 커밋 경고("주의" 절 계승)가 있다(grep). **시크릿 부재의 1차 방어는 grep이 아니라 plan 단계
   2의 사람 전수 검토다(리뷰 중대 1 — 거짓 안심 방지)**: grep은 보조 가드로 최소 2구문
   (`키=값`·`키: 값` 형태의 8자 이상 연속 토큰)과 알려진 접두(`sk-` 류)의 부재만 검사하며,
   이 grep이 모든 시크릿 구문을 잡지 못함을 스펙이 명시한다(마크다운 표 셀·따옴표 값 등은

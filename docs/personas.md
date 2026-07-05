@@ -106,6 +106,10 @@ status: 확정 (2026-07-03 인터뷰)
 | 보안 도메인 리뷰 | security-reviewer | auth-dev 구현과 분리 lane |
 | 최종 게이트 | critic | 다운시프트 금지(기존 규율) |
 
+프로젝트 계약 저장소(specs/029 — `projects/<project>/`): context-map·용어집=architect,
+api-contract=backend-dev, environments=infra(시크릿 값 금지). 소비는 UI dev 3종 + 전 도메인.
+디자인 토큰은 design.md 정본에 포인터만(026 불변).
+
 ### SDD 워크플로우 (오케스트레이션 — specs/018은 self-review 행, 나머지 단계는 후속)
 
 주 클라이언트 Claude Code가 오케스트레이터. Codex 위임은 `codex exec -p <persona>` 래핑
