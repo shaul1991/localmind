@@ -57,6 +57,14 @@ function parseFolders(): NoteFolder[] {
 
 const FOLDERS = parseFolders();
 const FOLDER_BY_LABEL = new Map(FOLDERS.map((f) => [f.label, f]));
+// specs/034 — 모니터링 UI가 같은 폴더/인덱스 해석을 재사용한다(재유도 금지).
+// 프로세스 기동 전에 셸 진입점이 NOTES_DIR를 해석·export하는 전제(019 규칙)는 동일.
+export function notesFolders(): NoteFolder[] {
+  return FOLDERS;
+}
+export function brainIndexPath(): string {
+  return INDEX_PATH;
+}
 // specs/020 FR-3 — 후퇴 판정: NOTES_DIR가 이 프로세스 env에 없어 FOLDERS가 기본값으로
 // 재계산된 상태(자체 폴백), 또는 셸 진입점이 폴백을 썼다는 신호(REINDEX_FALLBACK=1 —
 // reindex.sh가 REINDEX_FALLBACK_DIR로 NOTES_DIR를 재할당한 경우 NOTES_DIR만으로는 구분

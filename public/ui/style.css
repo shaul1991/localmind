@@ -1,0 +1,172 @@
+/* specs/034 design.md §2 — 디자인 토큰(정본: design.md, 여기는 CSS 변수 선언 1곳뿐) */
+:root {
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-border: #e2e8f0;
+  --color-text: #0f172a;
+  --color-text-dim: #64748b;
+  --color-primary: #2563eb;
+  --color-on-primary: #ffffff;
+  --color-ok: #15803d;
+  --color-warn: #b45309;
+  --color-error: #b91c1c;
+  --color-idle: #475569;
+  --color-on-state: #ffffff;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --radius-card: 10px;
+  --font-body: 14px/1.6 system-ui, sans-serif;
+  --font-mono: 13px ui-monospace, monospace;
+  --font-title: 600 18px/1.4 system-ui, sans-serif;
+  --font-page-title: 600 20px/1.4 system-ui, sans-serif;
+  --font-metric: 700 26px/1.3 system-ui, sans-serif;
+  --font-caption: 12px/1.5 system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0f172a;
+    --color-surface: #1e293b;
+    --color-border: #334155;
+    --color-text: #e2e8f0;
+    --color-text-dim: #94a3b8;
+    --color-primary: #3b82f6;
+    --color-on-primary: #0f172a;
+    --color-ok: #22c55e;
+    --color-warn: #f59e0b;
+    --color-error: #ef4444;
+    --color-idle: #94a3b8;
+    --color-on-state: #0f172a;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font: var(--font-body);
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+code, .mono { font: var(--font-mono); }
+.dim { color: var(--color-text-dim); }
+.hidden { display: none !important; }
+
+/* ── 레이아웃: 사이드바 + 콘텐츠 (design.md §1) ── */
+.shell { display: flex; min-height: 100vh; }
+.sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+.brand { font-size: 16px; font-weight: 600; }
+.sidebar nav { display: flex; flex-direction: column; gap: var(--space-xs); }
+.sidebar nav a {
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-card);
+  color: var(--color-text);
+  text-decoration: none;
+}
+.sidebar nav a:focus-visible { outline: 2px solid var(--color-primary); }
+.sidebar nav a.active { background: var(--color-primary); color: var(--color-on-primary); }
+.sidebar-foot { margin-top: auto; font: var(--font-caption); }
+main { flex: 1; padding: var(--space-lg); max-width: 1100px; }
+h2 { margin: 0 0 var(--space-md); font: var(--font-page-title); }
+
+/* ── StatusCard ── */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--space-md); }
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  padding: var(--space-md);
+}
+.card h3 { margin: 0 0 var(--space-sm); font: var(--font-title); }
+.card .card-actions { display: flex; align-items: center; gap: var(--space-sm); margin-top: var(--space-sm); flex-wrap: wrap; }
+.metric { font: var(--font-metric); }
+
+/* 로딩 스켈레톤 — border색 펄스(design.md StatusCard.loading) */
+.skeleton { height: 14px; border-radius: 4px; background: var(--color-border); animation: pulse 1.2s ease-in-out infinite; margin: var(--space-sm) 0; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+/* ── Badge — 색+텍스트 병기(접근성) ── */
+.badge {
+  display: inline-block;
+  padding: 1px var(--space-sm);
+  border-radius: 999px;
+  font: var(--font-caption);
+  font-weight: 600;
+  color: var(--color-on-state);
+}
+.badge.ok { background: var(--color-ok); }
+.badge.warn { background: var(--color-warn); }
+.badge.error { background: var(--color-error); }
+.badge.idle { background: var(--color-idle); }
+
+/* ── DataTable ── */
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+th, td { text-align: left; padding: var(--space-sm); border-bottom: 1px solid var(--color-border); vertical-align: top; overflow-wrap: anywhere; }
+th { color: var(--color-text-dim); font: var(--font-caption); font-weight: 600; }
+tr:last-child td { border-bottom: none; }
+
+/* ── ErrorState ── */
+.error-state { color: var(--color-error); }
+.error-state .hint { color: var(--color-text-dim); font: var(--font-caption); }
+.inline-error { color: var(--color-error); font: var(--font-caption); }
+
+/* ── RefreshButton ── */
+button {
+  font: inherit;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  cursor: pointer;
+}
+button:disabled { opacity: 0.6; cursor: wait; }
+button.secondary { background: var(--color-surface); color: var(--color-text); }
+button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.last-checked { font: var(--font-caption); color: var(--color-text-dim); }
+
+/* ── KeyGate ── */
+.keygate {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--color-bg);
+  padding: var(--space-lg);
+}
+.keygate-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  padding: var(--space-lg);
+  max-width: 420px;
+  display: flex; flex-direction: column; gap: var(--space-md);
+}
+.keygate-card h1 { margin: 0; font-size: 20px; }
+.keygate-card input {
+  font: inherit;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+.keygate-error { color: var(--color-error); margin: 0; }
+
+/* 리포트 본문 */
+pre.note-body {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  padding: var(--space-md);
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+.note-link { background: none; border: none; color: var(--color-primary); cursor: pointer; padding: 0; text-decoration: underline; }

@@ -11,7 +11,7 @@ import { log } from "./util/log.js";
  * API 키 검증 (config.apiKey가 설정된 경우에만).
  * OpenAI식 `Authorization: Bearer <key>` 와 Anthropic식 `x-api-key: <key>` 둘 다 허용.
  */
-function authMiddleware(config: Config) {
+export function authMiddleware(config: Config) {
   return function (req: Request, res: Response, next: NextFunction): void {
     if (!config.apiKey) return next();
     const bearer = (req.header("authorization") || "").replace(/^Bearer\s+/i, "").trim();
@@ -31,7 +31,7 @@ function authMiddleware(config: Config) {
  * 통과시킨다. 그 외에는 Host의 호스트 부분(포트 제거)이 허용 목록에 없으면 403.
  * /health는 이 미들웨어보다 먼저 등록돼 예외(상태 조회는 어떤 Host로도 허용 — AC-4).
  */
-function hostGuardMiddleware(config: Config) {
+export function hostGuardMiddleware(config: Config) {
   const allowed = config.allowedHosts;
   return function (req: Request, res: Response, next: NextFunction): void {
     if (allowed === null) return next();
