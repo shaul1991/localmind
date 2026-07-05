@@ -91,6 +91,8 @@ NOTES_DIR="work=/내/업무노트,life=/내/개인노트"
 
 ## 백업 · 새 기기 복구
 
+> 두 기기를 함께 쓴다면: `make device-sync HOST=<라벨>` 한 명령으로 다른 기기를 최신화할 수 있어요(CI 확인→백업→원격 pull→검증·배포 — `.env`의 `SYNC_DEVICES` 설정, 새 기기는 `make recover` 먼저).
+
 - **백업**: `make backup` (메모리+노트+페르소나·스킬을 내 private git repo로). 자동은 `make backup-cron`.
 - **복구**: 새 컴퓨터에서 `make recover RESTORE_REPO=<내 백업 repo>` 한 줄.
   페르소나·스킬은 복원 후 배포까지 자동 재실행됩니다. 노트 저장소를 여러 개 쓰면

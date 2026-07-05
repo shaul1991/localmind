@@ -47,6 +47,7 @@ D1="$TMP/notes1"; B1="$TMP/bare1.git"; new_repo "$D1" "$B1"
 echo "노트 내용" > "$D1/note.md"
 run_backup "$TMP/bin-fail" "$D1"
 assert "AC-1: 비0 종료(부분 실패 식별 가능)" '[ "$RC" -ne 0 ]'
+assert "031: 메모리만 실패는 정확히 exit 1(소프트 신호)" '[ "$RC" -eq 1 ]'
 assert "AC-1: 노트 커밋이 생성된다(인질 아님)" 'git -C "$D1" log --oneline | grep -q "localmind backup"'
 assert "AC-1: 노트가 원격(push)까지 반영된다" 'git -C "$B1" log --oneline | grep -q "localmind backup"'
 assert "AC-1: 메모리 실패가 요약에 표기된다" 'printf %s "$OUT" | grep -q "메모리"'
@@ -83,6 +84,7 @@ git -C "$CLONE" add -A; git -C "$CLONE" commit -qm "다른 기기 백업"; git -
 echo "내 새 노트" > "$D4/new.md"
 run_backup "$TMP/bin-ok" "$D4"
 assert "AC-11: non-ff push는 비0 종료" '[ "$RC" -ne 0 ]'
+assert "031: push 거부는 정확히 exit 2(코어 신호)" '[ "$RC" -eq 2 ]'
 assert "AC-11: 원인(다른 기기)과 해결(pull) 안내" 'printf %s "$OUT" | grep -q "다른 기기" && printf %s "$OUT" | grep -q "pull"'
 # `log | head -1`은 pipefail 아래서 git이 간헐적으로 SIGPIPE(141)를 받아 grep이 매치해도
 # 실패한다(CI node22에서 3회 발현). log -1은 head 없이 결정적.
@@ -92,6 +94,7 @@ assert "AC-11: 로컬 커밋은 보존된다" 'git -C "$D4" log -1 --format=%s |
 D5="$TMP/notes5"; mkdir -p "$D5"
 run_backup "$TMP/bin-ok" "$D5"
 assert "repo 아님: backup-init 안내 + 비0 종료" '[ "$RC" -ne 0 ] && printf %s "$OUT" | grep -q "backup-init"'
+assert "031: repo 아님도 정확히 exit 2(사전조건=코어 — 백업 없이 계속 방지)" '[ "$RC" -eq 2 ]'
 
 # ── 결함1 회귀: 노트 커밋 실패가 삼켜지지 않는다(git identity 미설정) ────────
 D6="$TMP/notes6"; B6="$TMP/bare6.git"
@@ -103,6 +106,7 @@ echo "노트" > "$D6/note.md"
 run_backup "$TMP/bin-ok" "$D6"
 assert "결함1: 커밋 실패 시 비0 종료('백업 완료' 오보 없음)" '[ "$RC" -ne 0 ] && ! printf %s "$OUT" | grep -q "✓ 백업 완료"'
 assert "결함1: 실패 요약에 노트커밋 표기 + git 설정 안내" 'printf %s "$OUT" | grep -q "노트커밋" && printf %s "$OUT" | grep -q "user.email"'
+assert "031: 커밋 실패도 정확히 exit 2(코어 신호)" '[ "$RC" -eq 2 ]'
 
 # ── 019 AC-16~18: 쿼리 로그 opt-in 백업(FR-3) ────────────────────────────────
 # 가짜 hostname — 기기 식별자 정제 검증용(공백·대문자·언더스코어; -s는 점을 반환하지 않음)

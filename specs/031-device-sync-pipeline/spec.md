@@ -81,7 +81,9 @@
   소프트로 설계함. 게다가 메모리는 이 파이프라인의 Non-goal). 종료 코드가 이진이면
   구분 불가하므로 **backup.sh에 구조적 신호를 추가한다: 코어 실패 = exit 2, 소프트만
   실패 = exit 1, 성공 = 0**(하위호환 — 기존 소비자는 비0 여부만 보므로 불변).
-  **코어(exit 2)의 집합은 "BACKUP_DIR의 커밋·push 실패"에 한정**한다(최종 확인 경미-G) —
+  **코어(exit 2)의 집합은 "BACKUP_DIR의 커밋·push 실패 + 백업 전제 불성립(BACKUP_DIR가
+  git repo가 아님 — 백업이 아예 수행되지 않는 사전조건 실패)"**이다(최종 확인 경미-G +
+  구현 재검: 사전조건 실패를 소프트로 두면 device-sync가 "백업 없이 계속"하게 됨) —
   메모리·개인설정(extras)·자산(assets)·쿼리로그 등 콘텐츠 하위 단계 실패는 전부
   소프트(exit 1)다. 단 **자산 백업이 소프트 실패하면** 미러가 stale이라 원격
   restore-assets가 stale 페르소나를 배포할 수 있다 — device-sync 경고에 이 영향
@@ -226,7 +228,10 @@ FR-5 (원격 수신 — 워커 단독 테스트, ssh 불필요):
   (레지스트리가 `BACKUP_DIR` 밖 노트 폴더, `BACKUP_DIR/agents`는 미러) + 주 기기에서
   페르소나 1개 추가·1개 삭제 후 백업 반영, When 수신 워커, Then 원격 레지스트리와 배포
   산출물에 추가가 나타나고 삭제가 전파(prune)된다 — bare deploy가 아닌
-  restore-assets 경로의 회귀 고정.
+  restore-assets 경로의 회귀 고정. **검증 분담 고지(self-review 경미)**: 031 CI 테스트는
+  restore-assets **경로 호출**을 회귀 고정하고(스텁), 미러 왕복의 실검증은 019
+  `device-sync-e2e.test.sh`(삭제 왕복·.bak)·`restore-assets.test.sh` AC-12와 M5 실기기
+  스모크(확정 사항 6)가 담당한다 — 로직 소유가 019라 중복 재검을 피한 분담이다.
 - **AC-12** (빌드 게이트): Given `dist/mcp.js` 부재, When 수신 워커, Then build가
   실행된 뒤 진행한다. Given build 스텁이 비0, Then test·deploy 미실행 + 비0.
 
@@ -262,21 +267,21 @@ FR-8 (파괴 방지):
   shim이 유일한 정합 방식), When device-sync, Then `GIT_LOG`에 `reset`/비-ff
   `merge`/`push --force`류 파괴 하위명령이 없고 대상 repo HEAD가 불변이다.
 
-## Open questions (plan 단계 1 인터뷰에서 확정 — 6건)
+## Open questions (잔존 — 인터뷰 전 질문 6건은 아래 "확정 사항"으로 이관·종결)
 
-1. **설정 위치** — `.env`의 `SYNC_DEVICES`(추천: 기존 `NOTES_REPOS` 선례·`read_env_val`
-   재사용·백업에 안 실림) vs 별도 `devices.conf`/`~/.config`. 추천 확정 여부.
-2. **CI 게이트 기본 강도** — green 아니면 중단(추천) vs 경고 후 계속. 사용자 판단.
-3. **원격 검증 범위** — `seed.test.ts`만(추천·수 초) vs 전체 `npm test`(수 분).
-4. **원격 node 기본 해석** — 로그인 셸 우선 + `SYNC_ENV_PREP` 탈출구(추천) vs 항상
-   명시 요구. 사용자 기기 프로필 확인.
-5. **복수 기기 순차 sync** — `HOST=all` 같은 전 기기 순차 동기화를 지원할지. 현재는
-   단일 호스트 명시(중대-4 확정: 생략+복수면 안내+비0). 기기가 3대 이상으로 늘면 재론.
-6. **/goal 규약 7 연결** — device-sync는 **명시 호출 전용**, 규약 7의 CI green 감시
-   후에는 "device-sync로 원격 최신화 가능" **제안 문구까지만**(자동 실행 비목표 —
-   goal Non-goals). 확정 여부.
+1. **복수 기기 순차 sync(`HOST=all`)** — 현재는 단일 호스트 명시(확정 사항 5). 기기가
+   3대 이상으로 늘면 재론.
 
-## 확정 예정 사항 (인터뷰 반영 후 여기로 이동)
+## 확정 사항 (2026-07-05 인터뷰 — 결정 로그 노트 참조)
 
-(plan 단계 1 완료 시 Open questions 6건을 확정 문구로 이관 — 019 spec의 "확정 사항"
-절 관례 계승.)
+1. **설정 위치**: `.env`의 `SYNC_DEVICES`(+`SYNC_ENV_PREP`) — NOTES_REPOS 선례·
+   `read_env_val` 재사용·백업에 안 실림.
+2. **CI 게이트**: green 아니면 **중단**(기본). `SYNC_SKIP_CI=1` 명시 우회, gh 부재는
+   경고 스킵.
+3. **원격 검증**: `seed.test.ts`만(수 초). `SYNC_TEST_CMD`로 재정의 가능.
+4. **원격 node**: 로그인 셸 기본 + `SYNC_ENV_PREP` 탈출구. node 부재 시 파괴 전 중단.
+5. **복수 기기**: 단일 호스트 명시(생략+복수 = 안내+비0). `HOST=all`은 기기 3대 이상 시
+   재론(잔여 Open question).
+6. **규약 7 연결**: CI green 보고 시 device-sync **제안 문구까지만**(자동 실행은
+   Non-goal 유지). 단 이번 구현 검증에서 **최초 1회 M5 실기기 device-sync를 실행**한다
+   (수동 스모크의 실전판 — 사용자 지시).

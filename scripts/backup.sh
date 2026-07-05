@@ -26,7 +26,7 @@ fi
 # ── 2) 백업 repo 확인 — 노트 백업의 전제 ────────────────────────
 if ! git -C "$BACKUP_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "✗ $BACKUP_DIR 는 git repo가 아닙니다 — 'make backup-init'으로 백업 저장소를 먼저 연결하세요."
-  exit 1
+  exit 2  # specs/031 — 백업 자체가 불가한 사전조건 실패 = 코어(소프트 1과 구분: device-sync가 "백업 없이 계속"하지 않게)
 fi
 
 # ── 3) 파생물 제외(.gitignore 시드) ─────────────────────────────
@@ -125,5 +125,9 @@ else
   case "$FAILURES" in *노트커밋*) echo "  · 노트 커밋: 위의 git 사용자 정보 안내를 따른 뒤 재실행";; esac
   case "$FAILURES" in *push*)     echo "  · push: 위의 push 안내를 따른 뒤 재실행";; esac
   case "$FAILURES" in *개인설정*) echo "  · 개인 설정: BACKUP_EXTRA_FILES 경로를 확인한 뒤 재실행";; esac
+  # specs/031 — 실패 급 신호: 코어(노트 커밋·push — 원격 전파 차단 필요)는 exit 2,
+  # 콘텐츠 하위 단계(메모리·개인설정·자산·쿼리로그)만 실패면 exit 1(소프트).
+  # 기존 소비자는 "비0 여부"만 보므로 하위호환(031 재검 중대-A).
+  case "$FAILURES" in *노트커밋*|*push*) exit 2;; esac
   exit 1
 fi
