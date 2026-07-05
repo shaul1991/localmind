@@ -166,11 +166,12 @@ export function buildServer(): McpServer {
         text: z.string().describe("Note body (markdown)"),
         title: z.string().optional().describe("Optional note title"),
         folder: z.string().optional().describe("Target notes folder label (default: first folder)"),
+        tags: z.array(z.string()).optional().describe("Optional frontmatter tags (e.g. [\"decision\"] for decision-log notes — specs/032)"),
       },
     },
-    async ({ text, title, folder }) => {
+    async ({ text, title, folder, tags: noteTags }) => {
       try {
-        const { path: file, validationStatus, retried, tags } = await capture(text, title, folder);
+        const { path: file, validationStatus, retried, tags } = await capture(text, title, folder, noteTags);
         const statusLine =
           validationStatus === "confirmed"
             ? "✅ 인덱싱 확인됨"

@@ -142,6 +142,14 @@ report: ## 검색 품질 리포트 노트 생성(최근 7일 + 분석가 해석 
 report-cron: ## 주 1회 자동 리포트를 단계별로 crontab 에 등록(요일/시간: DOW=1 HOUR=9 MIN=0, 미리보기: DRY_RUN=1)
 	@NOTES_DIR="$(NOTES_DIR)" QUERY_LOG="$(QUERY_LOG)" bash "$(CURDIR)/scripts/report-cron.sh"
 
+.PHONY: retro
+retro: ## 워크플로우 회고 노트 생성(작업 패턴·OQ 대시보드·결정 로그 — RETRO_REPO=대상, RETRO_DAYS=구간) — specs/032
+	@RETRO_REPO="$(RETRO_REPO)" RETRO_DAYS="$(RETRO_DAYS)" npm run --silent retro-report
+
+.PHONY: retro-cron
+retro-cron: ## 회고 주기 등록(crontab — DOW=1 HOUR=9 미리보기 DRY_RUN=1) — specs/032
+	@bash scripts/retro-cron.sh
+
 .PHONY: trash-list
 trash-list: ## 휴지통(.trash/) 확인 — soft-delete된 노트 목록 (NOTES_DIR)
 	@NOTES_DIR="$(NOTES_DIR)" bash "$(CURDIR)/scripts/trash.sh" list

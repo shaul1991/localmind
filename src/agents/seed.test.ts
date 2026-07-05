@@ -602,3 +602,41 @@ describe("030 바이브 워크플로우 개정", () => {
     }
   });
 });
+
+describe("032 워크플로우 회고 — 페르소나·위생 회귀", () => {
+  it("032 AC-11: 파싱 19종 불변 + analyst description 불변 + 본문 회고 소유", () => {
+    const reg = loadRegistry(TPL_AGENTS);
+    assert.equal(reg.problems.length, 0, JSON.stringify(reg.problems));
+    assert.deepEqual(reg.personas.map((p) => p.name).sort(), ALL, "19종 불변");
+    const analyst = reg.personas.find((p) => p.name === "analyst")!;
+    for (const t of ["회고", "retro", "워크플로우"])
+      assert.ok(!analyst.description.includes(t), `analyst description에 032 어휘 "${t}" 미도입(트리거 불변)`);
+    const body = fs.readFileSync(path.join(TPL_AGENTS, "analyst.md"), "utf8");
+    assert.ok(body.includes("회고 리포트") && body.includes("제안까지만"), "본문 소유 확장 + 게이트");
+  });
+
+  it("032 AC-12: 신규·편집 파일 위생(개인 절대경로 부재)", () => {
+    const files = [
+      "src/retro-analysis.ts",
+      "src/retro-note.ts",
+      "src/retro-guard.ts",
+      "scripts/retro-report.ts",
+      "scripts/retro-cron.sh",
+      "templates/agents/analyst.md",
+      // 032가 편집한 기존 파일도 전수(codex 조언 — AC-12 "편집·신규 전 파일")
+      "src/brain.ts",
+      "src/mcp-server.ts",
+      "AGENTS.md",
+      "docs/agents.md",
+      "docs/personas.md",
+      "Makefile",
+      "package.json",
+    ].map((f) => path.join(REPO_ROOT, f));
+    for (const f of files) {
+      const b = fs.readFileSync(f, "utf8");
+      assert.ok(!b.includes("/Users/"), `${path.basename(f)}: /Users/ 없음`);
+      for (const line of b.split("\n"))
+        if (line.includes("/home/")) assert.ok(line.includes("/home/<"), `${path.basename(f)}: 플레이스홀더만`);
+    }
+  });
+});

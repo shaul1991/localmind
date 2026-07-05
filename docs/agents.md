@@ -103,6 +103,7 @@ make agents-deploy                          # 도구별 설정 재생성
 | `critic` | ask_brain 답변 직후 | 답변의 사실·수치·인용을 **다른 계열 모델**로 대조 — 문제만 경고로 표시 | `BRAIN_VERIFY=off` |
 | `curator` | 노트 캡처(capture_note) 때 | 태그를 골라 노트 머리말(`tags:`)에 기록 | `BRAIN_CAPTURE_TAGS=off` |
 | `analyst` | `make report` 실행 때 | 검색 품질 집계를 해석해 리포트 노트로 저장 | (실행 안 하면 됨) |
+| `analyst` | `make retro` 실행 때 | 작업 방식 회고 집계(커밋 패턴·OQ·결정 로그)를 해석해 회고 노트로 저장 — 제안까지만(규약 개정은 SDD 경유) | (실행 안 하면 됨) |
 
 알아둘 것:
 
@@ -112,9 +113,10 @@ make agents-deploy                          # 도구별 설정 재생성
   구독 사용량 보호. 시간 상한은 `BRAIN_VERIFY_TIMEOUT_MS`(기본 60초).
 - **태그가 마음에 안 들면** 노트 파일에서 직접 고치세요 — 태깅은 캡처 때 한 번만
   하므로 수동 수정은 그대로 보존됩니다.
-- **리포트 노트 주의**: `make report`가 만드는 리포트(노트 폴더 `reports/`)에는 최근
-  검색 질의 원문이 담기고, 노트라서 검색에도 잡히고 백업 저장소에도 커밋됩니다.
-  주 1회 자동 실행은 `make report-cron`.
+- **리포트 노트 주의**: `make report`(검색 품질)·`make retro`(작업 방식 회고)가 만드는
+  노트(노트 폴더 `reports/`)에는 최근 검색 질의 원문·커밋 해시·결정 노트 제목이 담기고,
+  노트라서 검색에도 잡히고 백업 저장소에도 커밋됩니다. 주기 실행은 `make report-cron`·
+  `make retro-cron`.
 - 위임이 실패하거나 느려도 본래 기능(답변·캡처)은 항상 완수됩니다.
 
 ## 5. SDD self-review 교차 검증 (스킬 + `localmind-review`)

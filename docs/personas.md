@@ -47,7 +47,7 @@ status: 확정 (2026-07-03 인터뷰)
 | `curator` | 큐레이터 | 분류·태깅·중복 감지·대량 저위험 기계작업 | haiku | 코어 |
 | `librarian` | 사서 | 노트 검색 결과의 답변 합성 (ask_brain) | sonnet | 확장(지식) |
 | `interviewer` | 인터뷰어 | 꼬리물기 질문 설계·요구→FR/AC 변환·용어 정리 (PM+SME 통합) | opus 🔖 | 확장(SDD) |
-| `analyst` | 분석가 | 실패 질의 로그·인덱스 품질 해석과 개선 제안 | sonnet | 확장(지식) |
+| `analyst` | 분석가 | 실패 질의 로그·인덱스 품질·워크플로우 회고(make retro, 032) 해석과 개선 제안 | sonnet | 확장(지식) |
 | `designer` | 디자이너 | 디자인 시스템·토큰·컴포넌트 정의 + 실행 프롬프트 작성 (구현 안 함) | opus 🔖 | 확장(디자인) |
 | `ux-reviewer` | UX 리뷰어 | 사용성·접근성·design.md 대비 일관성 점검 (최종 판정은 크리틱) | opus 🔖 | 확장(디자인) |
 | `backend-dev` | 백엔드 개발자 | 서버사이드·API·엔드포인트 구현 (스키마는 dba·인증은 auth-dev) | opus | 도메인(바이브 코딩) |

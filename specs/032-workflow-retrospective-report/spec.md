@@ -42,9 +42,10 @@ D2**: `capture()`/capture_note에 **선택적 `tags` 파라미터**를 추가한
     prefix 파싱 — **prefix 미매칭(Merge·`notes:` 등)은 "기타" 버킷**으로 분류, 리뷰 D1),
     스펙 cadence — **실측된 세 참조 형식을 모두 인식한다(리뷰 D1: 리터럴 `specs/NNN`은
     초기 커밋 관례일 뿐, 현행은 괄호형·spec 커밋형)**: ① `specs/NNN`, ② 제목 말미
-    `(NNN)`(3자리 괄호), ③ `docs(spec): NNN` — 베어 넘버는 **spec 문맥 앵커가 있을 때만**(`spec` 토큰 인접 —
-    `fix: reduce to 100` 류 임의 3자리 거짓 양성 방지, 리뷰 R6. 다중 번호 `022 …023`은
-    전부 집계).
+    `(NNN)`(3자리 괄호), ③ `docs(spec):` 나열형 — **절 시작 위치(콜론/쉼표 뒤)의 3자리만** 스펙 번호로
+    인정한다(구현 재검 확정: "docs(spec): 031 cap 100 chars"의 100 미집계, "022 a, 023 b,
+    024 c" 전부 집계). 그 외 커밋의 베어 3자리는 `spec` 토큰 인접(12자 이내)만(리뷰 R6 —
+    `fix: reduce to 100` 류 거짓 양성 방지).
   - `extractOpenQuestions(files)` → FR-2.
   - `collectDecisionNotes(files)` → FR-3.
   - `analyze(records)`는 **기존 `src/query-analysis.ts`를 재사용**한다(중복 구현 금지).
@@ -164,10 +165,11 @@ D2**: `capture()`/capture_note에 **선택적 `tags` 파라미터**를 추가한
   다른 패턴이 2회 등장할 때, When 회고를 실행하면, Then 3회 패턴은 "자동화 후보(승격)"에,
   2회 패턴은 "관찰 중"에 분류된다.
 
-- **AC-5 (FR-1 commit 집계)** Given fixture git log — feat 2·fix 3·test 1 + Merge 커밋 1 +
-  `notes:` 비관례 1, 스펙 참조는 **혼합 형식**(`(031)` 1회 + `docs(spec): 031` 1회 —
-  리터럴 `specs/NNN` 없음: 현행 repo 관례 재현, 리뷰 D1), When 회고를 실행하면, Then
-  커밋 총수 8·타입 분포(기타 버킷 2 포함)·스펙 031 cadence 2가 fixture 기대치와 일치한다.
+- **AC-5 (FR-1 commit 집계)** Given fixture git log — feat 2·fix 3·test 1 + Merge 1 +
+  `notes:` 비관례 1 + `docs(spec):` 3(단건·절 중간 3자리 함정 "cap 100 chars"·나열형
+  "022 a, 023 b, 024 c") — 스펙 참조는 혼합 형식(리터럴 `specs/NNN` 없음: 현행 repo 관례
+  재현, 리뷰 D1 + 구현 재검), When 회고를 실행하면, Then 커밋 총수 11·타입 분포(기타 2·
+  docs 3)·031 cadence 3·**100 미집계**·022/023/024 각 1이 fixture 기대치와 일치한다.
 
 - **AC-6 (FR-7 안전 게이트 — 쓰기 스코프)** Given fixture 실행 환경(AGENTS.md·agents/*·
   specs/* 존재), When 회고를 실행하면, Then 새 파일은 `<노트 폴더>/reports/retro-*.md` **하나뿐**
@@ -186,9 +188,11 @@ D2**: `capture()`/capture_note에 **선택적 `tags` 파라미터**를 추가한
 - **AC-8 (FR-5 analyst 부재)** Given `analyst` 페르소나가 없을 때, When 회고를 실행하면,
   Then 노트는 집계 섹션을 정상 렌더하고 "분석가 해석"은 부재 플레이스홀더로 채워지며
   exit 0 (brain-report 계승).
-- **AC-8b (FR-5 표본 부족 스킵 — 리뷰 D8)** Given analyst 존재 + 전 소스가 임계 미만인
-  픽스처, When 회고를 실행하면, Then 해석이 생략되고 "표본 부족" 명시 + exit 0
-  (personaChat 미호출 — 스텁으로 확인).
+- **AC-8b (FR-5 표본 부족 스킵 — 리뷰 D8 + 재검 정직화)** Given analyst 존재 + 전 소스가
+  임계 미만인 픽스처, When 회고를 실행하면, Then 해석이 생략되고 "표본 부족" 명시 +
+  exit 0. **관측 한계(정직)**: personaChat 미호출 자체는 게이트웨이 스텁 없이 직접 관측
+  불가 — 테스트는 렌더·종료 코드까지 고정하고, 미호출은 코드 경로 가드(`if (!insufficient)`)
+  + 즉시 종료로 뒷받침한다(가드 이전 호출 회귀의 이론적 여지는 문서화된 한계).
 
 - **AC-9 (엣지 — git repo 아님/데이터 없음)** Given `RETRO_REPO`가 git 저장소가 아니거나
   구간에 커밋·스펙·결정 노트·검색이 모두 없을 때, When 회고를 실행하면, Then **노트는

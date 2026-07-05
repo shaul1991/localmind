@@ -1244,7 +1244,22 @@ export function createNoteFile(dir: string, fname: string, body: string): string
 
 /** 노트를 새 마크다운 파일로 저장하고 인덱싱한 뒤 인덱싱 검증 결과를 반환한다.
  *  folder(라벨)로 대상 폴더 선택(기본 첫 폴더). */
-export async function capture(text: string, title?: string, folder?: string): Promise<CaptureResult> {
+/** specs/032 FR-3 — 캡처 노트 frontmatter 조립(순수 — AC-3b 테스트 대상).
+ *  tags는 각 항목을 JSON 문자열화로 이스케이프해 frontmatter가 깨지지 않게 한다(032 R5).
+ *  tags 미지정이면 기존과 동일한 `tags: []`(큐레이터 자동 태깅 대상 — 하위호환). */
+export function buildNoteFrontmatter(title: string, isoDate: string, tags?: string[]): string {
+  const tagsLine = tags && tags.length > 0 ? `tags: [${tags.map((t) => JSON.stringify(t)).join(", ")}]` : "tags: []";
+  return ["---", `title: "${title.replace(/"/g, "'")}"`, `date: ${isoDate}`, tagsLine, "source: localmind", "---", ""].join(
+    "\n",
+  );
+}
+
+export async function capture(
+  text: string,
+  title?: string,
+  folder?: string,
+  noteTags?: string[],
+): Promise<CaptureResult> {
   ensureDirs();
   const target = (folder && FOLDER_BY_LABEL.get(folder)) || FOLDERS[0];
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
@@ -1255,15 +1270,7 @@ export async function capture(text: string, title?: string, folder?: string): Pr
       .trim()
       .replace(/\s+/g, "-") || "note";
   const isoDate = new Date().toISOString().slice(0, 19);
-  const frontmatter = [
-    "---",
-    `title: "${(title ?? slug).replace(/"/g, "'")}"`,
-    `date: ${isoDate}`,
-    "tags: []",
-    "source: localmind",
-    "---",
-    "",
-  ].join("\n");
+  const frontmatter = buildNoteFrontmatter(title ?? slug, isoDate, noteTags);
   const body = title ? `${frontmatter}# ${title}\n\n${text}\n` : `${frontmatter}${text}\n`;
   // 배타적 생성 — 같은 초에 같은 제목으로 캡처해도 먼저 저장된 노트를 덮어쓰지 않는다(013 FR-8).
   const fname = createNoteFile(target.dir, `${ts}-${slug}`.slice(0, 80) + ".md", body);
@@ -1272,8 +1279,10 @@ export async function capture(text: string, title?: string, folder?: string): Pr
 
   // specs/017 FR-5 — 큐레이터 태깅: 파일 생성 후·색인 전에 frontmatter에 기록해
   // 색인이 최종본으로 1회만 돌게 한다. 실패·부재·꺼짐은 태그 없이 진행(캡처 우선).
-  let tags: string[] | undefined;
-  if (process.env.BRAIN_CAPTURE_TAGS !== "off") {
+  let tags: string[] | undefined = noteTags && noteTags.length > 0 ? noteTags : undefined;
+  // 사전 지정 tags가 있으면 frontmatter가 이미 채워져 큐레이터 치환(`^tags: \[\]$`)은 no-op —
+  // 자동 태깅 호출 자체를 생략한다(032 FR-3: 사용자 지정 우선).
+  if (!tags && process.env.BRAIN_CAPTURE_TAGS !== "off") {
     const suggested = await suggestTags(text, title);
     if (suggested && writeTagsToNote(path.join(target.dir, fname), suggested)) tags = suggested;
   }
