@@ -94,4 +94,4 @@
 - ~~`captureValidation` 연동~~ → **capture 이벤트를 별도 레코드(tool:"capture_note")로
   기록**하고, search/ask 레코드에는 포함하지 않는 것으로 확정. `capture()`가
   `validationStatus`를 이미 반환하므로 호출 지점에서 바로 기록 가능(흐름 연결 불필요).
-- (신규) 로그 레코드에 `folder` 스코프 포함 — 다중 폴더 도입(013 이전 be19bd0) 반영.
+- ~~(신규) 로그 레코드에 `folder` 스코프 포함 — 다중 폴더 도입(013 이전 be19bd0) 반영.~~

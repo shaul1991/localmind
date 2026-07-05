@@ -85,6 +85,6 @@
 
 ## Open questions
 
-- Obsidian `aliases` frontmatter를 통한 별칭 매칭은 미포함(Non-goal) — 추후 필요 시 별도 spec.
-- backlink(incoming) 계산을 인덱싱 시점에 사전 계산할지, 조회 시점에 on-demand 순회할지는
-  plan에서 성능 측면을 고려해 결정한다 (초기엔 on-demand로 단순하게 시작 예정).
+- ~~Obsidian `aliases` frontmatter를 통한 별칭 매칭은 미포함(Non-goal) — 추후 필요 시 별도 spec.~~
+- ~~backlink(incoming) 계산을 인덱싱 시점에 사전 계산할지, 조회 시점에 on-demand 순회할지는
+  plan에서 성능 측면을 고려해 결정한다 (초기엔 on-demand로 단순하게 시작 예정).~~

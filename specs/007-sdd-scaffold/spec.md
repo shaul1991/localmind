@@ -82,8 +82,8 @@ localmind는 이미 `AGENTS.md`(자체 프로젝트 규칙)와 `specs/{NNN}-*/` 
 
 ## Open questions
 
-- `templates/sdd/{goal,spec,plan}.template.md`가 사용자의 private 벌트에 있는
+- ~~`templates/sdd/{goal,spec,plan}.template.md`가 사용자의 private 벌트에 있는
   `templates/sdd/*.template.md`와 내용이 유사할 수 있으나, localmind는 그 벌트를 참조할 수
   없으므로(OSS 일반성 원칙) **독립적으로 새로 작성**한다 — 이번 세션의 specs/001~006에서
-  실제로 써온 섹션 구조를 기준으로 만든다(plan에서 확정).
+  실제로 써온 섹션 구조를 기준으로 만든다(plan에서 확정).~~
 - `specs/` 폴더를 완전히 빈 채로 만들지, `.gitkeep`류 placeholder를 넣을지는 plan에서 결정.
