@@ -42,7 +42,7 @@ Google **OpenAI 호환 엔드포인트**(`/v1beta/openai/chat/completions`, T1) 
       `contents` 변환은 하지 않는다. → goal: Objective / Constraints(매핑 최소)
 - [ ] **FR-4 (usage 집계)**: `stream_options.include_usage`로 받은 최종 usage(prompt/completion
       토큰)를 `BackendResult`의 입력·출력 토큰으로 매핑한다. → goal: Success metrics(usage)
-- [ ] **FR-5 (설정)**: `GEMINI_API_KEY`·`GEMINI_DEFAULT_MODEL`(기본 `gemini-2.5-flash`)·
+- [ ] **FR-5 (설정)**: `GEMINI_API_KEY`·`GEMINI_DEFAULT_MODEL`(기본 `gemini-3.5-flash`)·
       `GEMINI_BASE_URL`(옵션, 기본 T1 base)을 `.env`로 읽어 composition에서 주입.
       `.env.example`에 플레이스홀더+안내(0원은 Flash 계열, 키 발급 위치). → goal: Constraints
 - [ ] **FR-6 (우아한 부재)**: `GEMINI_API_KEY` 미설정 시 스택 기동·claude/codex 정상, Gemini
@@ -56,9 +56,9 @@ Google **OpenAI 호환 엔드포인트**(`/v1beta/openai/chat/completions`, T1) 
 ## Acceptance Criteria
 <!-- 각 AC는 검증가능·테스트와 1:1 매핑 가능하게(Given-When-Then). 유저 시나리오와
      엣지 케이스를 AC로 표면화한다. -->
-- [ ] **AC-1 (라우팅)**: Given `GEMINI_API_KEY` 설정 스택, When `model: "gemini-2.5-flash"`로
+- [ ] **AC-1 (라우팅)**: Given `GEMINI_API_KEY` 설정 스택, When `model: "gemini-3.5-flash"`로
       `/v1/chat/completions` 호출, Then Gemini 백엔드가 선택되고 200 스트리밍 응답이 온다.
-- [ ] **AC-2 (프리픽스 라우팅)**: Given 임의 모델명, When `model: "gemini:gemini-2.5-flash"`,
+- [ ] **AC-2 (프리픽스 라우팅)**: Given 임의 모델명, When `model: "gemini:gemini-3.5-flash"`,
       Then 프리픽스가 벗겨진 모델로 Gemini 백엔드가 호출된다.
 - [ ] **AC-3 (claude/codex 불변)**: Given 기존 요청, When `model`이 `claude*`/`gpt*`, Then
       라우팅·응답이 이전과 동일하다(회귀 0 — 기존 router 테스트 green).
@@ -89,4 +89,7 @@ Google **OpenAI 호환 엔드포인트**(`/v1beta/openai/chat/completions`, T1) 
   매칭 제안(claude/codex와 충돌 회피).
 - Anthropic 호환(`/v1/messages`) 경로 Gemini 매핑을 v1에 넣을지 — 같은 `Backend.run`을 타므로
   어댑터 하나로 커버되나, AC는 OpenAI 경로를 1차 검증 대상으로 둔다.
-- `GEMINI_DEFAULT_MODEL` 확정값: `gemini-2.5-flash` 제안(무료·빠름). flash-lite도 후보.
+- **[Phase 0]** `GEMINI_DEFAULT_MODEL` 정확한 무료 flash 모델 ID 확정 — 2026-07 기준 현재
+  세대는 Gemini 3.x(`gemini-3.5-flash` 최신 stable, `gemini-3.1-flash-lite`)이나, 무료 티어의
+  정확한 flash SKU·ID가 소스마다 미묘히 달라(공식은 AI Studio 동적 표기) **실키로 models 페이지/
+  AI Studio에서 확정**. 제안: `gemini-3.5-flash`(단정 아님 — 스파이크로 확인). flash-lite도 후보.
