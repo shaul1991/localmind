@@ -77,8 +77,9 @@ export function loadConfig(): Config {
     claudeDefaultModel: str("CLAUDE_DEFAULT_MODEL", "sonnet"),
     codexDefaultModel: str("CODEX_DEFAULT_MODEL", "gpt-5.5"),
     geminiApiKey: process.env.GEMINI_API_KEY?.trim() || null,
-    // 무료 flash 정확 ID는 라이브 확인 대상(specs/035 Open question). 현세대 stable 기본값.
-    geminiDefaultModel: str("GEMINI_DEFAULT_MODEL", "gemini-3.5-flash"),
+    // 기본값 gemini-2.5-flash: Phase 0 라이브 스파이크(2026-07-06)에서 최신 gemini-3.5-flash가
+    // 무료 티어 503(과부하) 반복 → 안정성 우선으로 2.5-flash 채택(specs/035 결정).
+    geminiDefaultModel: str("GEMINI_DEFAULT_MODEL", "gemini-2.5-flash"),
     geminiBaseUrl: str(
       "GEMINI_BASE_URL",
       "https://generativelanguage.googleapis.com/v1beta/openai",

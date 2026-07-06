@@ -65,25 +65,24 @@ Google **OpenAI 호환 엔드포인트**(`/v1beta/openai/chat/completions`, T1) 
 ## Acceptance Criteria
 <!-- 각 AC는 검증가능·테스트와 1:1 매핑 가능하게(Given-When-Then). 유저 시나리오와
      엣지 케이스를 AC로 표면화한다. -->
-- [ ] **AC-1 (라우팅)**: Given `GEMINI_API_KEY` 설정 스택, When `model: "gemini-3.5-flash"`로
-      `/v1/chat/completions` 호출, Then Gemini 백엔드가 선택되고 200 스트리밍 응답이 온다.
-      *부분: 라우팅(Gemini 선택)은 `router.test.ts`로 검증됨. 그러나 **실 200 스트리밍 응답은
-      라이브 미검증** — `GEMINI_API_KEY` 부재로 도그푸드 보류(Phase 0). 실키 확보 시 체크.*
+- [x] **AC-1 (라우팅)**: Given `GEMINI_API_KEY` 설정 스택, When `model: "gemini-2.5-flash"`로
+      호출, Then Gemini 백엔드가 선택되고 200 스트리밍 응답이 온다. *검증: 라우팅 `router.test.ts`
+      + **Phase 0 라이브 스파이크(2026-07-06)** — 실 엔드포인트가 스트리밍 응답 반환("하나…열").*
 - [x] **AC-2 (프리픽스 라우팅)**: Given 임의 모델명, When `model: "gemini:gemini-3.5-flash"`,
       Then 프리픽스가 벗겨진 모델로 Gemini 백엔드가 호출된다. *검증: `router.test.ts` AC-2.*
 - [x] **AC-3 (claude/codex 불변)**: Given 기존 요청, When `model`이 `claude*`/`gpt*`, Then
       라우팅·응답이 이전과 동일하다(회귀 0 — 기존 router 테스트 green).
       *검증: `router.test.ts` AC-3; 전체 377 테스트 green(회귀 0).*
 - [x] **AC-4 (스트리밍)**: Given Gemini 요청, When 응답 생성, Then 텍스트가 조각 단위로 순차
-      스트리밍된다(SSE 청크 2개 이상 관측 — fake 스트림). *검증: `gemini.test.ts` AC-4.*
+      스트리밍된다. *검증: `gemini.test.ts` AC-4(fake SSE 델타 2+) + Phase 0 라이브(SSE 파싱·yield
+      정상). 참고: 라이브에서 짧은 응답은 1 델타로 옴 — 청크 수는 응답 길이 의존, 스트리밍 경로는 확인.*
 - [x] **AC-5 (usage)**: Given `include_usage`로 완료된 응답, When `BackendResult` 확인, Then
-      입력·출력 토큰이 모두 0보다 큰 정수다. *검증: `gemini.test.ts` AC-5(fake usage 청크).
-      **단, beta 엔드포인트가 실제로 스트림에 usage를 싣는지는 라이브 미검증(Phase 0 Open Q).***
-- [ ] **AC-6 (멀티턴 연속성)**: Given 2턴 대화(앞 턴에 특정 사실 제시), When 뒤 턴에서 되묻기,
-      Then 응답이 앞 턴 문맥을 반영한다(full-history 기반 — Phase 0에서 흐름 확인).
-      *메커니즘 코드 확인: gemini가 sessionId 미반환 → `session.ts` commit이 미저장 → 다음 턴
-      `flattenMessages`가 전체 히스토리를 실어 전송. 그러나 **실 2턴 대화는 라이브 미검증**(키 부재).
-      자동 테스트도 없음 → 미충족으로 남김.*
+      입력·출력 토큰이 모두 0보다 큰 정수다. *검증: `gemini.test.ts` AC-5 + **Phase 0 라이브 —
+      beta 엔드포인트가 실제로 usage를 스트림에 실어 옴**(`{input:17, output:25}`). Open Q 해소.*
+- [x] **AC-6 (멀티턴 연속성)**: Given 2턴 대화(앞 턴에 특정 사실 제시), When 뒤 턴에서 되묻기,
+      Then 응답이 앞 턴 문맥을 반영한다(full-history 기반). *검증: **Phase 0 라이브 — 앞 턴에서
+      제시한 이름을 뒤 턴에서 정확히 되답함("슈얼", input 56토큰=히스토리 반영)**. 메커니즘: gemini가
+      sessionId 미반환 → `flattenMessages`가 전체 히스토리를 실어 전송(코드+라이브 확인).*
 - [x] **AC-7 (기본 모델 폴백)**: Given `model: "gemini:"`(모델 공백), When 요청, Then
       `GEMINI_DEFAULT_MODEL`(Flash)로 호출된다. *검증: `router.test.ts` AC-7.*
 - [x] **AC-8 (키 미설정 — 엣지)**: Given `GEMINI_API_KEY` 미설정, When 스택 기동, Then 기동
@@ -94,20 +93,16 @@ Google **OpenAI 호환 엔드포인트**(`/v1beta/openai/chat/completions`, T1) 
       *검증: `gemini.test.ts` 429(한도 안내)·403(인증)·401·5xx.*
 
 ## Open questions
-<!-- 미결정 사항. 숨기지 말 것. plan/구현 전에 해소하거나 명시 진행. Phase 0 스파이크가 해소한다. -->
-- **[Phase 0]** 호환 레이어(beta)의 **스트리밍 응답에 usage가 실제로 실려 오는가** — 문서상
-  `include_usage` 지원이나 beta라 실측 필요. 안 오면 usage는 별도 처리(비스트리밍 최종 호출 등)
-  또는 근사.
-- **[Phase 0]** localmind가 백엔드에 넘기는 입력이 **멀티턴 전체 히스토리를 담는가**, 아니면
-  resumeId 전제로 마지막 턴만 담는가(`routes/chat.ts` 평탄화 방식 확인) — stateless Gemini는
-  전체 히스토리가 필요.
-- **[Phase 0]** 호환 vs 네이티브 최종 판정: beta 공백(usage·파라미터)이 v1을 막으면 네이티브
-  `generateContent`로 승격할지.
-- 순수 별칭(`flash`/`pro` 단독)도 Gemini로 볼지 — v1은 **명시적 `gemini` 토큰/프리픽스만**
-  매칭 제안(claude/codex와 충돌 회피).
+<!-- 미결정 사항. 숨기지 말 것. 해소분은 취소선. Phase 0 스파이크가 해소했다(2026-07-06). -->
+- ~~**[Phase 0]** 호환 레이어(beta)의 스트리밍 응답에 usage가 실제로 실려 오는가~~ →
+  **해소: 실려 온다**(라이브 `{input:17, output:25}`).
+- ~~**[Phase 0]** localmind 입력이 멀티턴 전체 히스토리를 담는가~~ → **해소: 담는다**
+  (`flattenMessages`가 라벨 transcript로 평탄화; 라이브 멀티턴 문맥 유지 확인).
+- ~~**[Phase 0]** 호환 vs 네이티브 최종 판정~~ → **해소: 호환 경로 채택**(스트리밍·usage·멀티턴
+  라이브 동작 확인 — 네이티브 불요).
+- ~~순수 별칭(`flash`/`pro` 단독)도 Gemini로 볼지~~ → **해소: 명시적 `gemini` 토큰/프리픽스만**
+  매칭(구현·테스트 완료).
+- ~~**[Phase 0]** `GEMINI_DEFAULT_MODEL` 정확한 무료 flash 모델 ID~~ → **해소: `gemini-2.5-flash`**
+  (라이브 가용·안정 확인. 최신 `gemini-3.5-flash`는 무료 티어 503 반복이라 안정성 우선 — 사용자 결정).
 - Anthropic 호환(`/v1/messages`) 경로 Gemini 매핑을 v1에 넣을지 — 같은 `Backend.run`을 타므로
-  어댑터 하나로 커버되나, AC는 OpenAI 경로를 1차 검증 대상으로 둔다.
-- **[Phase 0]** `GEMINI_DEFAULT_MODEL` 정확한 무료 flash 모델 ID 확정 — 2026-07 기준 현재
-  세대는 Gemini 3.x(`gemini-3.5-flash` 최신 stable, `gemini-3.1-flash-lite`)이나, 무료 티어의
-  정확한 flash SKU·ID가 소스마다 미묘히 달라(공식은 AI Studio 동적 표기) **실키로 models 페이지/
-  AI Studio에서 확정**. 제안: `gemini-3.5-flash`(단정 아님 — 스파이크로 확인). flash-lite도 후보.
+  어댑터 하나로 커버되나, 라이브 검증은 OpenAI 경로만 함(미해소 — 후속).
