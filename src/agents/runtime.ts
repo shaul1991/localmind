@@ -21,9 +21,12 @@ function gatewayKey(): string | undefined {
   return process.env.LOCALMIND_API_KEY?.trim() || undefined;
 }
 
-/** 모델 문자열이 게이트웨이에서 어느 백엔드로 라우팅되는지(판별 불가 시 null). */
+/** 모델 문자열이 게이트웨이에서 어느 백엔드로 라우팅되는지(판별 불가 시 null).
+ *  페르소나 교차리뷰(specs/016)는 claude↔codex 독립성이 대상이라 gemini는 여기서 제외한다
+ *  (gemini는 API/MCP 백엔드일 뿐 페르소나 교차 대상 아님 — specs/035 Non-goal). */
 export function modelBackend(model: string): GatewayBackend | null {
-  return detectBackend(model);
+  const b = detectBackend(model);
+  return b === "claude" || b === "codex" ? b : null;
 }
 
 export interface TargetPick {

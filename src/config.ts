@@ -2,7 +2,7 @@
  * 환경변수에서 설정을 읽어온다. 모든 값은 합리적인 기본값을 가진다.
  */
 
-export type BackendName = "claude" | "codex";
+export type BackendName = "claude" | "codex" | "gemini";
 
 /**
  * 세션 영속화 모드.
@@ -19,6 +19,12 @@ export interface Config {
   defaultBackend: BackendName;
   claudeDefaultModel: string;
   codexDefaultModel: string;
+  /** Gemini API 키(OpenAI 호환 엔드포인트용). 없으면 Gemini 요청만 오류. */
+  geminiApiKey: string | null;
+  /** Gemini 기본 모델(요청 model이 비었을 때). 무료 티어는 flash 계열. */
+  geminiDefaultModel: string;
+  /** Gemini OpenAI 호환 base URL(끝의 /chat/completions는 어댑터가 붙임). */
+  geminiBaseUrl: string;
   claudeBin: string;
   codexBin: string;
   requestTimeoutMs: number;
@@ -70,6 +76,13 @@ export function loadConfig(): Config {
     defaultBackend: defaultBackend === "codex" ? "codex" : "claude",
     claudeDefaultModel: str("CLAUDE_DEFAULT_MODEL", "sonnet"),
     codexDefaultModel: str("CODEX_DEFAULT_MODEL", "gpt-5.5"),
+    geminiApiKey: process.env.GEMINI_API_KEY?.trim() || null,
+    // 무료 flash 정확 ID는 라이브 확인 대상(specs/035 Open question). 현세대 stable 기본값.
+    geminiDefaultModel: str("GEMINI_DEFAULT_MODEL", "gemini-3.5-flash"),
+    geminiBaseUrl: str(
+      "GEMINI_BASE_URL",
+      "https://generativelanguage.googleapis.com/v1beta/openai",
+    ),
     claudeBin: str("CLAUDE_BIN", "claude"),
     codexBin: str("CODEX_BIN", "codex"),
     requestTimeoutMs: num("REQUEST_TIMEOUT_MS", 300_000),

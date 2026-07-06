@@ -30,7 +30,7 @@ export interface BackendResult {
 }
 
 export interface Backend {
-  readonly name: "claude" | "codex";
+  readonly name: "claude" | "codex" | "gemini";
   /**
    * 텍스트 델타를 yield하고, 최종 결과를 return하는 async generator.
    * 스트리밍/비스트리밍 모두 이 하나로 처리한다.
