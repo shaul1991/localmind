@@ -1,0 +1,26 @@
+{
+  "note": "한국어 임베딩 A/B용 gold 질의셋(specs/036). 코퍼스=localmind 저장소의 한국어 문서(specs/*/goal.md) — 비민감·재현 가능. 질의는 제목 verbatim이 아닌 자연어 패러프레이즈. gold=해당 문서 경로(저장소 루트 기준). 동일 하네스를 개인 벌트로 재실행 가능(코퍼스만 교체).",
+  "corpus_glob": "specs/*/goal.md",
+  "queries": [
+    { "q": "노트를 저장한 직후 실제로 검색되는지 확인하는 기능", "gold": ["specs/001-capture-validation-loop/goal.md"] },
+    { "q": "AI 답변이 지어낸 내용은 아닌지 출처를 추적하는 방법", "gold": ["specs/002-ask-brain-source-tracking/goal.md"] },
+    { "q": "노트 파일이 바뀌면 자동으로 다시 색인하기", "gold": ["specs/003-auto-reindex-file-watcher/goal.md"] },
+    { "q": "검색에 실패한 질의들을 모아 분석하기", "gold": ["specs/004-failure-query-analysis/goal.md"] },
+    { "q": "위키링크로 노트끼리 연결한 그래프 만들기", "gold": ["specs/005-note-link-graph/goal.md"] },
+    { "q": "개인 설정 파일을 백업하고 복원하기", "gold": ["specs/006-config-backup-sync/goal.md"] },
+    { "q": "다른 프로젝트에도 같은 SDD 작업 규약을 심어주는 도구", "gold": ["specs/007-sdd-scaffold/goal.md"] },
+    { "q": "CI에서 테스트를 자동으로 실행하게 만들기", "gold": ["specs/008-ci-test-gate/goal.md"] },
+    { "q": "같은 컴퓨터의 다른 프로세스가 내 구독을 무단으로 쓰지 못하게 막기", "gold": ["specs/011-local-security-hardening/goal.md"] },
+    { "q": "git 저장소 주소로 노트 폴더를 자동 연결하기", "gold": ["specs/012-notes-repo-connect/goal.md"] },
+    { "q": "백업과 복구가 믿을 만한지 신뢰성을 높이기", "gold": ["specs/015-backup-reliability/goal.md"] },
+    { "q": "페르소나 에이전트 정의를 정본으로 관리하고 여러 도구에 배포", "gold": ["specs/016-persona-agent-registry/goal.md"] },
+    { "q": "구현이 끝나면 독립 크리틱이 교차 검증하는 자기 리뷰 배관", "gold": ["specs/018-sdd-self-review-orchestration/goal.md"] },
+    { "q": "삭제된 노트와 아직 스캔 안 된 노트를 구분하는 색인 안전장치", "gold": ["specs/020-reindex-prune-guard/goal.md"] },
+    { "q": "임베딩 벡터를 바이너리 사이드카 파일로 저장하는 색인 포맷", "gold": ["specs/023-index-format-vector-sidecar/goal.md"] },
+    { "q": "UI를 구현하기 전에 디자인을 먼저 정의하도록 강제하기", "gold": ["specs/026-design-persona-registry/goal.md"] },
+    { "q": "이 컴퓨터를 최신 상태로 만드는 한 번의 명령", "gold": ["specs/033-local-update/goal.md"] },
+    { "q": "브라우저에서 localmind 상태를 한눈에 보는 모니터링 화면", "gold": ["specs/034-web-ui-monitoring/goal.md"] },
+    { "q": "Gemini를 세 번째 LLM 백엔드로 추가하기", "gold": ["specs/035-gemini-backend/goal.md"] },
+    { "q": "작업 방식을 회고해서 지속적으로 개선하는 리포트", "gold": ["specs/032-workflow-retrospective-report/goal.md"] }
+  ]
+}
