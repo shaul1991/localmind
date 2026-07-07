@@ -58,6 +58,10 @@ elif [ -n "$DRY_RUN" ]; then
 else
   cp .env.example .env && ok ".env 생성(예시 기본값으로도 동작)"
 fi
+# specs/014 — 게이트웨이 키 자동 생성: docker-compose가 LITELLM_MASTER_KEY를 필수(:?)로
+# 요구하므로, 비어 있으면 여기서 채워야 첫 `make setup`의 docker compose가 실패하지 않는다
+# (make init-env와 동일 로직 — 멱등, 이미 값 있으면 무변경).
+[ -z "$DRY_RUN" ] && [ -f .env ] && bash "$DIR/scripts/ensure-master-key.sh" .env
 # 로컬 MCP(stdio)용 dist — Docker 스택과 별개로 Cursor/Claude Code 연동에 필요.
 if ! have npm; then
   warn "Node(npm)가 안 보여요 — 로컬 MCP를 쓰려면 Node 설치 후 $(b 'make install build')."
