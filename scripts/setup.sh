@@ -229,4 +229,15 @@ else
   say "  엔진 변경은 $(b 'make embed BACKEND=host|gpu|cpu'), 상태 재확인은 $(b 'make doctor')."
 fi
 say ""
+# 비개발자 편의(A안): 설치 직후 바로 대시보드를 열어준다 — 사용자는 아무것도 안 침.
+# UI는 포그라운드로 뜨고(Ctrl+C로 종료), 브라우저는 ui.sh가 자동으로 연다.
+# confirm은 DRY_RUN·비대화형에서 자동 skip하므로 스크립트/CI를 막지 않는다.
+if confirm "지금 웹 대시보드(모니터링 UI)를 열어볼까요? — 브라우저가 자동으로 열려요"; then
+  say "  $(b '대시보드를 엽니다')… 닫으려면 이 터미널에서 $(b 'Ctrl+C') 하세요."
+  bash "$DIR/scripts/ui.sh" || true   # Ctrl+C(130)가 아래 exit 0을 덮지 않도록
+else
+  say "  나중에 대시보드를 열려면: $(b 'make ui')  (브라우저가 자동으로 열려요)"
+fi
+
+say ""
 exit 0   # 모든 단계 통과 = 성공. (중간 점검의 비0이 새어 프롬프트에 ✗로 보이지 않도록 명시)

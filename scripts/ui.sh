@@ -28,5 +28,17 @@ if [ -z "${LOCALMIND_API_KEY:-}" ]; then
 fi
 
 port="${UI_PORT:-8788}"
-echo "→ 모니터링 UI: http://127.0.0.1:$port/ui  (중지: Ctrl+C)"
+url="http://127.0.0.1:$port/ui/"
+echo "→ 모니터링 UI: $url  (중지: Ctrl+C)"
+# 비개발자 편의(specs/039 후속): 서버가 뜬 뒤 브라우저를 자동으로 연다.
+# 끄기: LOCALMIND_NO_OPEN=1 · tty가 아니면(CI/헤드리스) 자동 skip.
+if [ -z "${LOCALMIND_NO_OPEN:-}" ] && [ -t 1 ]; then
+  opener=""
+  case "$(uname -s 2>/dev/null)" in
+    Darwin) command -v open >/dev/null 2>&1 && opener="open" ;;
+    Linux) command -v xdg-open >/dev/null 2>&1 && opener="xdg-open" ;;
+    *) command -v start >/dev/null 2>&1 && opener="start" ;;
+  esac
+  [ -n "$opener" ] && ( sleep 2; "$opener" "$url" >/dev/null 2>&1 ) &
+fi
 exec npm run --silent --prefix "$DIR" ui
