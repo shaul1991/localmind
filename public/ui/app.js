@@ -227,8 +227,100 @@ const CONFIG_HINTS = {
   CLAUDE_CODE_OAUTH_TOKEN: "바꾸려면: make claude-token",
   NOTES_DIR: "바꾸려면: .env 수정 후 make mcp-install",
 };
+
+// ── specs/039 — 연결 상태 배지 + 명령 복사(읽기 전용, 웹은 실행하지 않음) ──
+// 상태를 바꿀 항목: cmd(복사 가능한 정확한 명령) 또는 hint(단순 안내)
+const CONNECTION_ITEMS = [
+  { key: "claudeAuth", label: "Claude 구독 인증", cmd: "make claude-token" },
+  { key: "claudeCodeMcp", label: "Claude Code MCP 연결", cmd: "make mcp-install" },
+  { key: "claudeDesktopMcp", label: "Claude Desktop MCP 연결", cmd: "make mcp-desktop" },
+  { key: "notesDir", label: "노트 폴더", cmd: "make mcp-install NOTES_DIR=/내/노트/폴더" },
+  { key: "gemini", label: "백엔드: Gemini (선택)", hint: ".env에 GEMINI_API_KEY 추가 후 make up" },
+  { key: "codex", label: "백엔드: codex (선택)", hint: "codex CLI 로그인(~/.codex 생성)" },
+];
+function statusBadge(s) {
+  if (s === "ok") return badge("ok", "됨");
+  if (s === "missing") return badge("warn", "안됨");
+  return badge("idle", "확인 불가");
+}
+// 명령 chip + 복사 버튼. localhost는 보안 컨텍스트라 clipboard 가용 — 실패 시 드래그 선택 폴백.
+function copyControl(cmd) {
+  const chip = el("code", { class: "cmd" }, cmd);
+  const live = el("span", { class: "sr-only", role: "status", "aria-live": "polite" });
+  const btn = el("button", { class: "copy-btn", type: "button", "aria-label": `명령 복사: ${cmd}` }, "복사");
+  btn.addEventListener("click", async () => {
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error("unsupported");
+      await navigator.clipboard.writeText(cmd);
+      btn.textContent = "복사됨 ✓";
+      btn.classList.add("copied");
+      live.textContent = "명령이 복사되었어요";
+      setTimeout(() => {
+        btn.textContent = "복사";
+        btn.classList.remove("copied");
+      }, 1500);
+    } catch {
+      const sel = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(chip);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      btn.textContent = "드래그해 복사";
+      live.textContent = "직접 드래그해 복사하세요";
+    }
+  });
+  return el("span", { class: "cmd-row" }, [chip, btn, live]);
+}
+function connectionsCard() {
+  const render = async () => {
+    const s = await api("/connections");
+    const wrap = el("div", {});
+    for (const it of CONNECTION_ITEMS) {
+      const right = it.cmd ? copyControl(it.cmd) : el("span", { class: "dim" }, it.hint);
+      wrap.append(
+        el("div", { class: "setting-row" }, [
+          statusBadge(s[it.key] || "unknown"),
+          el("span", { class: "setting-label" }, it.label),
+          right,
+        ]),
+      );
+    }
+    const btn = el("button", { class: "secondary", type: "button" }, "새로고침");
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      btn.textContent = "확인 중…";
+      try {
+        wrap.replaceWith(await render());
+      } catch (e) {
+        if (e instanceof AuthError) return showKeyGate("세션 키가 더 이상 유효하지 않아요 — 다시 입력해 주세요.");
+        btn.disabled = false;
+        btn.textContent = "새로고침";
+      }
+    });
+    wrap.append(
+      el("div", { class: "card-actions" }, [
+        btn,
+        el("span", { class: "last-checked" }, `확인: ${fmtTime(Date.now())}`),
+      ]),
+    );
+    return wrap;
+  };
+  return card("연결 상태", render);
+}
+function guideCard() {
+  return el("section", { class: "card guide-card" }, [
+    el("h3", {}, "설정 바꾸는 법"),
+    el("ol", { class: "guide-steps" }, [
+      el("li", {}, "바꿀 항목의 [복사]를 누르세요."),
+      el("li", {}, "터미널에 붙여넣어 실행하세요(어느 터미널 창이든 됩니다)."),
+      el("li", {}, "이 페이지에서 [새로고침]을 누르면 상태가 갱신돼요."),
+    ]),
+    el("p", { class: "dim" }, "이 화면은 읽기 전용이에요 — 명령을 대신 실행하지 않습니다(안전)."),
+  ]);
+}
 function pageConfig() {
   const grid = el("div", { class: "grid" });
+  grid.append(guideCard(), connectionsCard());
   grid.append(
     card("노트 폴더 (NOTES_DIR)", async () => {
       const c = await api("/config");

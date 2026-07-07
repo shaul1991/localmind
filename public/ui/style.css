@@ -230,3 +230,15 @@ pre.note-body {
 .reader-headmeta { min-width: 0; }
 .reader-headmeta .note-title { -webkit-line-clamp: 3; }
 .reader-scroll { overflow-y: auto; }
+
+/* specs/039 — 설정 페이지: 연결 상태 행 + 명령 복사 버튼 + 안내 카드 */
+.setting-row { display: flex; align-items: center; gap: var(--space-md); padding: var(--space-sm) 0; border-bottom: 1px solid var(--color-border); min-height: 44px; flex-wrap: wrap; }
+.setting-row:last-of-type { border-bottom: 0; }
+.setting-label { flex: 1 1 auto; min-width: 120px; }
+.cmd-row { display: inline-flex; align-items: center; gap: var(--space-sm); max-width: 100%; }
+.cmd { font: var(--font-mono); background: var(--color-bg); color: var(--color-text); padding: var(--space-xs) var(--space-sm); border-radius: 6px; overflow-x: auto; white-space: nowrap; max-width: 100%; }
+.copy-btn { height: 28px; padding: 0 var(--space-sm); border-radius: 6px; border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); font: var(--font-caption); cursor: pointer; white-space: nowrap; }
+.copy-btn:hover, .copy-btn:focus-visible { border-color: var(--color-primary); outline: none; }
+.copy-btn.copied { background: var(--color-ok); color: var(--color-on-state); border-color: var(--color-ok); }
+.guide-steps { margin: var(--space-sm) 0; padding-left: 1.4em; line-height: 1.9; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

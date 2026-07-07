@@ -5,6 +5,7 @@
  */
 import { Router, type Request, type Response } from "express";
 import { listNotesWithMeta } from "../brain.js";
+import { readConnections } from "../connection-status.js";
 import {
   agentsStatus,
   configStatus,
@@ -63,6 +64,13 @@ export function createUiRouter(deps: UiDeps): Router {
     })),
   );
   r.get("/config", wrap(() => ({ ...configStatus(deps.envFile), folders: deps.folders })));
+  // specs/039 — 연결 상태(읽기 전용): 각 설정이 ok|missing|unknown. 시크릿 값은 반환 안 함.
+  r.get(
+    "/connections",
+    wrap(() =>
+      readConnections({ envFile: deps.envFile, folders: deps.folders, codexHome: deps.codexHome }),
+    ),
+  );
   r.get(
     "/agents",
     wrap(() =>
