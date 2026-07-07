@@ -234,7 +234,7 @@ const CONNECTION_ITEMS = [
   { key: "claudeAuth", label: "Claude 구독 인증", cmd: "make claude-token" },
   { key: "claudeCodeMcp", label: "Claude Code MCP 연결", cmd: "make mcp-install" },
   { key: "claudeDesktopMcp", label: "Claude Desktop MCP 연결", cmd: "make mcp-desktop" },
-  { key: "notesDir", label: "노트 폴더", cmd: "make mcp-install NOTES_DIR=/내/노트/폴더" },
+  { key: "notesDir", label: "노트 폴더" }, // 현재 경로 표시 + 경로 복사(아래 render에서 특수 처리)
   { key: "gemini", label: "백엔드: Gemini (선택)", hint: ".env에 GEMINI_API_KEY 추가 후 make up" },
   { key: "codex", label: "백엔드: codex (선택)", hint: "codex CLI 로그인(~/.codex 생성)" },
 ];
@@ -244,19 +244,21 @@ function statusBadge(s) {
   return badge("idle", "확인 불가");
 }
 // 명령 chip + 복사 버튼. localhost는 보안 컨텍스트라 clipboard 가용 — 실패 시 드래그 선택 폴백.
-function copyControl(cmd) {
-  const chip = el("code", { class: "cmd" }, cmd);
+function copyControl(copyText, displayText, btnLabel) {
+  const shown = displayText || copyText; // 표시 텍스트가 복사 텍스트와 다를 수 있음(예: 노트 경로)
+  const label = btnLabel || "복사";
+  const chip = el("code", { class: "cmd" }, shown);
   const live = el("span", { class: "sr-only", role: "status", "aria-live": "polite" });
-  const btn = el("button", { class: "copy-btn", type: "button", "aria-label": `명령 복사: ${cmd}` }, "복사");
+  const btn = el("button", { class: "copy-btn", type: "button", "aria-label": `복사: ${copyText}` }, label);
   btn.addEventListener("click", async () => {
     try {
       if (!navigator.clipboard || !navigator.clipboard.writeText) throw new Error("unsupported");
-      await navigator.clipboard.writeText(cmd);
+      await navigator.clipboard.writeText(copyText);
       btn.textContent = "복사됨 ✓";
       btn.classList.add("copied");
-      live.textContent = "명령이 복사되었어요";
+      live.textContent = "복사되었어요";
       setTimeout(() => {
-        btn.textContent = "복사";
+        btn.textContent = label;
         btn.classList.remove("copied");
       }, 1500);
     } catch {
@@ -273,10 +275,25 @@ function copyControl(cmd) {
 }
 function connectionsCard() {
   const render = async () => {
-    const s = await api("/connections");
+    const [s, cfg] = await Promise.all([api("/connections"), api("/config")]);
+    const folders = (cfg && cfg.folders) || [];
     const wrap = el("div", {});
     for (const it of CONNECTION_ITEMS) {
-      const right = it.cmd ? copyControl(it.cmd) : el("span", { class: "dim" }, it.hint);
+      let right;
+      if (it.key === "notesDir") {
+        // A안: placeholder 대신 현재 실제 노트 폴더를 보여주고, 전체 경로(NOTES_DIR 값)를 복사.
+        const paths = folders.map((f) => f.dir).filter(Boolean);
+        if (paths.length) {
+          const shown = paths[0] + (paths.length > 1 ? ` (+${paths.length - 1}곳)` : "");
+          right = copyControl(paths.join(","), shown, "경로 복사");
+        } else {
+          right = el("span", { class: "dim" }, "(미설정) — make mcp-install NOTES_DIR=/내/폴더");
+        }
+      } else if (it.cmd) {
+        right = copyControl(it.cmd);
+      } else {
+        right = el("span", { class: "dim" }, it.hint);
+      }
       wrap.append(
         el("div", { class: "setting-row" }, [
           statusBadge(s[it.key] || "unknown"),

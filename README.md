@@ -38,11 +38,13 @@
 > 설치 과정은 조금 기술적이에요(터미널을 한 번 씁니다). 하지만 **`make setup` 명령 하나**가
 > 준비물 점검·설치·연결을 한국어로 한 단계씩 안내해 줍니다. 막히면 [FAQ](docs/faq.md)를 보세요.
 
-**준비물**: [Docker](https://www.docker.com/) · [Node.js ≥ 20](https://nodejs.org/) · `claude` 구독
+**준비물**: [Docker](https://www.docker.com/) · [Node.js ≥ 20](https://nodejs.org/) · **AI 구독 하나** —
+`claude` · `codex`([ChatGPT](https://openai.com/codex/) 구독) · Gemini(Google API 키) 중 아무거나.
 
-> ✅ **최적화 환경**: **macOS(Apple Silicon) + Claude 구독** 조합에 맞춰 최적화·검증돼 있습니다
-> (임베딩은 Mac의 Metal 가속을 자동 사용). Linux(+NVIDIA GPU)·`codex` 백엔드도 동작하지만,
-> 가장 매끄러운 경험은 이 조합입니다. — 임베딩 최적화는 설치 후 `make doctor`로 언제든 점검·전환.
+> ✅ **최적화 환경**: **macOS(Apple Silicon) + Claude** 조합에 맞춰 최적화·검증돼 있습니다(임베딩은
+> Mac의 Metal 가속 자동 사용). 하지만 **Claude가 없어도 됩니다** — `make setup`에서 주 백엔드를
+> **Claude / ChatGPT(codex) / Gemini** 중 골라 시작할 수 있어요(ChatGPT·Gemini만 써도 OK).
+> Linux(+NVIDIA GPU)도 동작하며, 가장 매끄러운 경험이 위 조합일 뿐입니다.
 
 ```bash
 git clone https://github.com/shaul1991/localmind && cd localmind
