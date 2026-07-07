@@ -50,6 +50,11 @@
 > ℹ️ **Intel Mac은** ollama의 Metal(GPU) 가속을 못 써서 임베딩이 **CPU로 동작**합니다(2026 기준).
 > 그래도 잘 돌아가요 — 무거운 AI 생성은 클라우드(claude/codex/gemini)가 하고, 로컬은 가벼운 임베딩만
 > 하므로 실사용엔 무리 없습니다.
+>
+> 🪟 **Windows는 WSL2로**(⚠️ 미검증): 설치 스크립트가 bash·make 기반이라 PowerShell 네이티브로는 안
+> 되고, **WSL2(Ubuntu) 안에서** 진행해야 합니다 — PowerShell에서 `wsl --install` 후 Ubuntu 터미널에서
+> 위 명령 그대로. Docker Desktop(WSL2 백엔드)·Claude Code는 Windows를 지원하지만, **localmind 전체
+> 흐름은 아직 Windows에서 검증되지 않았어요** — 시도해보고 문제가 있으면 이슈로 알려주세요.
 
 ```bash
 git clone https://github.com/shaul1991/localmind && cd localmind
