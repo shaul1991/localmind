@@ -21,7 +21,8 @@ make mcp-install NOTES_DIR=/내/노트/폴더
 ```
 
 - 실행 후 **Claude Code(또는 Cursor)를 재시작**하세요. 그러면 localmind 도구가 나타납니다.
-- 다른 앱(Cursor `.cursor/mcp.json`·Claude Desktop·Cline)은 👉 [MCP로 붙이기](mcp.md).
+- **Claude Desktop**을 쓴다면 붙여넣기 없이 `make mcp-desktop` 한 줄로 자동 연결됩니다(뒤 재시작).
+- 다른 앱(Cursor `.cursor/mcp.json`·Cline)은 👉 [MCP로 붙이기](mcp.md).
 
 > 연결됐는지 확인: 앱에서 **"내 노트 목록 보여줘"** 라고 해보세요. 도구가 응답하면 성공입니다.
 

@@ -269,6 +269,10 @@ mcp-config: ## 다른 MCP 클라이언트(Cursor/Claude Desktop)용 설정 JSON 
 	printf '{\n  "mcpServers": {\n    "localmind": {\n      "command": "node",\n      "args": ["%s/dist/mcp.js"],\n      "env": { "NOTES_DIR": "%s", "OPENMEMORY_USER": "%s", "LITELLM_MASTER_KEY": "%s" }\n    }\n  }\n}\n' \
 		"$(CURDIR)" "$$n" "$$u" "$$k"
 
+.PHONY: mcp-desktop
+mcp-desktop: ## localmind를 Claude Desktop 설정에 자동 연결(기존 서버 보존 병합·백업, 미리보기 DRY_RUN=1)
+	@NOTES_DIR="$(NOTES_DIR)" DRY_RUN="$(DRY_RUN)" bash "$(CURDIR)/scripts/mcp-desktop.sh"
+
 ##@ 도움말
 .PHONY: help
 help: ## 이 목록 표시
