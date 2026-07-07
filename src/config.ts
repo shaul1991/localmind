@@ -66,14 +66,15 @@ function str(name: string, fallback: string): string {
 }
 
 export function loadConfig(): Config {
-  const defaultBackend = str("DEFAULT_BACKEND", "claude");
+  const defaultBackendRaw = str("DEFAULT_BACKEND", "claude");
   const logLevel = str("LOG_LEVEL", "info");
   const sessionMode = str("SESSION_MODE", "auto");
   return {
     port: num("PORT", 8787),
     host: str("HOST", "127.0.0.1"),
     apiKey: process.env.LOCALMIND_API_KEY?.trim() || null,
-    defaultBackend: defaultBackend === "codex" ? "codex" : "claude",
+    // 주 백엔드는 claude|codex|gemini 모두 허용(라우터가 셋 다 지원). 미지의 값은 안전하게 claude.
+    defaultBackend: defaultBackendRaw === "codex" || defaultBackendRaw === "gemini" ? defaultBackendRaw : "claude",
     claudeDefaultModel: str("CLAUDE_DEFAULT_MODEL", "sonnet"),
     codexDefaultModel: str("CODEX_DEFAULT_MODEL", "gpt-5.5"),
     geminiApiKey: process.env.GEMINI_API_KEY?.trim() || null,

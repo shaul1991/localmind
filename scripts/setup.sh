@@ -143,21 +143,94 @@ if [ -z "$DRY_RUN" ]; then
   done
 fi
 
-# ── 4/5 : 연결 점검 (인증·MCP — 강제 X, 제안+선택 실행) ────────
-sec "[4/5] 연결 점검 — 강제로 설치하지 않아요. 상태를 보고 명령을 제안합니다."
-CTOK="$(grep -E '^CLAUDE_CODE_OAUTH_TOKEN=' .env 2>/dev/null | head -1 | cut -d= -f2-)"
-if [ -n "$CTOK" ]; then
-  ok "claude 구독 토큰: 설정됨"
+# .env 값 설정(있으면 교체, 없으면 추가). sed는 macOS/GNU 비호환 → awk+temp. 값의 특수문자 안전.
+set_env_val() {
+  local key="$1" val="$2" f="$DIR/.env" tmp
+  [ -f "$f" ] || return 1
+  if grep -qE "^${key}=" "$f"; then
+    tmp="$(mktemp)"
+    KEY="$key" VAL="$val" awk -F= '$1==ENVIRON["KEY"]{print ENVIRON["KEY"]"="ENVIRON["VAL"]; next} {print}' "$f" > "$tmp" && mv "$tmp" "$f"
+  else
+    printf '%s=%s\n' "$key" "$val" >> "$f"
+  fi
+}
+
+# 백엔드별 인증 안내/설정(주·부 공용). $1 = claude|codex|gemini
+setup_backend_auth() {
+  local be="$1" gk="" GKEY="" CT
+  case "$be" in
+    claude)
+      CT="$(grep -E '^CLAUDE_CODE_OAUTH_TOKEN=' .env 2>/dev/null | head -1 | cut -d= -f2-)"
+      if [ -n "$CT" ]; then ok "claude 구독 토큰: 이미 설정됨"; return 0; fi
+      no "claude 구독 토큰이 없어요 — 브라우저로 1회 발급합니다."
+      cmd "make claude-token"
+      if confirm "지금 claude 로그인(토큰 발급)할까요? (브라우저 열림)"; then bash "$DIR/scripts/claude-token.sh"; fi
+      ;;
+    codex)
+      if [ -e "$HOME/.codex" ]; then ok "codex 인증: ~/.codex 있음(로그인됨)"; return 0; fi
+      no "codex 인증이 없어요 — codex CLI로 ChatGPT 로그인이 필요해요."
+      if have codex; then
+        cmd "codex      # 실행 후 'Sign in with ChatGPT' 선택 → ~/.codex 생성"
+        say "  ChatGPT 구독(Plus/Pro 등)으로 로그인하면 됩니다(추가 요금 없음)."
+      else
+        say "  codex CLI 설치: $(b 'npm i -g @openai/codex') → $(b 'codex')로 로그인."
+      fi
+      ;;
+    gemini)
+      GKEY="$(read_env_val GEMINI_API_KEY "$DIR/.env" 2>/dev/null)"
+      if [ -n "$GKEY" ]; then ok "Gemini API 키: 이미 설정됨"; return 0; fi
+      no "Gemini API 키가 없어요."
+      say "  키 발급(무료): $(b 'https://aistudio.google.com/apikey')"
+      if [ -t 0 ] && [ -z "$DRY_RUN" ]; then
+        read -r -p "    └ Gemini API 키를 붙여넣으세요(엔터=건너뛰기): " gk || gk=""
+        if [ -n "$gk" ]; then set_env_val GEMINI_API_KEY "$gk" && ok "Gemini API 키 저장됨(.env)"; fi
+      else
+        cmd ".env의 GEMINI_API_KEY= 에 키를 넣으세요"
+      fi
+      ;;
+  esac
+}
+
+# ── 4/5 : 백엔드 설정 (주 백엔드 선택 → 인증, 부 백엔드는 선택 추가) ────────
+sec "[4/5] 백엔드 설정 — 주 백엔드를 고르고, 원하면 부 백엔드도 추가합니다(강제 X)."
+say "$(b '주 백엔드를 고르세요') — 모델명 없이 보낸 요청이 이 백엔드로 갑니다(나중에 바꿀 수 있어요)."
+say "  1) Claude   (claude 구독)"
+say "  2) ChatGPT  (codex / OpenAI 구독)"
+say "  3) Gemini   (Google · API 키)"
+primary="claude"; pick=""
+if [ -t 0 ] && [ -z "$DRY_RUN" ]; then
+  read -r -p "    └ 선택 [1/2/3, 기본 1]: " pick || pick=""
+  case "$pick" in 2) primary="codex" ;; 3) primary="gemini" ;; *) primary="claude" ;; esac
 else
-  no "claude 구독 토큰: 없음 (claude 백엔드를 쓰려면 브라우저로 1회 발급)"
-  cmd "make claude-token"
-  if confirm "지금 발급할까요?(브라우저 열림)"; then bash "$DIR/scripts/claude-token.sh"; fi
+  say "    └ [비대화/미리보기] 기본값 claude로 진행"
 fi
-if [ -e "$HOME/.codex" ]; then
-  ok "codex 인증: ~/.codex 있음"
+if [ -z "$DRY_RUN" ]; then
+  set_env_val DEFAULT_BACKEND "$primary" && ok "주 백엔드: $(b "$primary")  (.env의 DEFAULT_BACKEND)"
 else
-  no "codex 인증: 없음 (codex를 쓰려면 호스트에서 로그인)"
-  cmd "codex      # 로그인하면 ~/.codex 생성"
+  say "  [미리보기] 주 백엔드=$(b "$primary") — DEFAULT_BACKEND 기록은 실행 안 함"
+fi
+setup_backend_auth "$primary"
+
+# 부(보조) 백엔드 — 주 설정 완료 후 부가적으로(선택). 자동 폴백 아님: gemini:/gpt: 등 모델명으로 골라 씀.
+say ""
+if confirm "부(보조) 백엔드도 설정할까요? (선택 — 모델명으로 골라 쓸 수 있어요)"; then
+  rem=""
+  [ "$primary" != claude ] && rem="$rem claude"
+  [ "$primary" != codex ]  && rem="$rem codex"
+  [ "$primary" != gemini ] && rem="$rem gemini"
+  rem="${rem# }"
+  say "  부 백엔드 후보:"
+  i=1; for o in $rem; do say "    $i) $o"; i=$((i+1)); done
+  spick=""; read -r -p "    └ 선택 [번호, 엔터=건너뛰기]: " spick || spick=""
+  case "$spick" in (''|*[!0-9]*) spick=0 ;; esac
+  sec_be=""; j=1
+  for o in $rem; do [ "$j" = "$spick" ] && sec_be="$o"; j=$((j+1)); done
+  if [ -n "$sec_be" ]; then
+    say "  부 백엔드: $(b "$sec_be") 인증을 설정합니다(기본값은 그대로 $(b "$primary"))."
+    setup_backend_auth "$sec_be"
+  else
+    say "  부 백엔드는 건너뜁니다 — 나중에 make setup을 다시 돌리면 추가할 수 있어요."
+  fi
 fi
 # specs/012 FR-16: NOTES_REPOS(env→.env 비실행 읽기)가 있으면 notes-connect 경로로 분기.
 # 값 자체는 화면에 출력하지 않는다(토큰 유출 방지) — 존재/개수만 노출.
