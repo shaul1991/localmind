@@ -1655,6 +1655,101 @@ export function listNotes(folder?: string): { folder: string; path: string }[] {
   return out;
 }
 
+// ── specs/038 — 노트 카드 브라우저: 메타 추출·열거 ─────────────────────────
+export interface NoteMeta {
+  folder: string;
+  /** label/상대경로 (본문 API의 path 파라미터와 동일 형식) */
+  path: string;
+  title: string;
+  tags: string[];
+  /** YYYY-MM-DD (frontmatter date/created → 파일명 → "") */
+  date: string;
+  snippet: string;
+}
+
+/** 문자열에서 첫 현실적 날짜(20xx-01~12-01~31, 구분자 유무 무관)를 YYYY-MM-DD로.
+ *  숫자 id를 날짜로 오인하지 않도록 ① 연도 20xx + 월·일 범위 검증 ② 앞뒤가 숫자가 아님
+ *  (긴 숫자 id에 우연히 박힌 날짜 부분열 배제 — 038 self-review). */
+function firstIsoDate(s: string): string {
+  const re = /(?<!\d)(20\d{2})-?(\d{2})-?(\d{2})(?!\d)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) {
+    const mo = Number(m[2]);
+    const d = Number(m[3]);
+    if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) return `${m[1]}-${m[2]}-${m[3]}`;
+  }
+  return "";
+}
+
+/** 노트 텍스트에서 카드 메타를 추출한다(순수 — I/O 없음, 038 AC-2). */
+export function parseNoteMeta(text: string, relPath: string, folderLabel: string): NoteMeta {
+  const fm = text.match(/^---\n([\s\S]*?)\n---/);
+  const fmBody = fm ? fm[1] : "";
+  const fmField = (name: string): string | null => {
+    const m = fmBody.match(new RegExp(`^${name}:\\s*(.+)$`, "m"));
+    return m ? m[1].trim().replace(/^["']|["']$/g, "") : null;
+  };
+  // 인라인(tags: ["a","b"]) 우선, 없으면 블록 스타일(tags:\n  - a\n  - b)도 파싱(038 self-review).
+  const cleanTag = (t: string) => t.trim().replace(/^["']|["']$/g, "");
+  const inlineTags = fmBody.match(/^tags:\s*\[([^\]]*)\]/m);
+  let tags: string[];
+  if (inlineTags) {
+    tags = inlineTags[1].split(",").map(cleanTag).filter(Boolean);
+  } else {
+    const blockTags = fmBody.match(/^tags:\s*\n((?:[ \t]*-[ \t]*.+\n?)+)/m);
+    tags = blockTags
+      ? blockTags[1].split("\n").map((l) => cleanTag(l.replace(/^[ \t]*-[ \t]*/, ""))).filter(Boolean)
+      : [];
+  }
+  const body = text.replace(/^---\n[\s\S]*?\n---\s*/, "");
+  const headingM = body.match(/^#\s+(.+)$/m);
+  const base = (relPath.replace(/\.md$/, "").split("/").pop() ?? relPath) || relPath;
+  const title = fmField("title") || (headingM ? headingM[1].trim() : base);
+  const date = firstIsoDate(fmField("date") ?? fmField("created") ?? "") || firstIsoDate(relPath);
+  const snippet = body
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("#") && !l.startsWith("---"))
+    .map((l) => l.replace(/^>\s*/, "").replace(/^[-*]\s+/, "").replace(/^\d+\.\s+/, "").trim())
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .slice(0, 140);
+  return { folder: folderLabel, path: `${folderLabel}/${relPath}`, title, tags, date, snippet };
+}
+
+export interface NotesListing {
+  notes: NoteMeta[];
+  /** 빈도순 전체 태그(필터 칩용) */
+  tags: string[];
+}
+
+/** 전체 노트를 메타와 함께 열거한다(날짜 내림차순, 태그 빈도순). 038 FR-1·2.
+ *  folders 주입은 테스트용(기본 FOLDERS). */
+export function listNotesWithMeta(folders: NoteFolder[] = FOLDERS): NotesListing {
+  const notes: NoteMeta[] = [];
+  const tagFreq = new Map<string, number>();
+  for (const f of folders) {
+    for (const full of listMarkdown(f.dir)) {
+      let text: string;
+      try {
+        // 심링크 노트는 리스팅에서 제외 — 폴더 밖 파일 내용이 스니펫으로 새지 않게(본문
+        // API·reportsStatus와 동일 보안 태세, 038 self-review 중대-1). 신뢰경계 밖 입력.
+        if (fs.lstatSync(full).isSymbolicLink()) continue;
+        text = fs.readFileSync(full, "utf8").slice(0, 4000); // 상단만 — frontmatter+스니펫 충분
+      } catch {
+        continue; // 사라진 파일 — 건너뜀
+      }
+      const meta = parseNoteMeta(text, path.relative(f.dir, full), f.label);
+      notes.push(meta);
+      for (const t of meta.tags) tagFreq.set(t, (tagFreq.get(t) ?? 0) + 1);
+    }
+  }
+  notes.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const tags = [...tagFreq.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
+  return { notes, tags };
+}
+
 /** 'label/파일경로' 노트 한 개를 삭제하고 재인덱싱한다. 폴더 밖 경로는 거부. 반환: 삭제 성공 여부. */
 /**
  * 노트를 폴더의 `.trash/` 하위로 **상대경로를 보존해** 이동한다(soft-delete, specs/011 FR-4).

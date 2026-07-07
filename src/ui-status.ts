@@ -339,3 +339,40 @@ export function readReportNote(
     return { ok: false, reason: "노트를 찾을 수 없어요." };
   }
 }
+
+/**
+ * specs/038 — 노트 카드 브라우저의 본문 리더. `label/상대경로.md`(하위폴더 허용)를
+ * 폴더 루트 안에서만 읽는다. 트래버설·심링크·루트밖 접근을 이중 방어로 거부(readReportNote 계승).
+ */
+export function readNoteContent(
+  folders: RepoTarget[],
+  notePath: string,
+): { ok: true; content: string } | { ok: false; reason: string } {
+  const slash = notePath.indexOf("/");
+  if (slash <= 0) return { ok: false, reason: "경로 형식이 올바르지 않아요." };
+  const label = notePath.slice(0, slash);
+  const rel = notePath.slice(slash + 1);
+  const folder = folders.find((f) => f.label === label);
+  if (!folder) return { ok: false, reason: "모르는 폴더 라벨이에요." };
+  if (!rel.endsWith(".md") || rel.includes("..") || rel.startsWith("/") || rel.includes("\\")) {
+    return { ok: false, reason: "파일 경로가 올바르지 않아요." };
+  }
+  const rootReal = path.resolve(folder.dir);
+  const target = path.resolve(folder.dir, rel);
+  if (target !== path.join(rootReal, rel) || !target.startsWith(rootReal + path.sep)) {
+    return { ok: false, reason: "노트 폴더 밖의 파일은 열 수 없어요." };
+  }
+  try {
+    if (fs.lstatSync(target).isSymbolicLink()) {
+      return { ok: false, reason: "심볼릭 링크 노트는 열 수 없어요." };
+    }
+    const realTarget = fs.realpathSync(target);
+    const realDir = fs.realpathSync(folder.dir);
+    if (!realTarget.startsWith(realDir + path.sep)) {
+      return { ok: false, reason: "노트 폴더 밖의 파일은 열 수 없어요." };
+    }
+    return { ok: true, content: fs.readFileSync(realTarget, "utf8") };
+  } catch {
+    return { ok: false, reason: "노트를 찾을 수 없어요." };
+  }
+}

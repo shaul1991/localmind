@@ -4,11 +4,13 @@
  * 어떤 핸들러도 뮤테이션하지 않는다 — 1차 범위는 모니터링 전용(goal Non-goals).
  */
 import { Router, type Request, type Response } from "express";
+import { listNotesWithMeta } from "../brain.js";
 import {
   agentsStatus,
   configStatus,
   indexStatus,
   overviewStatus,
+  readNoteContent,
   readReportNote,
   reportsStatus,
   reposStatus,
@@ -76,6 +78,14 @@ export function createUiRouter(deps: UiDeps): Router {
     const label = String(req.query.label ?? "");
     const file = String(req.query.file ?? "");
     const note = readReportNote(deps.folders, label, file);
+    if (note.ok) res.json({ content: note.content });
+    else res.status(400).json({ error: { message: note.reason, type: "invalid_request_error" } });
+  });
+
+  // specs/038 — 노트 카드 브라우저(read-only)
+  r.get("/notes", wrap(() => listNotesWithMeta()));
+  r.get("/note", (req, res) => {
+    const note = readNoteContent(deps.folders, String(req.query.path ?? ""));
     if (note.ok) res.json({ content: note.content });
     else res.status(400).json({ error: { message: note.reason, type: "invalid_request_error" } });
   });

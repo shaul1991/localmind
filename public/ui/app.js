@@ -337,9 +337,148 @@ function pageReports() {
   return el("div", {}, [el("h2", {}, "리포트"), content, viewer]);
 }
 
+// ── 페이지: 노트 카드 브라우저(읽기 전용, specs/038) ────────────────────
+function debounce(fn, ms) {
+  let t;
+  return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+}
+
+// NoteReader — 우측 슬라이드 패널(design.md §3). 모든 텍스트 textContent(XSS 안전).
+let readerPrevFocus = null; // 리더 닫을 때 포커스 복원 대상(a11y)
+function onReaderEsc(e) { if (e.key === "Escape") closeReader(); }
+function closeReader() {
+  const o = document.getElementById("note-reader-overlay");
+  if (o) o.remove();
+  document.removeEventListener("keydown", onReaderEsc);
+  if (readerPrevFocus && document.contains(readerPrevFocus)) readerPrevFocus.focus();
+  readerPrevFocus = null;
+}
+function openReader(n) {
+  closeReader();
+  readerPrevFocus = document.activeElement; // 닫으면 열었던 카드로 포커스 복귀
+  const body = el("div", { class: "reader-scroll" }, [el("div", { class: "skeleton" }), el("div", { class: "skeleton" })]);
+  const closeBtn = el("button", { class: "secondary", "aria-label": "닫기", onclick: closeReader }, "✕");
+  const panel = el("div", { class: "reader-panel", role: "dialog", "aria-modal": "true", "aria-label": n.title }, [
+    el("div", { class: "reader-head" }, [
+      el("div", { class: "reader-headmeta" }, [
+        el("div", { class: "note-title" }, n.title),
+        el("div", { class: "mono dim" }, n.path),
+      ]),
+      closeBtn,
+    ]),
+    body,
+  ]);
+  const overlay = el("div", {
+    class: "reader-overlay", id: "note-reader-overlay",
+    onclick: (e) => { if (e.target === overlay) closeReader(); },
+  }, [panel]);
+  document.body.append(overlay);
+  document.addEventListener("keydown", onReaderEsc);
+  closeBtn.focus(); // 패널로 포커스 이동(다이얼로그 a11y)
+  (async () => {
+    try {
+      const note = await api(`/note?path=${encodeURIComponent(n.path)}`);
+      body.replaceChildren(el("pre", { class: "note-body" }, note.content));
+    } catch (e) {
+      if (e instanceof AuthError) { closeReader(); return showKeyGate("세션 키가 더 이상 유효하지 않아요 — 다시 입력해 주세요."); }
+      body.replaceChildren(el("p", { class: "error-state" }, `본문을 못 불러왔어요: ${e.message} — 다시 시도해 주세요.`));
+    }
+  })();
+}
+
+function noteCard(n) {
+  const meta = el("div", { class: "note-meta" }, [badge("idle", n.folder)]);
+  if (n.date) meta.append(el("span", { class: "dim" }, n.date));
+  const tagEls = n.tags.slice(0, 5).map((t) => el("span", { class: "chip" }, t));
+  if (n.tags.length > 5) tagEls.push(el("span", { class: "chip dim" }, `+${n.tags.length - 5}`)); // design.md §3
+  return el("article", {
+    class: "note-card", tabindex: "0", role: "button",
+    onclick: () => openReader(n),
+    onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openReader(n); } },
+  }, [
+    el("div", { class: "note-title" }, n.title),
+    meta,
+    el("div", { class: "note-snippet" }, n.snippet || "(내용 미리보기 없음)"),
+    el("div", { class: "note-tags" }, tagEls),
+  ]);
+}
+
+const NOTES_PAGE = 60; // 초기·증분 렌더 상한(design.md §3 대량 대응)
+function renderNotes(container, notes, tags) {
+  let query = "", limit = NOTES_PAGE;
+  const active = new Set();
+
+  const search = el("input", {
+    type: "search", class: "note-search", placeholder: "제목·내용 검색",
+    oninput: debounce((e) => { query = e.target.value.trim().toLowerCase(); limit = NOTES_PAGE; draw(); }, 200),
+  });
+  const count = el("span", { class: "dim note-count" });
+  // "전체" 해제 칩(design.md §3) + 태그 칩. 필터 칩은 빈도 상위 24개만(벌트는 태그 수백 개 —
+  // 다 뿌리면 그리드를 밀어냄. 희귀 태그는 검색으로 커버). active 비면 "전체"가 활성.
+  const chipTags = tags.slice(0, 24);
+  const allChip = el("button", { class: "chip filter", onclick: () => { active.clear(); syncChips(); limit = NOTES_PAGE; draw(); } }, "전체");
+  const tagChips = chipTags.map((t) => el("button", {
+    class: "chip filter",
+    "data-tag": t,
+    onclick: () => { active.has(t) ? active.delete(t) : active.add(t); syncChips(); limit = NOTES_PAGE; draw(); },
+  }, t));
+  const chips = el("div", { class: "note-filter-tags" }, [allChip, ...tagChips]);
+  function syncChips() {
+    allChip.classList.toggle("active", active.size === 0);
+    for (const c of tagChips) c.classList.toggle("active", active.has(c.dataset.tag));
+  }
+  syncChips();
+  const grid = el("div", { class: "note-grid" });
+  const more = el("button", { class: "secondary note-more hidden", onclick: () => { limit += NOTES_PAGE; draw(); } });
+
+  function filtered() {
+    return notes.filter((n) => {
+      if (active.size && !n.tags.some((t) => active.has(t))) return false;
+      if (query) return n.title.toLowerCase().includes(query) || n.snippet.toLowerCase().includes(query);
+      return true;
+    });
+  }
+  function draw() {
+    const f = filtered();
+    count.textContent = `전체 ${notes.length}개 중 ${f.length}개`;
+    if (f.length === 0) {
+      grid.replaceChildren(el("p", { class: "dim" }, query || active.size ? "검색 결과가 없어요." : "아직 노트가 없어요."));
+    } else {
+      grid.replaceChildren(...f.slice(0, limit).map(noteCard));
+    }
+    const rest = f.length - limit;
+    more.classList.toggle("hidden", rest <= 0);
+    if (rest > 0) more.textContent = `더 보기 (남은 ${rest}개)`;
+  }
+  draw();
+  container.replaceChildren(
+    el("div", { class: "note-filterbar" }, [search, count, chips]),
+    grid,
+    more,
+  );
+}
+
+function pageNotes() {
+  const container = el("div", {}, [el("div", { class: "note-grid" }, Array.from({ length: 6 }, () => el("div", { class: "note-card" }, [el("div", { class: "skeleton" }), el("div", { class: "skeleton" })])))]);
+  (async () => {
+    try {
+      const { notes, tags } = await api("/notes");
+      renderNotes(container, notes, tags);
+    } catch (e) {
+      if (e instanceof AuthError) return showKeyGate("세션 키가 더 이상 유효하지 않아요 — 다시 입력해 주세요.");
+      container.replaceChildren(el("div", { class: "error-state" }, [
+        el("p", {}, `노트 목록을 못 불러왔어요: ${e.message}`),
+        el("p", { class: "hint" }, "UI 서버가 노트를 읽지 못했어요 — 터미널에서 make ui로 다시 켤 수 있어요."),
+      ]));
+    }
+  })();
+  return el("div", {}, [el("h2", {}, "노트"), container]);
+}
+
 // ── 해시 라우터 ─────────────────────────────────────────────────────────
-const PAGES = { dashboard: pageDashboard, config: pageConfig, agents: pageAgents, reports: pageReports };
+const PAGES = { dashboard: pageDashboard, config: pageConfig, agents: pageAgents, reports: pageReports, notes: pageNotes };
 function route() {
+  closeReader(); // 페이지 이동 시 열린 노트 리더 정리
   const name = (location.hash.replace(/^#\//, "") || "dashboard").split("?")[0];
   const page = PAGES[name] ? name : "dashboard";
   document.querySelectorAll(".sidebar nav a").forEach((a) => {
