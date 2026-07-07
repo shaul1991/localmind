@@ -295,9 +295,18 @@ cmd "make health      # 엔진 상태"
 say "  노트 폴더: $(b "$NOTES_DIR")  — 여기에 .md를 넣거나 대화로 capture하면 쌓여요."
 say ""
 say "$(b '🚀 임베딩 최적화 (ollama)') — 지금 엔진: $(b "${DEC:-cpu}")"
-if [ "$OS" = "Darwin" ] && [ "${DEC:-cpu}" != "host" ]; then
-  say "  Mac은 $(b 'host ollama + Metal 가속')이 CPU보다 훨씬 빠릅니다. 준비되면 전환하세요:"
-  cmd "brew services start ollama && ollama pull bge-m3 && make embed BACKEND=host"
+if [ "$OS" = "Darwin" ] && [ "$ARCH" = "arm64" ]; then
+  # Apple Silicon: ollama가 Metal(GPU) 가속을 자동 사용 → host가 CPU보다 훨씬 빠름.
+  if [ "${DEC:-cpu}" != "host" ]; then
+    say "  Apple Silicon Mac은 $(b 'host ollama + Metal 가속')이 CPU보다 훨씬 빠릅니다. 준비되면 전환:"
+    cmd "brew services start ollama && ollama pull bge-m3 && make embed BACKEND=host"
+  else
+    say "  이미 host(Metal 가속) 사용 중 — 최적입니다."
+  fi
+elif [ "$OS" = "Darwin" ]; then
+  # Intel Mac: ollama는 Metal(GPU) 가속을 지원하지 않음(2026 기준) → 임베딩은 CPU로 동작.
+  say "  $(b 'Intel Mac은 ollama의 Metal(GPU) 가속을 쓸 수 없어요') — 임베딩은 CPU로 동작합니다."
+  say "  임베딩은 가벼운 연산이라 실사용엔 무리 없어요(무거운 AI 생성은 claude/codex/gemini 클라우드 몫)."
 else
   say "  엔진 변경은 $(b 'make embed BACKEND=host|gpu|cpu'), 상태 재확인은 $(b 'make doctor')."
 fi

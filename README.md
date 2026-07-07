@@ -43,9 +43,13 @@
 `claude` · `codex`([ChatGPT](https://openai.com/codex/) 구독) · Gemini(Google API 키) 중 아무거나.
 
 > ✅ **최적화 환경**: **macOS(Apple Silicon) + Claude** 조합에 맞춰 최적화·검증돼 있습니다(임베딩은
-> Mac의 Metal 가속 자동 사용). 하지만 **Claude가 없어도 됩니다** — `make setup`에서 주 백엔드를
+> Apple Silicon의 Metal 가속 자동 사용). 하지만 **Claude가 없어도 됩니다** — `make setup`에서 주 백엔드를
 > **Claude / ChatGPT(codex) / Gemini** 중 골라 시작할 수 있어요(ChatGPT·Gemini만 써도 OK).
 > Linux(+NVIDIA GPU)도 동작하며, 가장 매끄러운 경험이 위 조합일 뿐입니다.
+>
+> ℹ️ **Intel Mac은** ollama의 Metal(GPU) 가속을 못 써서 임베딩이 **CPU로 동작**합니다(2026 기준).
+> 그래도 잘 돌아가요 — 무거운 AI 생성은 클라우드(claude/codex/gemini)가 하고, 로컬은 가벼운 임베딩만
+> 하므로 실사용엔 무리 없습니다.
 
 ```bash
 git clone https://github.com/shaul1991/localmind && cd localmind
