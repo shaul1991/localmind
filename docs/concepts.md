@@ -118,7 +118,7 @@ localmind는 **이미 낸 월정액 구독(claude·codex)** 안에서 다 해결
 
 ## 다음 단계
 
-큰 그림이 잡혔다면 👉 [README의 Quickstart](../README.md#quickstart)로 설치하고, 👉 [사용법](usage.md)으로 매일 씁니다.
+큰 그림이 잡혔다면 👉 [README의 Quickstart](../README.md#시작하기)로 설치하고, 👉 [사용법](usage.md)으로 매일 씁니다.
 
 - **바로 써보기** → `make up` → (Claude Code면) `make mcp-install` → 채팅창에서 "기억해둬"/"찾아줘"
 - **내 노트로 RAG** → `make mcp-install NOTES_DIR=/내/노트폴더`

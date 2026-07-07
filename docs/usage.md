@@ -1,6 +1,6 @@
 # 사용법 — 매일 이렇게 씁니다
 
-설치를 마쳤다면([README Quickstart](../README.md#quickstart)), 이제 **그냥 채팅창에서 말로** 씁니다.
+설치를 마쳤다면([README Quickstart](../README.md#시작하기)), 이제 **그냥 채팅창에서 말로** 씁니다.
 Claude Desktop / Cursor에서 평소처럼 대화하되, 아래 네 가지를 자연어로 시키면 됩니다.
 
 > 개념이 처음이면 👉 [비유로 이해하기](concepts.md) · 궁금증은 👉 [FAQ](faq.md)
@@ -99,7 +99,7 @@ NOTES_DIR="work=/내/업무노트,life=/내/개인노트"
   recover 후 `make notes-connect` → `make restore` 한 번 더(recover가 안내).
 - **검색 기록(선택)**: 기본은 로컬 전용 — `BACKUP_QUERY_LOG=1 make backup`으로 기기 간
   병합 가능(검색어가 git 이력에 남는 점 주의 — [FAQ 참조](faq.md)).
-- 자세히 👉 [README의 백업 섹션](../README.md#백업--복구-git) · [FAQ 백업 절](faq.md#5-운영--성능과-백업)
+- 자세히 👉 [백업·복구 문서](backup.md) · [FAQ 백업 절](faq.md#5-운영--성능과-백업)
 
 ## 막히면
 
@@ -108,4 +108,4 @@ NOTES_DIR="work=/내/업무노트,life=/내/개인노트"
   뜻(지워진 게 아님). 안 쓰는 폴더면 안내된 `REINDEX_PRUNE_LABELS=<라벨> make reindex`로
   정리 — `make doctor`의 [색인 라벨] 섹션에서도 확인 가능 👉 [FAQ](faq.md#5-운영--성능과-백업)
 - `remember`가 `User not found` → MCP 설정의 `OPENMEMORY_USER`가 스택이 시드한 값과 일치해야 함(기본 `localmind`)
-- 더 많은 증상 👉 [README Troubleshooting](../README.md#문제-해결-troubleshooting)
+- 더 많은 증상 👉 [문제 해결 문서](troubleshooting.md)
