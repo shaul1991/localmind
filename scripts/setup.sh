@@ -221,4 +221,12 @@ cmd "make doctor      # 임베딩 경로 재확인"
 cmd "make health      # 엔진 상태"
 say "  노트 폴더: $(b "$NOTES_DIR")  — 여기에 .md를 넣거나 대화로 capture하면 쌓여요."
 say ""
+say "$(b '🚀 임베딩 최적화 (ollama)') — 지금 엔진: $(b "${DEC:-cpu}")"
+if [ "$OS" = "Darwin" ] && [ "${DEC:-cpu}" != "host" ]; then
+  say "  Mac은 $(b 'host ollama + Metal 가속')이 CPU보다 훨씬 빠릅니다. 준비되면 전환하세요:"
+  cmd "brew services start ollama && ollama pull bge-m3 && make embed BACKEND=host"
+else
+  say "  엔진 변경은 $(b 'make embed BACKEND=host|gpu|cpu'), 상태 재확인은 $(b 'make doctor')."
+fi
+say ""
 exit 0   # 모든 단계 통과 = 성공. (중간 점검의 비0이 새어 프롬프트에 ✗로 보이지 않도록 명시)

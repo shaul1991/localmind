@@ -39,6 +39,10 @@
 
 **준비물**: [Docker](https://www.docker.com/) · [Node.js ≥ 20](https://nodejs.org/) · `claude` 구독
 
+> ✅ **최적화 환경**: **macOS(Apple Silicon) + Claude 구독** 조합에 맞춰 최적화·검증돼 있습니다
+> (임베딩은 Mac의 Metal 가속을 자동 사용). Linux(+NVIDIA GPU)·`codex` 백엔드도 동작하지만,
+> 가장 매끄러운 경험은 이 조합입니다. — 임베딩 최적화는 설치 후 `make doctor`로 언제든 점검·전환.
+
 ```bash
 git clone https://github.com/shaul1991/localmind && cd localmind
 make setup      # 👈 이거 하나 — 준비물·진단·설치·연결을 단계별 안내
