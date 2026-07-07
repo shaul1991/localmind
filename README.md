@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/shaul1991/localmind/actions/workflows/ci.yml/badge.svg)](https://github.com/shaul1991/localmind/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%E2%89%A520-brightgreen)](package.json)
+[![Local-first](https://img.shields.io/badge/local--first-127.0.0.1-blue)](#온보딩-개인-전용)
 
 로컬 **Claude Code / Codex CLI 구독**을 토대로, **메터드 API 0원의 완결형 로컬 AI 스택**을 repo 하나로 제공합니다.
 모든 것이 **로컬·독립 실행**(중앙 서버·공유 계정 의존 0)이며, OpenAI·Anthropic 호환 API + 임베딩 + mem0 메모리 + second-brain RAG + MCP를 한 번에 제공합니다.
