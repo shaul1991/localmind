@@ -1,5 +1,7 @@
 # Plan: Gemini CLI 백엔드 (OAuth, stream-json)
 
+> **⚠️ WITHDRAWN (2026-07-07).** 미착수 — 사유는 [goal.md](goal.md) 폐기 배너 참조.
+
 <!-- 어떻게(how) 만드는가. spec의 FR을 코드 변경으로 매핑한다. 상위: [goal](goal.md) · [spec](spec.md) -->
 
 > **Live-Verify 먼저(Phase 0)**: gemini CLI 설치+OAuth 로그인 후 stream-json 이벤트 스키마·프롬프트

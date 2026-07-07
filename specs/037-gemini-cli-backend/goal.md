@@ -1,5 +1,18 @@
 # Goal: Gemini CLI 백엔드 — 구독 OAuth 0원 경로
 
+> **⚠️ WITHDRAWN (2026-07-07) — 착수 안 함.** 이 스펙의 전제(gemini CLI의 개인 Google OAuth
+> 무료 티어)가 **2026-06-18부로 종료**됐다. Google이 개인용 gemini CLI/Code Assist OAuth를 닫고
+> Antigravity 제품군으로 통합 — 무료·AI Pro·Ultra 개인 계정의 "Sign in with Google"이 차단됐다
+> (로그인 시 *"This client is no longer supported for Gemini Code Assist for individuals"*). 대체재
+> **Antigravity CLI(`agy`)**는 OAuth key-less는 되나 **구조화 스트리밍(stream-json)·usage 봉투가
+> 없고 non-TTY 출력 버그 + 에이전트 우선** 설계라 localmind 텍스트 백엔드로 부적합(라이브 검증
+> 2026-07-07). 따라서 **CLI-OAuth-0원 경로는 현재 실현 불가** → 폐기. **Gemini는 035(API 키)가
+> 이미 커버.** 근거: [Google deprecation 문서](https://developers.google.com/gemini-code-assist/docs/deprecations/code-assist-individuals),
+> gemini-cli issue #28229. 교훈: 문서(README)에 기능이 있어도 "현재 작동"을 날짜로 검증해야 한다
+> (Live-Verify — 이 스펙이 그 반례로 남는다).
+
+<!-- 아래는 폐기 전 원안. 결정 이력 보존용으로 남긴다. -->
+
 <!-- 왜(why) 이 작업이 존재하는가. 구현 세부(스키마·API·파일경로·구현 단계)는 넣지 않는다. -->
 
 > **조사 기반·Live-Verify 주의**: 아래 CLI 사실은 공식(github.com/google-gemini/gemini-cli, T1)

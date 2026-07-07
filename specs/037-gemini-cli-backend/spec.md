@@ -1,5 +1,8 @@
 # Spec: Gemini CLI 백엔드 (OAuth, stream-json)
 
+> **⚠️ WITHDRAWN (2026-07-07).** 전제(gemini CLI 개인 OAuth 무료)가 2026-06-18 종료 → 착수 안 함.
+> 사유·근거는 [goal.md](goal.md) 폐기 배너 참조. Gemini는 035(API 키)로 확정.
+
 <!-- 무엇을(what) 만드는가. 정확한 스키마·경로·매핑은 plan의 몫. 상위: [goal](goal.md) -->
 
 <!-- 검증 표기: FR·AC는 체크박스로 둔다. self-review가 clean으로 닫히면 각 항목을
