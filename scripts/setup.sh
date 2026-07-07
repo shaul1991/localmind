@@ -207,7 +207,12 @@ if [ ${#NEXT[@]} -gt 0 ]; then
 fi
 
 say ""
-say "$(b '🎉 기본 설정 완료!')  바로 써보기:"
+say "$(b '🎉 기본 설정 완료!')"
+say ""
+say "$(b '🎓 다음: 첫 사용 튜토리얼 (5분)') — MCP 연결 → 첫 노트(Live-Verify) 적재 → 찾아보기"
+say "   👉 $(b 'docs/tutorial.md') 를 따라 하세요 (GitHub에서 열어봐도 됩니다)."
+say ""
+say "바로 확인해볼 것:"
 cmd "make doctor      # 임베딩 경로 재확인"
 cmd "make health      # 엔진 상태"
 say "  노트 폴더: $(b "$NOTES_DIR")  — 여기에 .md를 넣거나 대화로 capture하면 쌓여요."
