@@ -4,6 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A520-brightgreen)](package.json)
 [![Local-first](https://img.shields.io/badge/local--first-127.0.0.1-blue)](docs/concepts.md)
+[![Backends: Claude · Codex · Gemini](https://img.shields.io/badge/backends-Claude%20%C2%B7%20Codex%28ChatGPT%29%20%C2%B7%20Gemini-2563eb)](README.md#시작하기)
 [![Optimized for macOS + Claude](https://img.shields.io/badge/optimized-macOS%20%2B%20Claude-111111?logo=apple&logoColor=white)](README.md#시작하기)
 
 > **localmind는 "내 컴퓨터 안에 차린 1인 비서실"입니다.** 🧠
