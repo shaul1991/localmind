@@ -89,6 +89,14 @@ doctor: ## 이 기기 진단: OS/GPU/임베딩 경로 점검 + 더 빠른 구성
 ui: ## 모니터링 웹 UI 켜기(호스트 127.0.0.1:8788/ui — 읽기 전용, specs/034). 포트: UI_PORT=
 	@NOTES_DIR="$(NOTES_DIR)" UI_PORT="$(UI_PORT)" bash "$(CURDIR)/scripts/ui.sh"
 
+.PHONY: ui-bg
+ui-bg: ## 모니터링 웹 UI를 백그라운드로 켜기(터미널을 계속 쓸 수 있어요). 끄기: make ui-stop
+	@NOTES_DIR="$(NOTES_DIR)" UI_PORT="$(UI_PORT)" LOCALMIND_UI_BG=1 bash "$(CURDIR)/scripts/ui.sh"
+
+.PHONY: ui-stop
+ui-stop: ## 백그라운드로 켠 모니터링 UI(make ui-bg) 끄기
+	@bash "$(CURDIR)/scripts/ui-stop.sh"
+
 .PHONY: guide
 guide: ## 설치 전 시각적 설치 가이드 열기(무의존 — Node만 필요, 브라우저 자동 오픈, specs/040)
 	@command -v node >/dev/null 2>&1 || { echo "✗ Node가 필요해요 — https://nodejs.org 에서 LTS를 설치한 뒤 다시 'make guide'."; echo "  (또는 README의 '시작하기'를 따라 하세요.)"; exit 1; }

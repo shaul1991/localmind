@@ -24,6 +24,12 @@ warn() { printf '  \033[33m!\033[0m %s\n' "$*"; }
 cmd()  { printf '      \033[36m%s\033[0m\n' "$*"; }   # 복붙용 제안 명령
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# macOS + Homebrew일 때만 brew 설치 명령을 덤으로 보여준다(그 외 OS/무brew는 URL 안내만).
+# brew가 없으면 그 명령이 안 먹으니 조건을 걸어 헛안내를 막는다.
+IS_MAC_BREW=""
+[ "$(uname -s 2>/dev/null)" = "Darwin" ] && have brew && IS_MAC_BREW=1
+brew_hint() { [ -n "$IS_MAC_BREW" ] && cmd "$*"; }
+
 # 예/아니오. 기본은 '아니오'(강제 실행 방지). DRY_RUN·비대화면 자동 아니오.
 confirm() {
   local prompt="$1" ans
@@ -48,6 +54,7 @@ if have docker && docker info >/dev/null 2>&1; then
 else
   no "Docker가 없거나 아직 안 켜졌어요."
   say "  Docker Desktop을 설치·실행한 뒤 다시 $(b 'make setup'):"
+  brew_hint "brew install --cask docker-desktop   # 설치 후 Docker Desktop 앱을 한 번 실행"
   cmd "https://www.docker.com/products/docker-desktop"
   [ -z "$DRY_RUN" ] && exit 1
 fi
@@ -64,7 +71,9 @@ fi
 [ -z "$DRY_RUN" ] && [ -f .env ] && bash "$DIR/scripts/ensure-master-key.sh" .env
 # 로컬 MCP(stdio)용 dist — Docker 스택과 별개로 Cursor/Claude Code 연동에 필요.
 if ! have npm; then
-  warn "Node(npm)가 안 보여요 — 로컬 MCP를 쓰려면 Node 설치 후 $(b 'make install build')."
+  warn "Node(npm)가 안 보여요 — 로컬 MCP와 웹 대시보드($(b 'make ui'))에 Node가 필요해요."
+  brew_hint "brew install node                  # npm 포함 (설치 후 make setup 다시)"
+  say "      $(b 'https://nodejs.org') 에서 LTS를 설치해도 됩니다(설치 후 $(b 'make install build'))."
 elif [ -n "$DRY_RUN" ]; then
   warn "의존성·빌드 — [미리보기]라 생략"
 elif npm install --no-fund --no-audit >/dev/null 2>&1 && npm run --silent build >/dev/null 2>&1; then
@@ -262,6 +271,7 @@ if have claude; then
   fi
 else
   warn "Claude Code(claude) CLI가 안 보여요 — 설치 후 $(b 'make mcp-install')로 연동."
+  brew_hint "brew install claude-code            # 설치 후 make mcp-install"
   [ -n "$NREPOS" ] && say "  (노트 저장소가 선언돼 있어요 — claude 설치 후 $(b 'make notes-connect')로 연결하세요.)"
 fi
 
@@ -314,11 +324,18 @@ say ""
 # 비개발자 편의(A안): 설치 직후 바로 대시보드를 열어준다 — 사용자는 아무것도 안 침.
 # UI는 포그라운드로 뜨고(Ctrl+C로 종료), 브라우저는 ui.sh가 자동으로 연다.
 # confirm은 DRY_RUN·비대화형에서 자동 skip하므로 스크립트/CI를 막지 않는다.
-if confirm "지금 웹 대시보드(모니터링 UI)를 열어볼까요? — 브라우저가 자동으로 열려요"; then
+if ! have npm; then
+  # 대시보드는 Node 서버라 npm이 있어야 열린다. 없으면 프롬프트로 유도했다가 실패하지 말고 안내만.
+  say "  $(b '웹 대시보드는 Node.js가 있어야 열 수 있어요') — 지금은 npm이 안 보여요."
+  say "  Node.js(LTS · 버전 20 이상) 설치 후 $(b 'make ui')로 열 수 있어요:"
+  cmd "https://nodejs.org      # LTS 설치 (macOS는 brew install node 도 가능)"
+elif confirm "지금 웹 대시보드(모니터링 UI)를 열어볼까요? — 브라우저가 자동으로 열려요"; then
   say "  $(b '대시보드를 엽니다')… 닫으려면 이 터미널에서 $(b 'Ctrl+C') 하세요."
+  say "  (이 터미널은 대시보드가 점유해요 — 명령을 더 쓰려면 터미널 창을 하나 더 열거나,"
+  say "   백그라운드로 열려면 나중에 $(b 'make ui-bg') 를 쓰세요.)"
   bash "$DIR/scripts/ui.sh" || true   # Ctrl+C(130)가 아래 exit 0을 덮지 않도록
 else
-  say "  나중에 대시보드를 열려면: $(b 'make ui')  (브라우저가 자동으로 열려요)"
+  say "  나중에 대시보드를 열려면: $(b 'make ui')  (백그라운드로는 $(b 'make ui-bg'))"
 fi
 
 say ""

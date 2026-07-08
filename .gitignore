@@ -23,6 +23,7 @@ query-log.jsonl
 **/query-log.jsonl
 .localmind/
 localmind-brain/
+.localmind-ui.pid
 memory-backup.md
 *-backup.md
 
