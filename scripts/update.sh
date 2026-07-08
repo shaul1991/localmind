@@ -2,6 +2,7 @@
 # specs/033 — 이 기기 최신화 한 방(make update).
 # 정본(코드 repo·NOTES_DIR 노트 repo)을 origin에서 ff-only로 당기고,
 # 파생물(dist 빌드·노트 인덱스·페르소나/스킬 배포)을 정본에서 재생성한다.
+# 노트 repo만 예외: ff 불가(기기 간 백업 분기)면 pull --rebase 폴백, 충돌이면 원상 복구(2026-07-08 개정).
 # 이웃: 원격 기기는 make device-sync(031), 새 기기는 make recover, 백업 복원은 make restore.
 # memory-import는 하지 않는다 — 이 기기의 메모리 DB가 정본(백업 memory.md는 파생 export)이라
 # update가 import하면 로컬에서 삭제한 기억이 부활한다(033 Non-goal).
@@ -66,8 +67,14 @@ main() {
        && git -C "$p" remote 2>/dev/null | grep -q .; then
       if run git -C "$p" pull --ff-only; then
         ok "pull: $p"
+      # 분기(여러 기기의 백업 커밋) → 로컬 커밋을 원격 위로 재적용. push는 백업 레인의 몫.
+      # --no-autostash 필수: 전역 rebase.autoStash=true면 stash pop 충돌이 rc 0(성공)으로
+      # 새어 나와 충돌 마커가 박힌 노트를 성공 오보고·색인한다 — dirty 트리는 거부돼야 한다.
+      elif run git -C "$p" pull --rebase --no-autostash; then
+        ok "pull(rebase): $p — 분기를 합쳤어요(로컬 커밋을 원격 위로 재적용)"
       else
-        warn "pull 실패: $p — 로컬 변경/분기가 있어요(덮어쓰지 않아요)"
+        git -C "$p" rebase --abort >/dev/null 2>&1
+        warn "pull 실패: $p — 충돌·로컬 미커밋 변경 등으로 합칠 수 없어요(원상 복구했고 덮어쓰지 않아요)"
         fails="$fails notes-pull"
       fi
     else

@@ -15,6 +15,11 @@
 - [x] **FR-3 노트 정본 pull** *(goal: Objective — 정본 최신화)*
   NOTES_DIR(정본 규칙: 환경변수 → .env → 기본 `~/.localmind`)의 각 폴더에 대해, git repo이고
   원격이 있으면 `git pull --ff-only`. git repo가 아니면 건너뛰고 안내한다(오류 아님).
+  *개정(2026-07-08)*: ff 불가(분기)이면 `git pull --rebase --no-autostash`로 폴백해 로컬
+  커밋을 원격 위에 재적용한다. rebase가 실패(충돌·로컬 미커밋 변경)하면 자동으로 중단·원상
+  복구하고 실패로 표면화한다. push는 하지 않는다(백업 레인의 몫). `--no-autostash`는 필수 —
+  전역 `rebase.autoStash=true` 환경에서 stash pop 충돌이 rc 0으로 새어 나와 충돌 마커 오염을
+  성공으로 오보고하는 결함을 크리틱 리뷰에서 실증(AC-14 회귀).
 - [x] **FR-4 파생물 재생성** *(goal: Objective — 파생물 재생성)*
   노트 pull 이후 재인덱싱(`scripts/reindex.sh`) → 페르소나 배포(`agents:deploy`) → 스킬
   배포(`skills:deploy`)를 순서대로 수행한다. 모두 멱등이다.
@@ -25,6 +30,9 @@
   1로 끝난다. 전부 성공이면 0.
 - [x] **FR-7 파괴 부재** *(goal: Constraints — ff-only)*
   pull 실패 시 워킹트리·로컬 커밋이 그대로 보존된다. 자동 merge/rebase/reset 금지.
+  *개정(2026-07-08)*: 노트 repo의 rebase 폴백(FR-3 개정)은 예외 — 단 로컬 커밋의 **내용은
+  소실되지 않고**(원격 위 재적용), 충돌 시 자동 중단·원상 복구로 워킹트리·로컬 커밋이
+  그대로 보존된다. 코드 repo는 기존 규칙 그대로(자동 merge/rebase/reset 금지).
 
 ## Acceptance Criteria (테스트 1:1 — scripts/update.test.sh)
 
@@ -52,6 +60,15 @@
   When `update`, Then 실패를 표면화(exit 1)하되 이후 단계(재인덱싱·배포)는 계속 시도한다.
 - [x] (AC-3 보강) *(s2 — `main=경로` 라벨)* NOTES_DIR의 `라벨=경로` 표기도 통합 레벨에서
   pull이 동작한다.
+- [x] **AC-12** *(s9 — 2026-07-08 개정)* Given 노트 repo가 origin과 분기(로컬 커밋 + 원격
+  커밋, 충돌 없음), When `update`, Then rebase 폴백으로 원격 커밋과 로컬 커밋이 모두
+  존재하고(로컬 커밋이 원격 위로 재적용), 전체는 성공(exit 0)한다.
+- [x] **AC-13** *(s10 — 2026-07-08 개정)* Given 노트 repo가 같은 파일을 양쪽에서 수정해
+  분기(충돌), When `update`, Then rebase는 자동 중단·원상 복구되어 로컬 HEAD·파일 내용이
+  불변이고(rebase 진행 중 상태 없음), 실패로 표면화(exit 1)하되 파생물 단계는 계속된다.
+- [x] **AC-14** *(s11 — 크리틱 발견 회귀)* Given 전역/로컬 `rebase.autoStash=true` + 분기 +
+  원격 변경과 충돌하는 미커밋 수정, When `update`, Then rebase는 dirty 트리를 거부해 미커밋
+  내용이 그대로 보존되고(충돌 마커 오염 0), 성공으로 오보고하지 않으며 exit 1로 끝난다.
 
 ## 검증 기록 (2026-07-05)
 
@@ -60,6 +77,16 @@
       수정·회귀 테스트 반영, 자기갱신 안전성·명령 주입 부재·`--prefix` 동작 실증
 - [x] 실기기 도그푸드(m5) 2회 — `make update` 전 단계 성공(exit 0), 멱등 확인
 - [ ] 다른 기기(m1)에서 스모크 — 미실시(후속: 다음 m1 사용 시 `make update` 1회)
+
+## 검증 기록 (2026-07-08 개정분)
+
+- [x] 자동 테스트 51/51 green — 기본 bash + macOS `/bin/bash` 3.2 양쪽
+- [x] 독립 크리틱(적대 리뷰) 2라운드 — 1라운드에서 중대 1건(autoStash 경로 성공 오보고)
+      발견·실증 → `--no-autostash` + s11 회귀 테스트로 수정 → 2라운드 재실증 clean
+      (구판 재현·수정판 차단 비교 실험 포함). 사소 2건 반영/유지 결정.
+- [x] 실기기 도그푸드(m5) — `make update` 완주(exit 0). rebase 폴백 자체는 실 분기
+      사례(07-08 m5 vs 타 기기 백업 분기)를 수동 rebase로 해소한 것이 계기이며,
+      픽스처(s9)로 동등 검증.
 
 ## Open questions
 

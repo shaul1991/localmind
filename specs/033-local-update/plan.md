@@ -25,6 +25,10 @@
   ③ 재인덱싱→자산 배포 ④ 실패 요약. 전체를 main 함수로 감싼다(자기갱신 안전 — 크리틱이
   덮어쓰기 실험으로 실증). (green — self-review 반영 후 AC-10·11 추가, 최종 34/34)
 - [x] 3. `Makefile`에 `update` 타깃 추가, help 노출 확인.
+- [x] 4. *(2026-07-08 개정 — FR-3/FR-7 개정, AC-12·13·14)* 노트 pull에 rebase 폴백 추가 —
+  ff 실패 시 `pull --rebase --no-autostash`, 그 실패 시 `rebase --abort`로 원상 복구 후 실패
+  표면화. s9(무충돌 분기 → rebase 성공)·s10(충돌 → 복구+exit 1) 테스트 선행(red → green),
+  s11(autoStash+dirty 충돌 거부)은 크리틱 발견 결함의 회귀 테스트. → 51/51 green.
 
 ## 테스트 전략
 

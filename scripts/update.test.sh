@@ -144,6 +144,52 @@ assert "exit 0" '[ "$RC" -eq 0 ]'
 assert "중첩 폴더는 git repo 아님으로 스킵" 'grep -q "git repo 아님" "$OUT"'
 assert "부모 repo를 pull했다고 오보고하지 않음" '! grep -q "pull:.*sub/notes" "$OUT"'
 
+# ── AC-12: 노트 repo 분기(충돌 없음) → rebase 폴백으로 합치고 성공 ──────
+printf '\n\033[1mAC-12 — 노트 분기(무충돌) 시 rebase 폴백 + exit 0\033[0m\n'
+new_fixture s9; advance_notes_origin
+echo local-note > "$N1/local.md"; git -C "$N1" add -A; git -C "$N1" commit -qm local-backup
+run_update
+assert "exit 0" '[ "$RC" -eq 0 ]'
+assert "AC-12 원격 커밋 반영(b.md 존재)" '[ -f "$N1/b.md" ]'
+assert "AC-12 로컬 커밋 보존(local.md 존재)" '[ -f "$N1/local.md" ]'
+assert "AC-12 로컬 커밋이 원격 위로 재적용됨" '[ "$(git -C "$N1" log -1 --format=%s)" = "local-backup" ]'
+assert "rebase 진행 중 상태 없음" '[ ! -d "$N1/.git/rebase-merge" ] && [ ! -d "$N1/.git/rebase-apply" ]'
+assert "rebase 폴백 안내 출력" 'grep -q "pull(rebase):" "$OUT"'
+
+# ── AC-13: 노트 repo 분기(충돌) → 자동 복구 + exit 1, 이후 단계 계속 ────
+printf '\n\033[1mAC-13 — 노트 분기(충돌) 시 원상 복구 + exit 1 + 계속 진행\033[0m\n'
+new_fixture s10
+w="$TMP/s10/w-conflict"; git clone -q "$NOTES_ORIGIN" "$w"; git_id "$w"
+echo remote-side > "$w/a.md"; git -C "$w" add -A; git -C "$w" commit -qm remote-edit
+git -C "$w" push -q origin main
+echo local-side > "$N1/a.md"; git -C "$N1" add -A; git -C "$N1" commit -qm local-edit
+LOCAL_N1_HEAD="$(git -C "$N1" rev-parse HEAD)"
+run_update
+assert "exit 1" '[ "$RC" -eq 1 ]'
+assert "AC-13 로컬 HEAD 불변(원상 복구)" '[ "$(git -C "$N1" rev-parse HEAD)" = "$LOCAL_N1_HEAD" ]'
+assert "AC-13 로컬 파일 내용 보존" '[ "$(cat "$N1/a.md")" = "local-side" ]'
+assert "AC-13 rebase 진행 중 상태 없음" '[ ! -d "$N1/.git/rebase-merge" ] && [ ! -d "$N1/.git/rebase-apply" ]'
+assert "pull 실패 안내" 'grep -q "pull 실패" "$OUT"'
+assert "파생물 단계는 계속 진행됨" 'grep -q "EVT reindex" "$EVT"'
+
+# ── AC-14: rebase.autoStash=true + dirty 충돌 → 성공 오보고 없이 원상 보존 ──
+# (크리틱 발견 회귀: --no-autostash 없이는 stash pop 충돌이 rc 0으로 새어 나와
+#  충돌 마커가 박힌 노트를 "성공"으로 오보고하고 그대로 색인한다)
+printf '\n\033[1mAC-14 — autoStash 켜진 dirty 충돌은 거부(마커 오염·성공 오보고 금지)\033[0m\n'
+new_fixture s11
+w="$TMP/s11/w-conflict"; git clone -q "$NOTES_ORIGIN" "$w"; git_id "$w"
+echo remote-side > "$w/a.md"; git -C "$w" add -A; git -C "$w" commit -qm remote-edit
+git -C "$w" push -q origin main
+git -C "$N1" config rebase.autoStash true
+echo local-note > "$N1/local.md"; git -C "$N1" add local.md; git -C "$N1" commit -qm local-backup
+echo dirty-precious > "$N1/a.md"   # 미커밋 수정 — 원격 변경과 충돌
+run_update
+assert "exit 1" '[ "$RC" -eq 1 ]'
+assert "AC-14 미커밋 내용 그대로 보존" '[ "$(cat "$N1/a.md")" = "dirty-precious" ]'
+assert "AC-14 충돌 마커 오염 없음" '! grep -q "<<<<<<<" "$N1/a.md"'
+assert "AC-14 성공 오보고 없음" '! grep -q "pull(rebase):" "$OUT"'
+assert "rebase 진행 중 상태 없음" '[ ! -d "$N1/.git/rebase-merge" ] && [ ! -d "$N1/.git/rebase-apply" ]'
+
 # ── AC-11: 빌드 실패 → 표면화 + exit 1, 이후 단계 계속 ──────────────────
 printf '\n\033[1mAC-11 — 빌드 실패 시 표면화 + exit 1 + 이후 단계 계속\033[0m\n'
 new_fixture s8; advance_code_origin
