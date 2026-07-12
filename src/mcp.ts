@@ -11,8 +11,27 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { buildServer, configSummary } from "./mcp-server.js";
 import { watchNotes } from "./brain.js";
+import { resolveTransportMode, httpConfigFromEnv } from "./mcp-transport.js";
 
 async function main() {
+  // specs/045 — 전송 선택. 미설정/미지/stdio → 기존 stdio 경로(하위호환 100%, FR-4).
+  if (resolveTransportMode() === "http") {
+    // http 모드에서만 express·전송 모듈을 로드(stdio 경로에 무게를 더하지 않는다).
+    const { serveHttp } = await import("./mcp-http.js");
+    const cfg = httpConfigFromEnv();
+    const handle = await serveHttp(cfg); // 토큰 공백이면 throw → 아래 catch가 non-zero 종료(AC-3)
+    process.stderr.write(
+      `[localmind-mcp] http ready on ${cfg.host}:${handle.port}${cfg.path} (${configSummary()})\n`,
+    );
+    const shutdown = () => {
+      handle.close().finally(() => process.exit(0));
+    };
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+    return;
+  }
+
+  // 기본: stdio(로컬 서브프로세스) — 기존 동작 그대로.
   const server = buildServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);

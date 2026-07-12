@@ -68,3 +68,32 @@ DRY_RUN=1 make mcp-desktop             # 적용 전 미리보기(쓰지 않음)
 - `OPENMEMORY_USER`는 스택이 시드한 값(기본 `localmind`, `.env`)과 **반드시 일치**해야 `remember/recall`이 동작합니다(불일치 시 `User not found`).
 
 > `NOTES_DIR`·`OPENMEMORY_USER` 등 **MCP 환경변수**와 인덱싱 튜닝은 👉 [레퍼런스 › MCP 환경변수](reference.md#mcp-서버--환경변수).
+
+## 원격(HTTP) 모드 — 홈서버 중앙집중 (specs/045)
+
+위 stdio 방식은 두뇌가 **기기마다 로컬**에 있다. 항상 켜진 홈서버 1대에 두뇌를 두고 **여러 기기가
+하나의 두뇌**를 쓰려면 HTTP(Streamable HTTP) 모드로 띄운다. 그러면 어느 기기에서 적재해도 즉시
+다른 기기에서 검색된다(동기화 불필요). 전체 그림·휴대폰 접근은 👉 [홈서버 · 휴대폰](home-server.md).
+
+**홈서버에서 기동**(기본 바인딩은 비공개 `127.0.0.1`):
+```bash
+make mcp-serve-http        # MCP_AUTH_TOKEN이 없으면 생성해 .env에 저장하고 연결법을 안내
+```
+- 기본 포트 `8789`(`MCP_HTTP_PORT`), 경로 `/mcp`(`MCP_HTTP_PATH`), 호스트 `127.0.0.1`(`MCP_HTTP_HOST`).
+- **인증 강제**: 토큰(`MCP_AUTH_TOKEN`) 없이는 기동하지 않는다. 토큰은 **두뇌 접근권**이므로 유출 주의.
+- stdio 사용자는 무엇도 바뀌지 않는다 — `MCP_TRANSPORT`가 없거나 `stdio`면 기존 그대로.
+
+**다른 기기(맥)의 Claude Code에서 연결** — 사설망(Tailscale) URL로:
+```bash
+claude mcp add --transport http localmind http://<홈서버-Tailscale-IP-또는-이름>:8789/mcp \
+  --header "Authorization: Bearer <MCP_AUTH_TOKEN>"
+```
+
+> ⚠️ **보안**: 기본은 `127.0.0.1`(외부 미개방)이다. 다른 기기 접근은 **Tailscale 같은 사설망**으로
+> 하고, 인터넷에 포트를 직접 열지 마라. Claude **모바일 앱의 원격 커넥터**는 서버가 공개 인터넷에
+> 노출돼야 해서 이 사설망 구성과 맞지 않는다(휴대폰은 SSH 방식 — [home-server.md](home-server.md)).
+> 상시 구동은 launchd/systemd로, 맥을 서버로 쓰면 `caffeinate`로 슬립을 막는다.
+
+**상세 knob**: `MCP_TRANSPORT`(stdio|http), `MCP_HTTP_HOST`·`MCP_HTTP_PORT`·`MCP_HTTP_PATH`,
+`MCP_AUTH_TOKEN`. 세션은 `Mcp-Session-Id`로 라우팅되며(미지 세션→404, 세션 없는 비-initialize→400),
+인증 실패는 401이다.

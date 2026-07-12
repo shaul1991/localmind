@@ -26,35 +26,45 @@ http를 고르고, http면 express 앱에 SDK의 `StreamableHTTPServerTransport`
 
 ## 단계 (task 분해 가능)
 <!-- self-review clean 후 완료된 단계는 [ ]→[x]로 표기. -->
-- [ ] 1. **SDK API 재확인(OQ 해소)**: 설치본(1.29.x)에서 `StreamableHTTPServerTransport` 정확한
-  임포트 경로·생성자 옵션(`sessionIdGenerator`/`onsessioninitialized`/`onclose`)·`handleRequest`
-  시그니처 확정. (Live-Verify 게이트 — 기억으로 단정 금지)
-- [ ] 2. **전송 선택 진입점**(FR-4): `src/mcp.ts`에서 `MCP_TRANSPORT` 분기. 미설정/stdio → 현행 그대로.
-- [ ] 3. **`serveHttp()` 골격**(FR-1): express 앱 + `POST/GET/DELETE {path}` 라우트, initialize 시
+- [x] 1. **SDK API 재확인(OQ 해소)**: goal-ready에서 선검증 완료(2026-07-12, 설치본 v1.29.0 + 공식문서
+  T1) — 임포트 `@modelcontextprotocol/sdk/server/streamableHttp.js`의 `StreamableHTTPServerTransport`,
+  `sessionIdGenerator`/`onsessioninitialized`/`onsessionclosed` 옵션, `hostHeaderValidation` 미들웨어 실재.
+  구현 착수 시 `handleRequest(req,res,parsedBody)` 정확한 인자만 설치본으로 최종 핀. (Live-Verify — 기억 단정 금지)
+  (goal-ready 선검증 + 설치본 d.ts로 최종 핀 완료)
+- [x] 2. **전송 선택 진입점**(FR-4): `src/mcp.ts`에서 `MCP_TRANSPORT` 분기. 미설정/stdio → 현행 그대로.
+  (구현·테스트 완료)
+- [x] 3. **`serveHttp()` 골격**(FR-1): express 앱 + `POST/GET/DELETE {path}` 라우트, initialize 시
   세션 생성·세션맵 저장, 후속은 `Mcp-Session-Id`로 라우팅, 알 수 없는 세션 → 404(AC-5).
-- [ ] 4. **Bearer 인증**(FR-2): 라우트 앞단 미들웨어에서 `Authorization: Bearer` 검증(상수시간 비교),
+  (구현·테스트 완료)
+- [x] 4. **Bearer 인증**(FR-2): 라우트 앞단 미들웨어에서 `Authorization: Bearer` 검증(상수시간 비교),
   실패 → 401(AC-2). 기동 시 토큰 공백이면 non-zero 종료 + 한국어 에러(AC-3).
-- [ ] 5. **바인딩·설정**(FR-3, AC-7): `MCP_HTTP_HOST`(기본 `127.0.0.1`)·`MCP_HTTP_PORT`(기본 `8789`)·
+  (구현·테스트 완료)
+- [x] 5. **바인딩·설정**(FR-3, AC-7): `MCP_HTTP_HOST`(기본 `127.0.0.1`)·`MCP_HTTP_PORT`(기본 `8789`)·
   `MCP_HTTP_PATH`(기본 `/mcp`). 기본 비공개 확인.
-- [ ] 6. **워처 단일화·shutdown**(FR-5): `watchNotes()` 1회 기동, SIGINT/SIGTERM에 워처 close + 서버
+  (구현·테스트 완료)
+- [x] 6. **워처 단일화·shutdown**(FR-5): `watchNotes()` 1회 기동, SIGINT/SIGTERM에 워처 close + 서버
   종료. 세션 onclose 시 맵 정리.
-- [ ] 7. **기동·연동 수단**(FR-6): `make mcp-serve-http`(토큰 없으면 생성·표시), `docs/mcp.md` 갱신
+  (구현·테스트 완료)
+- [x] 7. **기동·연동 수단**(FR-6): `make mcp-serve-http`(토큰 없으면 생성·표시), `docs/mcp.md` 갱신
   (Claude Code `claude mcp add --transport http ... --header`, Tailscale 사설망 안내, 보안 경고).
+  (구현·테스트 완료)
 - [ ] 8. **E2E 검증**(AC-6): HTTP 인스턴스에 두 클라이언트 접속 → capture_note → 재인덱싱 → search_notes
   반환 확인(수동 또는 통합).
-- [ ] 9. self-review(분리 컨텍스트 에이전트) → 세 문서 검증 표기 → 커밋·push·CI 감시.
+  (수동/미검증 — 임베딩 게이트웨이 필요)
+- [x] 9. self-review(분리 컨텍스트 에이전트) → 세 문서 검증 표기 → 커밋·push·CI 감시.
+  (self-review clean, 이 커밋에서 수행)
 
 ## 테스트 전략
 <!-- 각 AC를 어느 레벨 테스트로 검증할지. TDD. 상태는 self-review clean 후 채운다. -->
 | AC | 테스트 레벨 | 방법 | 상태 |
 |---|---|---|---|
-| AC-1 도구 노출 | 통합 | http로 기동 후 initialize→tools/list, 도구 13종 이름 assert | [ ] |
-| AC-2 인증 차단 | 통합 | 토큰 없음/오토큰 요청 → 401, 도구 미실행 assert | [ ] |
-| AC-3 기동 거부 | 단위 | 토큰 공백으로 serveHttp 진입 → throw/exit·포트 미개방 assert | [ ] |
-| AC-4 하위호환 | 단위 | `MCP_TRANSPORT` 미설정 → stdio 경로 선택(전송 팩토리 분기) assert | [ ] |
-| AC-5 세션 라우팅 | 통합 | initialize로 Mcp-Session-Id 획득→재사용 OK / 임의 세션→404 | [ ] |
-| AC-6 단일 두뇌 E2E | 통합/수동 | 한 세션 capture_note→재인덱싱→다른 세션 search_notes 반환 | [ ] |
-| AC-7 기본 바인딩 | 단위 | host 미설정 시 바인드 주소=127.0.0.1 assert | [ ] |
+| AC-1 도구 노출 | 통합 | http로 기동 후 initialize→tools/list, buildServer 등록 도구 전체 이름 assert(개수 하드코딩 금지) | [x] |
+| AC-2 인증 차단 | 통합 | 토큰 없음/오토큰 요청 → 401, 도구 미실행 assert | [x] |
+| AC-3 기동 거부 | 단위 | 토큰 공백으로 serveHttp 진입 → throw/exit·포트 미개방 assert | [x] |
+| AC-4 하위호환 | 단위 | `MCP_TRANSPORT` 미설정 → stdio 경로 선택(전송 팩토리 분기) assert | [x] |
+| AC-5 세션 라우팅 | 통합 | initialize로 Mcp-Session-Id 획득→재사용 OK / 임의 세션→404 | [x] |
+| AC-6 단일 두뇌 E2E | 통합/수동 | 한 세션 capture_note→재인덱싱→다른 세션 search_notes 반환 | [ ] (수동) |
+| AC-7 기본 바인딩 | 단위 | host 미설정 시 바인드 주소=127.0.0.1 assert | [x] |
 
 ## Open questions
 - 세션 모드 확정: **stateful 세션맵**(SDK 표준, watchNotes 단일화에 유리) 잠정 채택 — 1단계

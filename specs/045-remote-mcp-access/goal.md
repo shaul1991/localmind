@@ -30,10 +30,14 @@ localmind MCP를 **네트워크로 접속 가능한 HTTP(Streamable HTTP) 전송
 
 ## Success metrics — 성공 지표
 <!-- self-review clean 후 달성한 지표는 [ ]→[x]로 표기, 미달성은 사유 부기(은폐 금지). -->
-- [ ] HTTP 모드에서 MCP 클라이언트가 initialize→tools/list로 localmind 도구 13종을 그대로 받는다.
-- [ ] 유효 토큰 없는 요청은 401로 거부되어 도구에 접근하지 못한다.
-- [ ] `MCP_TRANSPORT` 미설정 시 기존과 동일하게 stdio로 뜬다(회귀 0).
+- [x] HTTP 모드에서 MCP 클라이언트가 initialize→tools/list로 localmind 도구 전체(개수·이름은 코드 `buildServer` 정본 — 현재 15종)를 그대로 받는다.
+  (검증: AC-1)
+- [x] 유효 토큰 없는 요청은 401로 거부되어 도구에 접근하지 못한다.
+  (검증: AC-2)
+- [x] `MCP_TRANSPORT` 미설정 시 기존과 동일하게 stdio로 뜬다(회귀 0).
+  (검증: AC-4, 전체 695 green)
 - [ ] 한 기기에서 `capture_note` → 다른 기기의 `search_notes`가 즉시(동일 저장소) 그 노트를 반환한다.
+  (수동/미검증 — E2E는 임베딩 게이트웨이 필요, 실 홈서버 검증 예정)
 
 ## Non-goals — 비목표
 - **iPhone(Claude 모바일 앱)·공용 인터넷 노출**: 이번 범위 제외. 모바일 앱 커넥터는 Anthropic

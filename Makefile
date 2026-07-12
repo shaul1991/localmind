@@ -286,6 +286,10 @@ mcp-config: ## 다른 MCP 클라이언트(Cursor/Claude Desktop)용 설정 JSON 
 mcp-desktop: ## localmind를 Claude Desktop 설정에 자동 연결(기존 서버 보존 병합·백업, 미리보기 DRY_RUN=1)
 	@NOTES_DIR="$(NOTES_DIR)" DRY_RUN="$(DRY_RUN)" bash "$(CURDIR)/scripts/mcp-desktop.sh"
 
+.PHONY: mcp-serve-http
+mcp-serve-http: ## 원격(HTTP) MCP 서버 기동 — 홈서버에서 실행, 다른 기기가 Tailscale로 접속(specs/045). 토큰 없으면 생성
+	@bash "$(CURDIR)/scripts/mcp-serve-http.sh"
+
 ##@ 도움말
 .PHONY: help
 help: ## 이 목록 표시
