@@ -36,8 +36,9 @@ localmind MCP를 **네트워크로 접속 가능한 HTTP(Streamable HTTP) 전송
   (검증: AC-2)
 - [x] `MCP_TRANSPORT` 미설정 시 기존과 동일하게 stdio로 뜬다(회귀 0).
   (검증: AC-4, 전체 695 green)
-- [ ] 한 기기에서 `capture_note` → 다른 기기의 `search_notes`가 즉시(동일 저장소) 그 노트를 반환한다.
-  (수동/미검증 — E2E는 임베딩 게이트웨이 필요, 실 홈서버 검증 예정)
+- [x] 한 기기에서 `capture_note` → 다른 기기의 `search_notes`가 즉시(동일 저장소) 그 노트를 반환한다.
+  (수동 E2E 검증 완료 2026-07-12 — 로컬 실제 임베딩 capture→search 실측 + 실 홈서버(Tailscale)에서
+  M1↔중앙 두뇌 실증. AC-6)
 
 ## Non-goals — 비목표
 - **iPhone(Claude 모바일 앱)·공용 인터넷 노출**: 이번 범위 제외. 모바일 앱 커넥터는 Anthropic

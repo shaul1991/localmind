@@ -48,9 +48,9 @@ http를 고르고, http면 express 앱에 SDK의 `StreamableHTTPServerTransport`
 - [x] 7. **기동·연동 수단**(FR-6): `make mcp-serve-http`(토큰 없으면 생성·표시), `docs/mcp.md` 갱신
   (Claude Code `claude mcp add --transport http ... --header`, Tailscale 사설망 안내, 보안 경고).
   (구현·테스트 완료)
-- [ ] 8. **E2E 검증**(AC-6): HTTP 인스턴스에 두 클라이언트 접속 → capture_note → 재인덱싱 → search_notes
+- [x] 8. **E2E 검증**(AC-6): HTTP 인스턴스에 두 클라이언트 접속 → capture_note → 재인덱싱 → search_notes
   반환 확인(수동 또는 통합).
-  (수동/미검증 — 임베딩 게이트웨이 필요)
+  (수동 E2E 검증 완료 2026-07-12 — 로컬 실제 임베딩 capture→search 실측 + 실 홈서버 systemd 배포·M1 Tailscale 연동 실증)
 - [x] 9. self-review(분리 컨텍스트 에이전트) → 세 문서 검증 표기 → 커밋·push·CI 감시.
   (self-review clean, 이 커밋에서 수행)
 
@@ -63,7 +63,7 @@ http를 고르고, http면 express 앱에 SDK의 `StreamableHTTPServerTransport`
 | AC-3 기동 거부 | 단위 | 토큰 공백으로 serveHttp 진입 → throw/exit·포트 미개방 assert | [x] |
 | AC-4 하위호환 | 단위 | `MCP_TRANSPORT` 미설정 → stdio 경로 선택(전송 팩토리 분기) assert | [x] |
 | AC-5 세션 라우팅 | 통합 | initialize로 Mcp-Session-Id 획득→재사용 OK / 임의 세션→404 | [x] |
-| AC-6 단일 두뇌 E2E | 통합/수동 | 한 세션 capture_note→재인덱싱→다른 세션 search_notes 반환 | [ ] (수동) |
+| AC-6 단일 두뇌 E2E | 통합/수동 | 한 세션 capture_note→재인덱싱→다른 세션 search_notes 반환 | [x] (수동 2026-07-12: 로컬+실 홈서버) |
 | AC-7 기본 바인딩 | 단위 | host 미설정 시 바인드 주소=127.0.0.1 assert | [x] |
 
 ## Open questions

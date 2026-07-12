@@ -63,10 +63,12 @@ localmind MCP 진입점(`src/mcp.ts`)에 **HTTP(Streamable HTTP) 전송 모드**
   요청을 보내면 같은 세션으로 처리되고, When 알 수 없는 세션 id를 보내면 Then `404`(세션 없음)를,
   When 세션 id 없는 비-initialize 요청이면 Then `400`(SDK 표준 Bad Request)을 반환한다.
   (검증: `mcp-http.test` 미지세션 404·세션없는 비-init 400)
-- [ ] **AC-6 (엔드투엔드 단일 두뇌)**: Given HTTP 모드로 뜬 한 인스턴스, When 한 클라이언트가 `capture_note`로
+- [x] **AC-6 (엔드투엔드 단일 두뇌)**: Given HTTP 모드로 뜬 한 인스턴스, When 한 클라이언트가 `capture_note`로
   노트를 적재한 뒤 (재인덱싱 후) 다른 클라이언트가 `search_notes`로 조회하면, Then 그 노트가 반환된다
   (동일 저장소이므로 별도 동기화 없이).
-  (수동/미검증 — 실제 도구 호출은 임베딩 게이트웨이 필요라 자동 테스트 제외. 실 홈서버에서 수동 검증 예정)
+  (수동 E2E 검증 완료 2026-07-12 — ① 로컬 실제 임베딩: writer 세션 capture_note→"인덱싱 확인"→reader
+  세션 search_notes가 그 노트 반환 실측, ② 실 홈서버(Ubuntu) systemd 배포 후 M1이 Tailscale로 붙어
+  도구 15종·whoami·읽기전용 search 실증)
 - [x] **AC-7 (엣지: 기본 바인딩 비공개)**: Given `MCP_HTTP_HOST` 미설정, When 기동하면, Then `127.0.0.1`에만
   바인딩되어 외부 인터페이스로는 접속되지 않는다(노출은 명시 opt-in에서만).
   (검증: `mcp-transport.test` 127.0.0.1·8789)
