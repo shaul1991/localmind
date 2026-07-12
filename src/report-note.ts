@@ -35,7 +35,7 @@ export function renderMarkdown(a: QueryAnalysis, interpretation: string | null, 
   lines.push(
     "## 요약",
     "",
-    `- 검색·질문: ${a.searches}건 · 성공률 ${a.successRate}% (실패 ${a.failed}건)`,
+    `- 검색·질문: ${a.searches}건 · 결과 반환률 ${a.successRate}% (실패 ${a.failed}건)`,
     `- 캡처: ${a.captures}건 (인덱싱 미확인 ${a.capturesUnconfirmed}건)`,
     `- 답변 검증: 통과 ${a.verifyStats.pass} · 경고 ${a.verifyStats.warn} · 생략 ${a.verifyStats.skipped}`,
     "",

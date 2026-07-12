@@ -27,6 +27,43 @@ export interface QueryLogRecord {
   persona?: string;
   /** specs/025 — 반환 결과의 최상위 코사인 스코어(히트 없으면 null, 구형 로그엔 필드 없음). */
   topScore?: number | null;
+  // ── specs/041 — additive 검색 이벤트 필드(구형 로그엔 없음 → 모두 optional). ──
+  // 의미: outcome/uniqueSourceCount는 "결과 반환" 관측이고, relevanceJudgment는 ground
+  // truth 판정(운영 검색 기본 not_judged). reader는 잘못된 값을 만나면 행 전체가 아니라
+  // 그 필드만 누락시킨다(normalizeAdditiveFields).
+  /** 실행/결과 상태. 관련성 의미 없음. */
+  outcome?: "results_returned" | "no_results" | "error";
+  /** ground truth 판정. 운영 검색은 항상 not_judged(결과 수·점수로 추론 금지). */
+  relevanceJudgment?: "relevant" | "not_relevant" | "not_judged";
+  /** 현재 검색 조합을 식별하는 안정된 이름(예: cosine-full-scan-v1). */
+  retrievalAlgorithm?: string;
+  /** 실제 실행에 사용한 임베딩 모델 식별자. */
+  embeddingModel?: string;
+  /** 순위 1~3의 유한 원점수(반환 수만큼 최대 3개). */
+  topScores?: number[];
+  /** 반환된 top-k hit의 canonical source 수(비음 정수). */
+  uniqueSourceCount?: number;
+}
+
+/** specs/041 FR-004 — 새 optional 필드의 잘못된 값을 필드 단위로 누락(행·기존 필드는 보존).
+ *  enum 외 값, 빈 식별자, 유한 숫자 최대 3개가 아닌 topScores, 음수/비정수 uniqueSourceCount가
+ *  대상. 기존 필드의 관대한 읽기 동작은 바꾸지 않는다. */
+export function normalizeAdditiveFields(r: QueryLogRecord): void {
+  const x = r as unknown as Record<string, unknown>;
+  if (x.outcome !== "results_returned" && x.outcome !== "no_results" && x.outcome !== "error")
+    delete x.outcome;
+  if (x.relevanceJudgment !== "relevant" && x.relevanceJudgment !== "not_relevant" && x.relevanceJudgment !== "not_judged")
+    delete x.relevanceJudgment;
+  if (typeof x.retrievalAlgorithm !== "string" || x.retrievalAlgorithm === "") delete x.retrievalAlgorithm;
+  if (typeof x.embeddingModel !== "string" || x.embeddingModel === "") delete x.embeddingModel;
+  if (
+    !Array.isArray(x.topScores) ||
+    x.topScores.length > 3 ||
+    !x.topScores.every((n) => typeof n === "number" && Number.isFinite(n))
+  )
+    delete x.topScores;
+  if (typeof x.uniqueSourceCount !== "number" || !Number.isInteger(x.uniqueSourceCount) || x.uniqueSourceCount < 0)
+    delete x.uniqueSourceCount;
 }
 
 // 한국어 조사·불용어 간이 제거(형태소 분석 없이 — 데이터가 부족을 증명하면 재론).
@@ -54,7 +91,10 @@ export function readRecords(logPath: string): QueryLogRecord[] | null {
     if (!t) continue;
     try {
       const r = JSON.parse(t) as QueryLogRecord;
-      if (r && typeof r.ts === "string" && typeof r.query === "string") out.push(r);
+      if (r && typeof r.ts === "string" && typeof r.query === "string") {
+        normalizeAdditiveFields(r); // 041 — 잘못된 새 필드만 누락(행·기존 필드 보존)
+        out.push(r);
+      }
     } catch {
       /* 손상 라인 — 건너뜀(분석은 계속) */
     }

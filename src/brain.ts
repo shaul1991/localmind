@@ -80,6 +80,11 @@ const EMB_URL = (process.env.EMBEDDINGS_URL ?? "http://localhost:4000/v1").repla
 const EMB_KEY = process.env.EMBEDDINGS_KEY ?? process.env.LITELLM_MASTER_KEY ?? "";
 const EMB_MODEL = process.env.EMBEDDINGS_MODEL ?? "text-embedding-3-small";
 
+// specs/041 — 검색 조합·임베딩 구현의 안정된 식별자. 이 상수 하나를 logger 이벤트와
+// readRuntimeSnapshot projection이 공유한다(literal 복제 금지 — 042가 owner를 옮겨도 한 곳만).
+const RETRIEVAL_ALGORITHM = "cosine-full-scan-v1" as const;
+const EMBEDDING_IMPLEMENTATION = "openai-compatible-http-embeddings-v1" as const;
+
 const GATEWAY_URL = (process.env.LOCALMIND_URL ?? "http://localhost:8787").replace(/\/$/, "");
 const GATEWAY_KEY = process.env.LOCALMIND_API_KEY?.trim();
 const ANSWER_MODEL = process.env.MCP_DEFAULT_MODEL ?? "sonnet";
@@ -96,18 +101,55 @@ const QUERY_LOG_PATH =
 /** fire-and-forget 로깅 — 기록 실패가 검색·캡처 응답을 절대 막지 않는다(004 FR-2).
  *  stdout은 MCP 프로토콜 전용이므로 오류는 stderr에만 남긴다. */
 let queryLogDirReady = false; // mkdir은 첫 호출에만 — 매 검색마다 동기 FS 호출 방지(D-5)
+
+// specs/041 — pending append 추적(drain seam). production 응답은 append를 기다리지 않는다
+// (기존 fire-and-forget 불변). evaluation runner/테스트만 drainQueryEvents로 settled를 await한다.
+// 카운터는 직전 drain 이후의 attempted/succeeded/failed(정수)이며, in-flight promise는 settle 시
+// 제거해 production에서 메모리가 누적되지 않는다(누구도 drain하지 않아도 안전).
+let pendingAppends = new Set<Promise<void>>();
+let drainAttempted = 0;
+let drainSucceeded = 0;
+let drainFailed = 0;
 function logQuery(rec: QueryLogRecord): void {
+  drainAttempted++;
+  let settle!: () => void;
+  const tracked = new Promise<void>((res) => {
+    settle = res;
+  });
+  pendingAppends.add(tracked);
+  const done = (ok: boolean): void => {
+    if (ok) drainSucceeded++;
+    else drainFailed++;
+    pendingAppends.delete(tracked);
+    settle();
+  };
   try {
     if (!queryLogDirReady) {
       fs.mkdirSync(path.dirname(QUERY_LOG_PATH), { recursive: true });
       queryLogDirReady = true;
     }
     fs.appendFile(QUERY_LOG_PATH, JSON.stringify(rec) + "\n", (err) => {
-      if (err) process.stderr.write(`[localmind-brain] 쿼리 로그 기록 실패(무시): ${err.message}\n`);
+      if (err) {
+        process.stderr.write(`[localmind-brain] 쿼리 로그 기록 실패(무시): ${err.message}\n`);
+        done(false);
+      } else done(true);
     });
   } catch (e) {
     process.stderr.write(`[localmind-brain] 쿼리 로그 기록 실패(무시): ${(e as Error).message}\n`);
+    done(false);
   }
+}
+
+/** specs/041 — 직전 drain 이후 enqueue된 append의 settled 결과를 세고 reset한다.
+ *  production 호출자는 부르지 않는다(그래서 카운터는 정수만 누적, in-flight set은 settle 시
+ *  비워짐). append 실패를 검색 예외로 승격하지 않는다 — 관측 실패는 검색 응답과 무관. */
+async function drainQueryEvents(): Promise<QueryEventDrainResult> {
+  await Promise.all([...pendingAppends]); // in-flight append가 settle될 때까지만 대기(sleep 없음)
+  const result: QueryEventDrainResult = { attempted: drainAttempted, succeeded: drainSucceeded, failed: drainFailed };
+  drainAttempted = 0;
+  drainSucceeded = 0;
+  drainFailed = 0;
+  return result;
 }
 
 const INDEX_VERSION = 5; // 4→5: 벡터를 바이너리 사이드카로 분리(specs/023 — 디스크 인코딩만 변경)
@@ -1083,7 +1125,34 @@ export interface NoteHit {
 
 /** 노트 의미검색. folder(라벨)를 주면 그 폴더로 한정. */
 export async function searchNotes(query: string, limit = 5, folder?: string): Promise<NoteHit[]> {
-  const out = await searchNotesInternal(query, limit, folder);
+  let out: NoteHit[];
+  try {
+    out = await searchNotesInternal(query, limit, folder);
+  } catch (e) {
+    // specs/041 FR-004 — 예외 경로도 정확히 1행 기록하고 원래 예외를 그대로 다시 던진다
+    // (삼키지 않음). 로깅 실패는 검색 예외를 가리거나 바꾸지 않는다(logQuery는 throw 안 함).
+    logQuery({
+      ts: new Date().toISOString(),
+      tool: "search_notes",
+      query,
+      hitCount: 0,
+      success: false,
+      folder: folder ?? null,
+      topScore: null,
+      sources: [],
+      outcome: "error",
+      relevanceJudgment: "not_judged",
+      retrievalAlgorithm: RETRIEVAL_ALGORITHM,
+      embeddingModel: EMB_MODEL,
+      topScores: [],
+      uniqueSourceCount: 0,
+    });
+    throw e;
+  }
+  // specs/041 — 결과 반환 관측(관련성 아님). topScores는 순위 1~3의 유한 원점수(최대 3),
+  // uniqueSourceCount는 반환 hit의 canonical source(운영 노트는 path가 곧 원본 문서) 수.
+  // 결과가 있으면 topScore === topScores[0](rank-1 코사인은 유한).
+  const topScores = out.slice(0, 3).map((h) => h.score).filter((s) => Number.isFinite(s));
   logQuery({
     ts: new Date().toISOString(),
     tool: "search_notes",
@@ -1094,6 +1163,12 @@ export async function searchNotes(query: string, limit = 5, folder?: string): Pr
     // specs/025 — 이미 계산된 값의 재사용(소프트 실패 관측): out은 스코어 내림차순.
     topScore: out[0]?.score ?? null,
     sources: [...new Set(out.map((h) => h.path))],
+    outcome: out.length > 0 ? "results_returned" : "no_results",
+    relevanceJudgment: "not_judged",
+    retrievalAlgorithm: RETRIEVAL_ALGORITHM,
+    embeddingModel: EMB_MODEL,
+    topScores,
+    uniqueSourceCount: new Set(out.map((h) => h.path)).size,
   });
   return out;
 }
@@ -1120,6 +1195,84 @@ async function searchNotesInternal(query: string, limit: number, folder?: string
   hits.sort((a, b) => b.score - a.score);
   return hits.slice(0, limit);
 }
+
+// ── specs/041 — 검색 품질 평가 전용 internal compatibility surface ─────────────────
+// 041만의 최소 확장. Retriever/QueryEventWriter/IndexStore 같은 새 domain 추출이나 상태
+// 소유권 이동은 하지 않는다(그 분해는 042). 아래 projection은 값을 소유하지 않고 현재
+// owner(상수·적재된 index)에서 조립한다.
+
+export type QueryEventDrainResult = Readonly<{
+  attempted: number;
+  succeeded: number;
+  failed: number;
+}>;
+
+export type RetrievalRuntimeSnapshot = Readonly<{
+  retrievalAlgorithm: typeof RETRIEVAL_ALGORITHM;
+  embeddingModel: string;
+  embeddingImplementation: typeof EMBEDDING_IMPLEMENTATION;
+  indexFormatVersion: number;
+  embeddingDimensions: number;
+  chunkSize: number;
+  retrievalLimit: 5;
+}>;
+
+export type RetrievalEvaluationPort = Readonly<{
+  prepareDeterministicIndex(orderedFixturePaths: readonly string[]): Promise<void>;
+  searchNotes(query: string, limit?: number, folder?: string): Promise<NoteHit[]>;
+  drainQueryEvents(): Promise<QueryEventDrainResult>;
+  readRuntimeSnapshot(retrievalLimit: 5): Promise<RetrievalRuntimeSnapshot>;
+}>;
+
+/** specs/041 — 정렬된 fixture path만 serial로 임시 색인에 넣는다(generic scanner/concurrency
+ *  없음). 기존 chunkText·production embed·v5 save/reload를 그대로 재사용해 production 색인
+ *  구축과 같은 파이프라인을 쓰되 순서만 결정적으로 고정한다. 저장 후 인메모리 캐시를 비워
+ *  다음 loadIndex가 디스크(사이드카)에서 reload하게 한다. */
+async function prepareDeterministicIndex(orderedFixturePaths: readonly string[]): Promise<void> {
+  const f = FOLDERS[0];
+  const idx: BrainIndex = { version: INDEX_VERSION, embeddingModel: EMB_MODEL, files: {} };
+  for (const full of orderedFixturePaths) {
+    const text = fs.readFileSync(full, "utf8");
+    const key = `${f.label}/${path.relative(f.dir, full)}`;
+    const chunks = chunkText(text);
+    const vectors = chunks.length ? await embed(chunks) : [];
+    if (idx.dims === undefined && vectors.length) idx.dims = vectors[0].length;
+    idx.files[key] = {
+      hash: sha(text),
+      folder: f.label,
+      chunks: chunks.map((c, i) => ({ path: key, text: c, vector: vectors[i] })),
+      linksOut: extractLinks(text),
+    };
+  }
+  resetIndex(); // 임시 디렉터리를 clean 상태로(병합 잔재 방지)
+  saveIndex(idx); // v5 영속화(사이드카 slot 순서 = 위 chunk 삽입 순서)
+  cachedIndex = null; // 다음 loadIndex가 디스크에서 reload + 사이드카 hydrate 하도록 캐시 무효화
+  cachedStat = null;
+}
+
+/** specs/041 — 값을 소유하지 않는 immutable projection. 현재 owner(EMB_MODEL·상수 식별자·
+ *  적재된 index version/dims·MAX_CHUNK)에서 읽어 caller의 retrieval limit와 합친다. */
+async function readRuntimeSnapshot(retrievalLimit: 5): Promise<RetrievalRuntimeSnapshot> {
+  const idx = loadIndex();
+  return {
+    retrievalAlgorithm: RETRIEVAL_ALGORITHM,
+    embeddingModel: EMB_MODEL,
+    embeddingImplementation: EMBEDDING_IMPLEMENTATION,
+    indexFormatVersion: idx.version,
+    embeddingDimensions: idx.dims ?? 0,
+    chunkSize: MAX_CHUNK,
+    retrievalLimit,
+  };
+}
+
+/** specs/041 — 평가 runner가 temp env 설정 뒤 dynamic import하는 유일 surface.
+ *  production 호출자는 drainQueryEvents를 부르지 않는다. */
+export const retrievalEvaluationPort: RetrievalEvaluationPort = {
+  prepareDeterministicIndex,
+  searchNotes,
+  drainQueryEvents,
+  readRuntimeSnapshot,
+};
 
 export interface CaptureResult {
   path: string;

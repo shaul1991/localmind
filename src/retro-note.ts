@@ -110,7 +110,7 @@ export function renderRetro(a: RetroAggregate, interpretation: string | null, ge
   if (!a.query) {
     L.push("- 검색 로그가 없어요 — 건너뜁니다.");
   } else {
-    L.push(`- 검색 ${a.query.searches}건 · 성공률 ${a.query.successRate}% · 실패 ${a.query.failed}건`); // successRate는 이미 % 값(query-analysis — codex 적발: 이중 ×100 방지)
+    L.push(`- 검색 ${a.query.searches}건 · 결과 반환률 ${a.query.successRate}% · 실패 ${a.query.failed}건`); // successRate는 이미 % 값(query-analysis — codex 적발: 이중 ×100 방지). 표시 문구만 "결과 반환률"(041 FR-004) — JSON key는 불변
   }
   if (a.guides.length > 0) L.push(`- 도메인 가이드 ${a.guides.length}개: ${a.guides.map((g) => g.name).join(", ")}`);
   if (a.projects.length > 0) L.push(`- 계약 저장소 ${a.projects.length}개: ${a.projects.map((p) => p.name).join(", ")}`);

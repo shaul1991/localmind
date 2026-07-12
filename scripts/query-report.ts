@@ -22,26 +22,46 @@ const DAYS = 30;
 const MIN_SAMPLES = 20;
 const SCORE_MIN_SAMPLES = 10; // specs/025 — 스코어 분포 전용 게이트(전체 표본과 모집단이 다름)
 
-// ── --clean: 30일 이전 항목 제거(FR-6) ──────────────────────────
+// ── --clean: 30일 이전 항목 제거(FR-6; specs/041 FR-004로 raw-line 방식 전환) ──
+// 041 FR-004: 파싱→재직렬화(readRecords)는 미지·확장·malformed 필드를 유실시킨다.
+// 따라서 원본 JSONL의 raw line을 대상으로 판정한다 — "JSON object로 parse되고 유효한 ts가
+// cutoff보다 오래된 행"만 제거하고, 최근 행·해석 불가 ts·malformed non-empty line·미지의
+// 필드를 byte-for-byte 보존한다(확장 additive 필드 손실 방지).
 if (process.argv.includes("--clean")) {
-  const all = readRecords(LOG_PATH);
-  if (all === null) {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(LOG_PATH, "utf8");
+  } catch {
     console.log("로그 없음 — 정리할 것이 없어요.");
     process.exit(0);
   }
-  // "30일 이전"만 지운다 — ts를 해석할 수 없는 레코드는 나이를 단정할 수 없으므로
-  // 보존한다(위임 범위 초과 삭제 방지 — self-review D-4).
   const cutoff = Date.now() - DAYS * 86400_000;
-  const keep = all.filter((r) => {
-    const t = Date.parse(r.ts);
-    return !Number.isFinite(t) || t >= cutoff;
+  const segments = raw.split("\n"); // "\n" join으로 원문 복원 가능(마지막 trailing "" 포함)
+  let removed = 0;
+  const kept = segments.filter((line) => {
+    if (line.trim() === "") return true; // 빈/trailing 세그먼트 — 구조 보존
+    let obj: unknown;
+    try {
+      obj = JSON.parse(line);
+    } catch {
+      return true; // malformed non-empty line — 나이를 단정 불가, 보존
+    }
+    // JSON object가 아니거나(배열·원시값) ts가 문자열이 아니면 나이 판정 불가 → 보존
+    if (typeof obj !== "object" || obj === null || Array.isArray(obj)) return true;
+    const ts = (obj as { ts?: unknown }).ts;
+    if (typeof ts !== "string") return true;
+    const t = Date.parse(ts);
+    if (!Number.isFinite(t)) return true; // 해석 불가 ts — 보존
+    if (t >= cutoff) return true; // 최근 행 — 보존
+    removed++;
+    return false; // parse됨 + 유효 ts + cutoff보다 오래됨 → 유일한 제거 대상
   });
   // 원자적 쓰기(temp+rename) — 쓰기 중 크래시로 로그 전체가 날아가지 않게(D-3).
   // 주의: 실행 중인 MCP가 그 사이 append한 레코드는 유실될 수 있다(분석용 로그라 수용).
   const tmp = `${LOG_PATH}.tmp-${process.pid}`;
-  fs.writeFileSync(tmp, keep.map((r) => JSON.stringify(r)).join("\n") + (keep.length ? "\n" : ""));
+  fs.writeFileSync(tmp, kept.join("\n"));
   fs.renameSync(tmp, LOG_PATH);
-  console.log(`정리 완료 — ${all.length - keep.length}건 제거, ${keep.length}건 유지(최근 ${DAYS}일).`);
+  console.log(`정리 완료 — ${removed}건 제거(최근 ${DAYS}일 유지).`);
   process.exit(0);
 }
 
@@ -64,7 +84,7 @@ if (a.searches === 0) {
   process.exit(0);
 }
 
-console.log(`총 쿼리 ${a.searches}건 · 성공률 ${a.successRate}% (실패 ${a.failed}건)`);
+console.log(`총 쿼리 ${a.searches}건 · 결과 반환률 ${a.successRate}% (실패 ${a.failed}건)`);
 
 console.log("\n자주 실패하는 키워드 Top 10:");
 if (a.topFailures.length === 0) console.log("  (없음)");
