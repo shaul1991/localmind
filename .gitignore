@@ -29,3 +29,7 @@ memory-backup.md
 
 # 브라우저 도그푸드 아티팩트(스크린샷·playwright 캐시 — specs/034 self-review 사소-2)
 .playwright-mcp/
+
+# specs/041 — 검색 품질 평가 fixture는 정본(커밋 대상)이라 위 백업/인덱스 무시 규칙의 예외.
+# 특히 corpus/device-backup.md 가 `*-backup.md` 글롭에 걸려 조용히 누락되던 것을 되돌린다.
+!tests/fixtures/retrieval-quality/**

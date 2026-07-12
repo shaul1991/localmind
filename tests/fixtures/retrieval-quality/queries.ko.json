@@ -1,0 +1,325 @@
+{
+  "schemaVersion": 1,
+  "queries": [
+    {
+      "id": "P01",
+      "kind": "positive",
+      "query": "인터넷이 끊긴 동안 쓴 노트는 다시 연결되면 어떻게 동기화하나?",
+      "relevantDocIds": ["EVAL-001"],
+      "category": "Korean paraphrase",
+      "rationale": "Korean paraphrase"
+    },
+    {
+      "id": "P02",
+      "kind": "positive",
+      "query": "동기화 충돌이 났을 때 원문을 덮어쓰지 않는 방법",
+      "relevantDocIds": ["EVAL-001"],
+      "category": "near-term paraphrase",
+      "rationale": "near-term paraphrase"
+    },
+    {
+      "id": "P03",
+      "kind": "positive",
+      "query": "검색 스키마가 바뀐 뒤 무엇을 다시 만들어야 하나?",
+      "relevantDocIds": ["EVAL-002"],
+      "category": "Korean paraphrase",
+      "rationale": "Korean paraphrase"
+    },
+    {
+      "id": "P04",
+      "kind": "positive",
+      "query": "정본 Markdown을 건드리지 않고 파생 인덱스를 재구축한다",
+      "relevantDocIds": ["EVAL-002"],
+      "category": "exact concept",
+      "rationale": "exact concept"
+    },
+    {
+      "id": "P05",
+      "kind": "positive",
+      "query": "새로 캡처한 메모를 사람이 분류하기 전 상태는?",
+      "relevantDocIds": ["EVAL-003"],
+      "category": "Korean paraphrase",
+      "rationale": "Korean paraphrase"
+    },
+    {
+      "id": "P06",
+      "kind": "positive",
+      "query": "restricted draft 상태에서 시작하는 캡처 정책",
+      "relevantDocIds": ["EVAL-003"],
+      "category": "identifier/keyword",
+      "rationale": "identifier/keyword"
+    },
+    {
+      "id": "P07",
+      "kind": "positive",
+      "query": "검색어 원문 없이 검색 지연과 결과 수를 관측하고 싶다",
+      "relevantDocIds": ["EVAL-004"],
+      "category": "Korean paraphrase",
+      "rationale": "Korean paraphrase"
+    },
+    {
+      "id": "P08",
+      "kind": "positive",
+      "query": "검색 로그에 고유 출처 수를 남기는 설계",
+      "relevantDocIds": ["EVAL-004"],
+      "category": "exact concept",
+      "rationale": "exact concept"
+    },
+    {
+      "id": "P09",
+      "kind": "positive",
+      "query": "장치 백업 작업이 실패하면 언제 다시 시도하나?",
+      "relevantDocIds": ["EVAL-005"],
+      "category": "Korean paraphrase",
+      "rationale": "Korean paraphrase"
+    },
+    {
+      "id": "P10",
+      "kind": "positive",
+      "query": "15분 주기로 staging하는 백업 런북",
+      "relevantDocIds": ["EVAL-005"],
+      "category": "number/keyword",
+      "rationale": "number/keyword"
+    },
+    {
+      "id": "P11",
+      "kind": "positive",
+      "query": "새 API 토큰 확인 뒤 예전 토큰을 폐기하는 순서",
+      "relevantDocIds": ["EVAL-006"],
+      "category": "ordered procedure",
+      "rationale": "ordered procedure"
+    },
+    {
+      "id": "P12",
+      "kind": "positive",
+      "query": "토큰 교체 후 health check로 확인하기",
+      "relevantDocIds": ["EVAL-006"],
+      "category": "mixed keyword",
+      "rationale": "mixed keyword"
+    },
+    {
+      "id": "P13",
+      "kind": "positive",
+      "query": "붉은 렌틸로 수프를 만들 때 필요한 향신료는?",
+      "relevantDocIds": ["EVAL-007"],
+      "category": "Korean paraphrase",
+      "rationale": "Korean paraphrase"
+    },
+    {
+      "id": "P14",
+      "kind": "positive",
+      "query": "커민을 넣은 렌틸 수프는 몇 분 끓이나?",
+      "relevantDocIds": ["EVAL-007"],
+      "category": "factual detail",
+      "rationale": "factual detail"
+    },
+    {
+      "id": "P15",
+      "kind": "positive",
+      "query": "자갈치시장과 해안열차를 묶은 이틀 여행",
+      "relevantDocIds": ["EVAL-008"],
+      "category": "multi-keyword",
+      "rationale": "multi-keyword"
+    },
+    {
+      "id": "P16",
+      "kind": "positive",
+      "query": "부산 주말 2일 동선을 찾는다",
+      "relevantDocIds": ["EVAL-008"],
+      "category": "Korean paraphrase",
+      "rationale": "Korean paraphrase"
+    },
+    {
+      "id": "P17",
+      "kind": "positive",
+      "query": "바질 화분은 흙이 얼마나 말랐을 때 물을 주나?",
+      "relevantDocIds": ["EVAL-009"],
+      "category": "factual detail",
+      "rationale": "factual detail"
+    },
+    {
+      "id": "P18",
+      "kind": "positive",
+      "query": "아침 물주기와 배수 확인이 필요한 허브 관리",
+      "relevantDocIds": ["EVAL-009"],
+      "category": "near-term paraphrase",
+      "rationale": "near-term paraphrase"
+    },
+    {
+      "id": "P19",
+      "kind": "positive",
+      "query": "업무 규칙이 프레임워크에 의존하지 않게 하는 원칙",
+      "relevantDocIds": ["EVAL-010"],
+      "category": "Korean paraphrase",
+      "rationale": "Korean paraphrase"
+    },
+    {
+      "id": "P20",
+      "kind": "positive",
+      "query": "의존성이 안쪽 정책을 향해야 한다",
+      "relevantDocIds": ["EVAL-010"],
+      "category": "exact concept",
+      "rationale": "exact concept"
+    },
+    {
+      "id": "P21",
+      "kind": "positive",
+      "query": "릴리스 tag 전에 테스트와 changelog를 확인한다",
+      "relevantDocIds": ["EVAL-011"],
+      "category": "ordered procedure",
+      "rationale": "ordered procedure"
+    },
+    {
+      "id": "P22",
+      "kind": "positive",
+      "query": "배포를 되돌릴 절차까지 포함한 출시 점검표",
+      "relevantDocIds": ["EVAL-011"],
+      "category": "Korean paraphrase",
+      "rationale": "Korean paraphrase"
+    },
+    {
+      "id": "P23",
+      "kind": "positive",
+      "query": "회의 전에 agenda와 captions를 준비하는 이유",
+      "relevantDocIds": ["EVAL-012"],
+      "category": "multi-keyword",
+      "rationale": "multi-keyword"
+    },
+    {
+      "id": "P24",
+      "kind": "positive",
+      "query": "키보드만으로 참여할 수 있는 회의 접근성 점검",
+      "relevantDocIds": ["EVAL-012"],
+      "category": "Korean paraphrase",
+      "rationale": "Korean paraphrase"
+    },
+    {
+      "id": "N01",
+      "kind": "no_match",
+      "query": "파리 3박 일정에서 박물관 예약 시간은?",
+      "relevantDocIds": [],
+      "category": "travel near-miss",
+      "rationale": "travel near-miss"
+    },
+    {
+      "id": "N02",
+      "kind": "no_match",
+      "query": "토마토 모종에 비료를 주는 주기는?",
+      "relevantDocIds": [],
+      "category": "gardening near-miss",
+      "rationale": "gardening near-miss"
+    },
+    {
+      "id": "N03",
+      "kind": "no_match",
+      "query": "치아바타 반죽의 발효 온도는?",
+      "relevantDocIds": [],
+      "category": "recipe near-miss",
+      "rationale": "recipe near-miss"
+    },
+    {
+      "id": "N04",
+      "kind": "no_match",
+      "query": "윈도우 레지스트리를 백업하고 복원하는 명령은?",
+      "relevantDocIds": [],
+      "category": "backup near-miss",
+      "rationale": "backup near-miss"
+    },
+    {
+      "id": "N05",
+      "kind": "no_match",
+      "query": "OAuth refresh token의 만료 시간은?",
+      "relevantDocIds": [],
+      "category": "token near-miss",
+      "rationale": "token near-miss"
+    },
+    {
+      "id": "N06",
+      "kind": "no_match",
+      "query": "GraphQL cursor pagination 응답 형식은?",
+      "relevantDocIds": [],
+      "category": "API near-miss",
+      "rationale": "API near-miss"
+    },
+    {
+      "id": "N07",
+      "kind": "no_match",
+      "query": "PostgreSQL vacuum 비용을 조정하는 방법은?",
+      "relevantDocIds": [],
+      "category": "index/operations near-miss",
+      "rationale": "index/operations near-miss"
+    },
+    {
+      "id": "N08",
+      "kind": "no_match",
+      "query": "회의실 프로젝터의 HDMI 입력을 바꾸는 방법은?",
+      "relevantDocIds": [],
+      "category": "meeting near-miss",
+      "rationale": "meeting near-miss"
+    },
+    {
+      "id": "N09",
+      "kind": "no_match",
+      "query": "CSS grid의 모바일 breakpoint는 몇 px인가?",
+      "relevantDocIds": [],
+      "category": "accessibility/web near-miss",
+      "rationale": "accessibility/web near-miss"
+    },
+    {
+      "id": "N10",
+      "kind": "no_match",
+      "query": "올해 종합소득세 신고 마감일은 언제인가?",
+      "relevantDocIds": [],
+      "category": "absent current fact",
+      "rationale": "absent current fact"
+    },
+    {
+      "id": "N11",
+      "kind": "no_match",
+      "query": "첫 하프마라톤을 위한 12주 훈련표",
+      "relevantDocIds": [],
+      "category": "unrelated plan",
+      "rationale": "unrelated plan"
+    },
+    {
+      "id": "N12",
+      "kind": "no_match",
+      "query": "피아노에서 단3화음을 만드는 음정",
+      "relevantDocIds": [],
+      "category": "unrelated reference",
+      "rationale": "unrelated reference"
+    },
+    {
+      "id": "N13",
+      "kind": "no_match",
+      "query": "자동차 타이어의 권장 공기압을 확인하는 곳",
+      "relevantDocIds": [],
+      "category": "unrelated maintenance",
+      "rationale": "unrelated maintenance"
+    },
+    {
+      "id": "N14",
+      "kind": "no_match",
+      "query": "원화를 유로로 바꾸는 오늘 환율",
+      "relevantDocIds": [],
+      "category": "absent current fact",
+      "rationale": "absent current fact"
+    },
+    {
+      "id": "N15",
+      "kind": "no_match",
+      "query": "내일 제주도의 시간별 강수 확률",
+      "relevantDocIds": [],
+      "category": "absent current fact",
+      "rationale": "absent current fact"
+    },
+    {
+      "id": "N16",
+      "kind": "no_match",
+      "query": "양자 얽힘을 벨 부등식으로 설명해 줘",
+      "relevantDocIds": [],
+      "category": "unrelated concept",
+      "rationale": "unrelated concept"
+    }
+  ]
+}
