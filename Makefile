@@ -98,9 +98,9 @@ ui-stop: ## 백그라운드로 켠 모니터링 UI(make ui-bg) 끄기
 	@bash "$(CURDIR)/scripts/ui-stop.sh"
 
 .PHONY: guide
-guide: ## 설치 전 시각적 설치 가이드 열기(무의존 — Node만 필요, 브라우저 자동 오픈, specs/040)
+guide: ## 브라우저 설치 마법사 열기(무의존 — Node만 필요, 준비물 점검·단계 실행·연결까지 안내, specs/046)
 	@command -v node >/dev/null 2>&1 || { echo "✗ Node가 필요해요 — https://nodejs.org 에서 LTS를 설치한 뒤 다시 'make guide'."; echo "  (또는 README의 '시작하기'를 따라 하세요.)"; exit 1; }
-	@node "$(CURDIR)/scripts/bootstrap-guide.mjs"
+	@node "$(CURDIR)/scripts/install-wizard.mjs"
 
 .PHONY: health
 health: ## 엔드포인트 헬스체크

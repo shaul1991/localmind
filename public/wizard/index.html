@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>localmind 설치 마법사</title>
+<!--
+  specs/046 웹 설치 위저드 화면(design.md 정본).
+  자기완결 하드 제약(design §0): 외부 리소스 0 · 모든 CSS/JS 인라인 · 아이콘=텍스트/이모지 · 프레임워크 없음.
+  강한 CSP 하에서 동작(서버가 헤더로 강제). 토큰은 034 style.css 값을 인라인 재선언(드리프트 금지).
+-->
+<style>
+:root{
+  --color-bg:#f8fafc; --color-surface:#ffffff; --color-border:#e2e8f0; --color-text:#0f172a;
+  --color-text-dim:#64748b; --color-primary:#2563eb; --color-on-primary:#ffffff;
+  --color-ok:#15803d; --color-warn:#b45309; --color-error:#b91c1c; --color-idle:#475569;
+  --color-on-state:#ffffff;
+  --space-xs:4px; --space-sm:8px; --space-md:16px; --space-lg:24px;
+  --radius-card:10px;
+  --font-body:14px/1.6 system-ui,sans-serif; --font-caption:12px/1.5 system-ui,sans-serif;
+  --font-mono:13px ui-monospace,SFMono-Regular,Menlo,monospace;
+  --font-title:600 18px/1.4 system-ui,sans-serif; --font-page-title:600 20px/1.4 system-ui,sans-serif;
+  --wizard-max-width:680px; --step-dot-size:24px;
+  --shadow-card:0 1px 3px rgba(0,0,0,0.08); --log-max-height:220px;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --color-bg:#0f172a; --color-surface:#1e293b; --color-border:#334155; --color-text:#e2e8f0;
+    --color-text-dim:#94a3b8; --color-primary:#3b82f6; --color-on-primary:#0f172a;
+    --color-ok:#22c55e; --color-warn:#f59e0b; --color-error:#ef4444; --color-idle:#94a3b8;
+    --color-on-state:#0f172a; --shadow-card:0 1px 3px rgba(0,0,0,0.3);
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--color-bg);color:var(--color-text);font:var(--font-body)}
+.wrap{max-width:var(--wizard-max-width);margin:0 auto;padding:var(--space-lg) var(--space-md)}
+h1{font:var(--font-page-title);margin:0 0 var(--space-md);display:flex;align-items:center;gap:var(--space-sm)}
+.dim{color:var(--color-text-dim);font:var(--font-caption)}
+
+/* StepProgress */
+.steps{display:flex;flex-wrap:wrap;gap:var(--space-sm);align-items:center;margin-bottom:var(--space-lg);
+  padding-bottom:var(--space-md);border-bottom:1px solid var(--color-border)}
+.steps .st{display:flex;align-items:center;gap:6px;font:var(--font-caption);color:var(--color-idle)}
+.steps .dot{width:var(--step-dot-size);height:var(--step-dot-size);border-radius:999px;display:inline-flex;
+  align-items:center;justify-content:center;font:600 12px system-ui;border:1px solid var(--color-border);
+  background:var(--color-surface);color:var(--color-idle)}
+.steps .st.current .dot{background:var(--color-primary);color:var(--color-on-primary);border-color:var(--color-primary)}
+.steps .st.current{color:var(--color-text);font-weight:600}
+.steps .st.done .dot{background:var(--color-ok);color:var(--color-on-state);border-color:var(--color-ok)}
+.steps .st.failed .dot{background:var(--color-error);color:var(--color-on-state);border-color:var(--color-error)}
+.steps .sep{color:var(--color-border)}
+.steps-compact{display:none;font:var(--font-caption);color:var(--color-text-dim)}
+
+/* StepCard */
+.card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-card);
+  box-shadow:var(--shadow-card);padding:var(--space-lg)}
+.card h2{font:var(--font-title);margin:0 0 var(--space-xs)}
+.term{color:var(--color-text-dim);font:var(--font-caption);margin:0 0 var(--space-md);display:flex;gap:6px}
+.gate{border:1px solid var(--color-warn);border-radius:var(--radius-card);padding:var(--space-md);
+  margin:var(--space-md) 0;background:color-mix(in srgb,var(--color-warn) 8%,var(--color-surface))}
+.row{display:flex;flex-wrap:wrap;gap:var(--space-sm);align-items:center;justify-content:space-between}
+
+/* pill (상태 5색 — 색+아이콘+텍스트 3중) */
+.pill{display:inline-flex;align-items:center;gap:4px;height:20px;padding:2px 8px;border-radius:999px;
+  font:var(--font-caption);font-weight:600;color:var(--color-on-state)}
+.pill.idle{background:var(--color-idle)} .pill.loading{background:var(--color-primary)}
+.pill.ok{background:var(--color-ok)} .pill.warn{background:var(--color-warn)} .pill.error{background:var(--color-error)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{display:inline-block;animation:spin 1s linear infinite}
+@media (prefers-reduced-motion: reduce){.spin{animation:none}}
+
+/* PrereqBadge list */
+.prq{padding:10px 0;border-bottom:1px solid var(--color-border)}
+.prq:last-child{border-bottom:0}
+.prq .row b{margin-left:2px}
+.prq .act{font:var(--font-caption)}
+.prq a{color:var(--color-primary)}
+
+/* buttons */
+button{font:600 14px system-ui;border-radius:8px;cursor:pointer;border:1px solid var(--color-border);
+  background:var(--color-surface);color:var(--color-text);padding:8px 14px}
+button.primary{background:var(--color-primary);color:var(--color-on-primary);border-color:var(--color-primary)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.link{border:0;background:none;color:var(--color-primary);padding:4px 6px;font-weight:400}
+:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px}
+
+/* ProgressStream */
+.stream .summary{display:flex;align-items:center;gap:var(--space-sm);margin:var(--space-sm) 0}
+.stream pre{font:var(--font-mono);background:var(--color-bg);border:1px solid var(--color-border);
+  border-radius:8px;padding:var(--space-sm);max-height:var(--log-max-height);overflow:auto;
+  white-space:pre-wrap;word-break:break-word;margin:var(--space-sm) 0 0}
+details summary{cursor:pointer;color:var(--color-primary);font:var(--font-caption)}
+
+/* SecretInput */
+label.fld{display:block;margin:var(--space-md) 0}
+label.fld .lbl{font-weight:600;display:block;margin-bottom:var(--space-xs)}
+input[type=password]{width:100%;padding:9px 10px;border:1px solid var(--color-border);border-radius:8px;
+  background:var(--color-bg);color:var(--color-text);font:14px system-ui}
+input:invalid{border-color:var(--color-error)}
+.inline-error{color:var(--color-error);font:var(--font-caption);margin-top:var(--space-xs)}
+
+/* nav */
+.nav{display:flex;justify-content:space-between;margin-top:var(--space-lg);gap:var(--space-sm)}
+.hide{display:none}
+.cmd{font:var(--font-mono);background:var(--color-bg);padding:2px 6px;border-radius:6px}
+@media (max-width:480px){
+  .steps{display:none} .steps-compact{display:block;margin-bottom:var(--space-md)}
+  .card{padding:var(--space-md)} .nav button{flex:1}
+}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <h1>🧠 localmind 설치 마법사</h1>
+
+  <nav class="steps" id="steps" aria-label="설치 단계"></nav>
+  <div class="steps-compact" id="stepsCompact" aria-hidden="true"></div>
+
+  <section class="card" id="card" aria-live="polite">
+    <!-- 스텝 본문은 JS가 렌더 -->
+  </section>
+
+  <div class="nav">
+    <button id="prev" class="" type="button">← 이전</button>
+    <button id="next" class="primary" type="button">다음 →</button>
+  </div>
+  <p class="dim" style="margin-top:var(--space-lg)">이 창은 로컬(127.0.0.1)에서만 열립니다. 설치가 끝나면 닫아도 돼요.</p>
+</main>
+
+<script>
+"use strict";
+(function(){
+  // ── 상태색 매핑(design §3.2) — 색+아이콘+텍스트 3중 ────────────────────────
+  var ICON={idle:"○",loading:"◐",ok:"✓",warn:"!",error:"✗"};
+  function pill(state,text){
+    var ic=ICON[state]||"○";
+    var sp=state==="loading"?'<span class="spin">'+ic+'</span>':ic;
+    return '<span class="pill '+state+'">'+sp+' '+esc(text)+'</span>';
+  }
+  function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+
+  // ── 콘텐츠 정본(design §7) ────────────────────────────────────────────────
+  var TERMS={
+    docker:"Docker = 여러 프로그램을 서로 간섭 없이 돌리는 '컨테이너' 도구. localmind 두뇌가 이 위에서 돌아요.",
+    stack:"스택 = 메모리 저장소 + AI 엔진을 함께 켜는 것.",
+    mcp:"MCP = Claude Code가 localmind 도구(기억·노트)를 쓸 수 있게 잇는 연결 방식.",
+    token:"토큰/키 = AI 서비스를 쓰게 해주는 비밀 열쇠. 남에게 보이면 안 돼요(그래서 화면에 안 띄워요).",
+    embed:"임베딩 = 글의 '의미'를 숫자로 바꿔 비슷한 내용을 찾게 해주는 것(의미 검색)."
+  };
+  var STEPS=[
+    {key:"welcome",label:"환영",title:"환영합니다 — 내 컴퓨터 안에 '1인 비서실'을 차립니다"},
+    {key:"prereq", label:"준비물",title:"준비물 점검 — 필요한 도구가 갖춰졌는지 확인해요"},
+    {key:"stack",  label:"스택 기동",title:"스택 기동 — localmind 두뇌를 켭니다"},
+    {key:"backend",label:"AI 연결",title:"AI 연결(선택) — 쓰고 싶은 AI 서비스의 열쇠를 등록해요"},
+    {key:"mcp",    label:"연결",title:"Claude Code 연결 — 도구를 쓸 수 있게 이어요"},
+    {key:"done",   label:"완료",title:"다 됐어요 — 이제 이렇게 쓰세요"}
+  ];
+
+  // status[i]: "idle" | "done" | "failed"  — 스텝별 완료 상태(다음 활성 판정)
+  var idx=0;
+  var status=STEPS.map(function(){return "idle";});
+  var card=document.getElementById("card");
+  var elSteps=document.getElementById("steps");
+  var elCompact=document.getElementById("stepsCompact");
+  var btnPrev=document.getElementById("prev");
+  var btnNext=document.getElementById("next");
+  var busy=false; // 실행 중이면 이동 잠금(design 공통 전이 규칙)
+
+  function renderSteps(){
+    elSteps.innerHTML=STEPS.map(function(s,i){
+      var cls=i===idx?"current":(status[i]==="done"?"done":(status[i]==="failed"?"failed":""));
+      var mark=status[i]==="done"?"✓":(status[i]==="failed"?"✗":String(i+1));
+      var sep=i<STEPS.length-1?'<span class="sep">─</span>':"";
+      var aria=(i+1)+"단계 "+s.label+(cls==="current"?" — 진행 중":cls==="done"?" — 완료":cls==="failed"?" — 실패":" — 대기");
+      return '<span class="st '+cls+'"'+(i===idx?' aria-current="step"':'')+' aria-label="'+esc(aria)+'">'+
+             '<span class="dot">'+mark+'</span>'+esc(s.label)+'</span>'+sep;
+    }).join("");
+    elCompact.textContent=(idx+1)+" / "+STEPS.length+" · "+STEPS[idx].label;
+  }
+  function setNav(){
+    btnPrev.disabled=busy||idx===0;
+    var canNext=(status[idx]==="done")||STEPS[idx].key==="welcome";
+    btnNext.disabled=busy|| !canNext || idx===STEPS.length-1;
+    btnNext.classList.toggle("hide",idx===STEPS.length-1);
+  }
+  function markDone(){status[idx]="done";renderSteps();setNav();}
+  function markFailed(){status[idx]="failed";renderSteps();setNav();}
+
+  function go(n){
+    if(busy)return;
+    idx=Math.max(0,Math.min(STEPS.length-1,n));
+    render();
+    var h=card.querySelector("h2"); if(h){h.setAttribute("tabindex","-1");h.focus();}
+  }
+  btnPrev.addEventListener("click",function(){go(idx-1);});
+  btnNext.addEventListener("click",function(){go(idx+1);});
+
+  // ── 공통: 스트리밍 실행(fetch + getReader, design §0/plan 단계 0b) ──────────
+  // 반환: Promise<{ok:boolean, code:number|null}>. onChunk(rawText)로 로그 누적.
+  function runStep(id,onChunk){
+    return fetch("/api/run",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:id})})
+      .then(function(res){
+        if(res.status!==200){return res.json().then(function(b){return {ok:false,code:null,rejected:b&&b.rejected};});}
+        var reader=res.body.getReader(); var dec=new TextDecoder(); var acc=""; var result={ok:false,code:null};
+        var SENT="\u0000__STATUS__:";
+        function pump(){
+          return reader.read().then(function(r){
+            if(r.done)return result;
+            var text=dec.decode(r.value,{stream:true}); acc+=text;
+            // 종료 센티넬(널바이트 프리픽스 — 로그 본문과 충돌하지 않음). 마지막 등장 기준.
+            var mi=acc.indexOf(SENT);
+            if(mi>=0){
+              var line=acc.slice(mi+SENT.length); var nl=line.indexOf("\n");
+              if(nl>=0){try{result=JSON.parse(line.slice(0,nl));}catch(e){}}
+              onChunk(acc.slice(0,mi));
+            }else{onChunk(acc);}
+            return pump();
+          });
+        }
+        return pump();
+      });
+  }
+
+  // ── ProgressStream UI 조립 ────────────────────────────────────────────────
+  // summary 파서: up.sh 헬스 폴링 '준비 중... N/120 (채팅=.. 메모리=.. AI엔진=..)' / 모델 다운로드 감지
+  function summarize(log){
+    var lines=log.split("\n").filter(function(l){return l.trim();});
+    var last=lines[lines.length-1]||"";
+    var m=/준비 중[.\s]*([0-9]+)\/120/.exec(log.replace(/\r/g," "));
+    if(/pull|download|내려받|모델/i.test(last)) return "AI 모델 받는 중… (처음 한 번만 오래 걸려요)";
+    if(m) return "준비 중… "+m[1]+"/120";
+    return last.slice(0,80)||"실행 중…";
+  }
+
+  function renderStreamRun(opts){
+    // opts: {id, gateWarn, gateBtn, termKey, onDone}
+    var runId=opts.id;
+    card.innerHTML=stepHead(opts.termKey)+
+      '<div id="gate" class="gate"><div>⚠ '+esc(opts.gateWarn)+'</div>'+
+      '<div class="row" style="margin-top:8px"><span></span><button id="runBtn" class="primary" type="button">'+esc(opts.gateBtn)+'</button></div></div>'+
+      '<div id="stream" class="stream hide"><div class="summary" id="sumLine" aria-live="polite"></div>'+
+      '<details><summary>자세한 로그 보기</summary><pre id="log" aria-label="실행 로그"></pre></details></div>';
+    var runBtn=document.getElementById("runBtn");
+    var stream=document.getElementById("stream");
+    var sum=document.getElementById("sumLine");
+    var logEl=document.getElementById("log");
+    var lastLen=0, hb=null;
+    runBtn.addEventListener("click",function(){
+      busy=true; runBtn.disabled=true; setNav();
+      stream.classList.remove("hide");
+      sum.innerHTML=pill("loading","켜는 중…");
+      // 무음 방지 heartbeat(20s 무갱신)
+      hb=setInterval(function(){
+        if(logEl.textContent.length===lastLen){
+          sum.innerHTML=pill("loading","아직 받는 중이에요 — 멈춘 게 아니에요");
+        }
+        lastLen=logEl.textContent.length;
+      },20000);
+      runStep(runId,function(acc){
+        logEl.textContent=acc; logEl.scrollTop=logEl.scrollHeight;
+        sum.innerHTML=pill("loading",summarize(acc));
+      }).then(function(r){
+        clearInterval(hb); busy=false;
+        if(r.ok){
+          sum.innerHTML=pill("ok",opts.okText||"완료");
+          markDone();
+        }else{
+          sum.innerHTML=pill("error","실패 — "+(r.rejected?"허용되지 않은 단계예요":"아래 로그에서 원인을 확인해 주세요"));
+          runBtn.disabled=false; runBtn.textContent="다시 시도";
+          var d=card.querySelector("details"); if(d)d.open=true;
+          markFailed();
+        }
+        setNav();
+      }).catch(function(){
+        clearInterval(hb); busy=false;
+        sum.innerHTML=pill("error","실패 — 연결이 끊겼어요. [다시 시도]를 눌러주세요.");
+        runBtn.disabled=false; runBtn.textContent="다시 시도"; markFailed(); setNav();
+      });
+    });
+  }
+
+  function stepHead(termKey){
+    var s=STEPS[idx];
+    var term=termKey?('<p class="term">ⓘ <span>'+esc(TERMS[termKey])+'</span></p>'):"";
+    return '<h2>'+esc(s.title)+'</h2>'+term;
+  }
+
+  // ── 스텝별 렌더 ───────────────────────────────────────────────────────────
+  function render(){
+    renderSteps(); setNav();
+    var key=STEPS[idx].key;
+    if(key==="welcome") return renderWelcome();
+    if(key==="prereq")  return renderPrereq();
+    if(key==="stack")   return renderStreamRun({id:"up",termKey:"stack",
+      gateWarn:"이 단계는 Docker로 여러 프로그램을 켭니다. 처음엔 AI 모델 내려받기로 5~15분 걸릴 수 있어요(정상). 실패해도 기존 설정은 손상되지 않아요.",
+      gateBtn:"지금 켜기 ▶", okText:"완료 — 채팅·메모리·AI엔진 준비됨"});
+    if(key==="backend") return renderBackend();
+    if(key==="mcp")     return renderMcp();
+    if(key==="done")    return renderDone();
+  }
+
+  function renderWelcome(){
+    card.innerHTML=stepHead()+
+      '<p>localmind는 <b>내 컴퓨터 안에서만</b> 도는 개인 비서예요. 아래 단계를 차례로 따라가면,'+
+      ' 파일을 직접 고치지 않고도 설치가 끝나요.</p>'+
+      '<ul class="dim"><li>준비물을 확인하고</li><li>두뇌(스택)를 켜고</li><li>Claude Code에 연결합니다.</li></ul>'+
+      '<p class="dim">각 단계는 <b>먼저 물어본 뒤</b> 실행해요. 마음대로 실행되지 않으니 안심하세요.</p>';
+    status[idx]="done"; setNav();
+  }
+
+  function renderPrereq(){
+    card.innerHTML=stepHead("docker")+
+      '<div class="row"><span class="dim">필요한 도구가 갖춰졌는지 확인해요.</span>'+
+      '<button id="recheck" class="link" type="button">↻ 다시 확인</button></div><div id="prqList"></div>';
+    document.getElementById("recheck").addEventListener("click",loadChecks);
+    loadChecks();
+  }
+  function badge(state,text){return pill(state,text);}
+  function loadChecks(){
+    var list=document.getElementById("prqList");
+    list.innerHTML='<div class="prq">'+pill("loading","확인 중…")+' 준비물을 확인하고 있어요</div>';
+    fetch("/api/checks").then(function(r){return r.json();}).then(function(d){
+      var items=[];
+      // Docker: 설치/실행 구분(핵심)
+      if(d.dockerInstalled==="ok"&&d.dockerRunning==="ok") items.push(prq("Docker","ok","실행 중",""));
+      else if(d.dockerInstalled==="ok") items.push(prq("Docker","warn","설치됨 · 앱 실행 필요",
+        '<a href="#" id="openDocker">Docker Desktop을 켠 뒤 [↻ 다시 확인]</a>'));
+      else items.push(prq("Docker","error","없음",'<a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener">받기</a> 후 설치·실행'));
+      items.push(prq("Node.js 20+",d.node==="ok"?"ok":"warn",d.node==="ok"?"됨":"없음",
+        d.node==="ok"?"":'<a href="https://nodejs.org" target="_blank" rel="noopener">nodejs.org에서 LTS 설치</a>'));
+      items.push(prq("임베딩 엔진(ollama·선택)",d.ollama==="ok"?"ok":"idle",d.ollama==="ok"?"됨":"선택 · 없음","없어도 진행돼요"));
+      list.innerHTML=items.join("");
+      // 필수(Docker 실행중 + Node) 충족 시 다음 활성
+      var okReq=(d.dockerInstalled==="ok"&&d.dockerRunning==="ok"&&d.node==="ok");
+      if(okReq){markDone();}
+      else{status[idx]="idle";setNav();
+        var hint=document.createElement("p");hint.className="inline-error";
+        hint.textContent="필수 준비물(Docker 실행 중 · Node)을 먼저 갖춰주세요.";list.appendChild(hint);}
+    }).catch(function(){
+      list.innerHTML='<div class="prq">'+pill("idle","확인 불가")+' 잠시 후 [↻ 다시 확인]을 눌러주세요.</div>';
+    });
+  }
+  function prq(name,state,text,act){
+    return '<div class="prq"><div class="row"><span><b>'+esc(name)+'</b></span>'+badge(state,text)+'</div>'+
+      (act?'<div class="act dim">'+act+'</div>':"")+'</div>';
+  }
+
+  function renderBackend(){
+    card.innerHTML=stepHead("token")+
+      '<p class="dim">쓰고 싶은 AI 서비스의 열쇠를 등록해요. <b>선택 단계</b>라 건너뛰어도 됩니다.</p>'+
+      '<p class="dim">입력한 열쇠는 이 컴퓨터의 설정 파일(.env)에만 저장되고, <b>화면·인터넷으로 다시 나가지 않아요.</b></p>'+
+      // claude: 브라우저 발급 안내 + 붙여넣기(비TTY 위저드는 직접 발급 불가 — plan 단계 0a)
+      '<label class="fld"><span class="lbl">Claude 구독 토큰 <span class="dim">(claude setup-token으로 발급)</span></span>'+
+      '<p class="dim">터미널에서 <span class="cmd">claude setup-token</span>을 실행하면 브라우저로 발급돼요. 나온 토큰(sk-ant-…)을 아래에 붙여넣으세요.</p>'+
+      '<input id="sec-claude" type="password" autocomplete="off" placeholder="sk-ant-…" pattern="sk-ant-.+"></label>'+
+      '<div class="row"><span id="st-claude">'+pill("idle","설정 안 됨")+'</span>'+
+      '<span><button class="link" id="skip-claude" type="button">건너뛰기</button>'+
+      '<button id="save-claude" type="button">저장</button></span></div>'+
+      '<label class="fld"><span class="lbl">Gemini API 키 <span class="dim">(선택)</span></span>'+
+      '<input id="sec-gemini" type="password" autocomplete="off" placeholder="AIza…"></label>'+
+      '<div class="row"><span id="st-gemini">'+pill("idle","설정 안 됨")+'</span>'+
+      '<span><button class="link" id="skip-gemini" type="button">건너뛰기</button>'+
+      '<button id="save-gemini" type="button">저장</button></span></div>';
+    // 선택 단계 → 처음부터 다음 허용
+    status[idx]="done"; setNav();
+    wireSecret("claude"); wireSecret("gemini");
+  }
+  function wireSecret(key){
+    var input=document.getElementById("sec-"+key);
+    var st=document.getElementById("st-"+key);
+    document.getElementById("skip-"+key).addEventListener("click",function(){
+      st.innerHTML=pill("warn","건너뜀");
+    });
+    document.getElementById("save-"+key).addEventListener("click",function(){
+      var val=input.value||"";
+      if(!val){st.innerHTML=pill("warn","값을 입력하거나 건너뛰세요");return;}
+      st.innerHTML=pill("loading","저장 중…");
+      fetch("/api/secret",{method:"POST",headers:{"content-type":"application/json"},
+        body:JSON.stringify({key:key,value:val})}).then(function(r){return r.json();}).then(function(d){
+        if(d&&d.set){input.value="";st.innerHTML=pill("ok","설정됨"+(d.hint?" ("+esc(d.hint)+")":""));}
+        else{st.innerHTML=pill("error","형식이 올바르지 않아요 — 다시 확인해 주세요");}
+      }).catch(function(){st.innerHTML=pill("error","저장에 실패했어요 — 다시 시도해 주세요");});
+    });
+  }
+
+  function renderMcp(){
+    card.innerHTML=stepHead("mcp")+
+      '<div id="gate" class="gate"><div>Claude Code에 localmind를 연결합니다.</div>'+
+      '<div class="row" style="margin-top:8px"><span></span><button id="runBtn" class="primary" type="button">연결하기 ▶</button></div></div>'+
+      '<div id="stream" class="stream hide"><div class="summary" id="sumLine" aria-live="polite"></div>'+
+      '<details><summary>자세한 로그 보기</summary><pre id="log"></pre></details></div>'+
+      '<div id="poll" class="hide"><p>Claude Code를 <b>완전히 종료</b>했다 다시 여세요 — 새로 이은 도구는 다시 켠 뒤에 인식돼요.</p>'+
+      '<div class="row"><span id="pollState">'+pill("warn","아직 — 다시 켜주세요")+'</span>'+
+      '<button id="pollNow" type="button">지금 확인</button></div></div>';
+    var runBtn=document.getElementById("runBtn");
+    var stream=document.getElementById("stream");
+    var sum=document.getElementById("sumLine");
+    var logEl=document.getElementById("log");
+    var poll=document.getElementById("poll");
+    runBtn.addEventListener("click",function(){
+      busy=true;runBtn.disabled=true;setNav();stream.classList.remove("hide");
+      sum.innerHTML=pill("loading","등록 중…");
+      runStep("mcp-install",function(acc){logEl.textContent=acc;logEl.scrollTop=logEl.scrollHeight;
+        sum.innerHTML=pill("loading","등록 중…");}).then(function(r){
+        busy=false;setNav();
+        if(r.ok){sum.innerHTML=pill("ok","등록 실행 완료");poll.classList.remove("hide");startPoll();}
+        else{sum.innerHTML=pill("error","등록 실패 — 기존 설정은 그대로예요");runBtn.disabled=false;runBtn.textContent="다시 시도";
+          var d=card.querySelector("details");if(d)d.open=true;markFailed();}
+      }).catch(function(){busy=false;sum.innerHTML=pill("error","실패 — 다시 시도해 주세요");runBtn.disabled=false;setNav();});
+    });
+    var pollState=null,tries=0,timer=null;
+    function checkOnce(){
+      fetch("/api/mcp-status").then(function(r){return r.json();}).then(function(d){
+        if(d&&d.registered){
+          clearInterval(timer);
+          document.getElementById("pollState").innerHTML=pill("ok","등록됨 — 이제 Claude Code에서 localmind를 써요");
+          markDone();
+        }
+      }).catch(function(){});
+    }
+    function startPoll(){
+      document.getElementById("pollNow").addEventListener("click",checkOnce);
+      timer=setInterval(function(){tries++;checkOnce();
+        if(tries>=20){clearInterval(timer);
+          document.getElementById("pollState").innerHTML=pill("warn","아직이에요 — Claude Code를 다시 켠 뒤 [지금 확인]을 눌러주세요");}
+      },3000);
+      checkOnce();
+    }
+  }
+
+  function renderDone(){
+    var partial=status.some(function(s,i){return STEPS[i].key!=="done"&&s!=="done";});
+    // pill은 실제 단계 상태를 반영(design §4.10). 스택=인덱스2, MCP=인덱스4.
+    var stackS=status[2]==="done"?"ok":status[2]==="failed"?"error":"warn";
+    var mcpS=status[4]==="done"?"ok":status[4]==="failed"?"error":"warn";
+    card.innerHTML=stepHead()+
+      '<p>🎉 설치를 마쳤어요! 지금까지 상태:</p>'+
+      '<div class="row" style="justify-content:flex-start;gap:8px">'+pill(stackS,"채팅")+pill(stackS,"메모리")+pill(mcpS,"MCP")+'</div>'+
+      '<p style="margin-top:16px">이제 Claude Code 새 대화에서 <span class="cmd">localmind whoami 실행해줘</span> 라고 해보세요.</p>'+
+      (partial?'<p class="dim">건너뛴 단계가 있어요 — 나중에 <span class="cmd">make setup</span>으로 마저 설정할 수 있어요.</p>':"")+
+      '<p class="dim">상태 확인: <span class="cmd">make health</span></p>';
+    status[idx]="done"; setNav();
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

@@ -46,11 +46,19 @@ fi
 # ── 2/3 : 시작 ──────────────────────────────────────────────────
 say "$(b '[2/3] 엔진 시작')"
 say "  → 컨테이너를 빌드·시작하는 중... (처음엔 몇 분 걸려요. 기다려 주세요.)"
-DC up -d --build >/dev/null 2>&1 || {
+# LOCALMIND_STREAM=1(설치 마법사, specs/046): 빌드/pull 로그를 소각하지 않고 그대로 흘려 진행을 보이게 한다.
+# 없으면 기존처럼 조용히(소각). set -e에서 실패를 잡으려 '|| rc=$?' 패턴 사용.
+rc=0
+if [ -n "${LOCALMIND_STREAM:-}" ]; then
+  DC up -d --build || rc=$?
+else
+  DC up -d --build >/dev/null 2>&1 || rc=$?
+fi
+if [ "$rc" -ne 0 ]; then
   err "시작 실패 — '$(b 'make logs')'로 원인을 확인해 주세요."
   say "  (빌드 자체가 실패했다면 로그에 안 남아요 — '$(b 'docker compose up -d --build')'를 직접 실행하면 에러가 보여요.)"
   exit 1
-}
+fi
 ok "컨테이너 시작됨"
 
 # ── 3/3 : 준비 대기 ─────────────────────────────────────────────
@@ -64,10 +72,16 @@ for i in $(seq 1 120); do
   m="$(probe http://127.0.0.1:8767/docs)"
   g="$(probe http://127.0.0.1:4000/health/liveliness)"
   if [ "$c" = "200" ] && [ "$m" = "200" ] && [ "$g" = "200" ]; then ready=1; break; fi
-  printf '\r  준비 중... %s/120 (채팅=%s 메모리=%s AI엔진=%s)   ' "$i" "$c" "$m" "$g"
+  # 스트림 모드(설치 마법사)는 개행으로 라인을 즉시 흘려보내 브라우저가 진행을 파싱하게 한다.
+  # 터미널 모드는 기존처럼 \r로 한 줄을 갱신(깔끔한 표시).
+  if [ -n "${LOCALMIND_STREAM:-}" ]; then
+    printf '준비 중... %s/120 (채팅=%s 메모리=%s AI엔진=%s)\n' "$i" "$c" "$m" "$g"
+  else
+    printf '\r  준비 중... %s/120 (채팅=%s 메모리=%s AI엔진=%s)   ' "$i" "$c" "$m" "$g"
+  fi
   sleep 5
 done
-printf '\r%*s\r' 70 ''
+[ -z "${LOCALMIND_STREAM:-}" ] && printf '\r%*s\r' 70 ''
 if [ "$ready" != "1" ]; then
   warn "엔진이 아직 준비되지 않았어요(처음 모델 내려받기가 더 걸릴 수 있어요)."
   say "  안 뜬 포트 — 채팅 :8787=$c · 메모리 :8767=$m · AI엔진 :4000=$g"
