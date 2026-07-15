@@ -94,8 +94,8 @@
 
 **Purpose**: cwd를 대상 경로로, cwd→project 매칭으로 overlay 선택. `→ F-10 kebab 정규화(specs/029)`.
 
-- [x] **T050** Implement cwd→project match + repo in-place deploy path in **`src/rules/deploy.ts`** (또는 `registry.ts` 헬퍼): kebab-case 정규화로 cwd 이름 ↔ overlay project 매칭(F-10). 모호/실패 시 추측 금지 → 호출자에 확인 요청 신호(specs/029 규칙). overlay 없는 repo는 base만 배포. `→ FR-5, D5`. depends on T042. (I-5 — cwd 사용, 절대경로 산출물 금지)
-- [x] **T051** RED integration test in **`src/rules/deploy.test.ts`**: 규칙 파일 없는 임시 repo에서 cwd 배포 → `<repo>/AGENTS.md`(base+overlay 인라인 managed) + `<repo>/CLAUDE.md`(`@AGENTS.md` 스텁) 생성. 매칭 모호 케이스 → 추측 배포 안 함. **RED 기대**: in-place 배포 미구현 → 산출물 미생성. → **AC-2**. 검증: `node --import tsx/esm --test src/rules/deploy.test.ts`.
+- [x] **T050** Implement cwd→project match + repo in-place deploy path in **`src/rules/deploy.ts`** (또는 `registry.ts` 헬퍼): kebab-case 정규화로 cwd 이름 ↔ overlay project 매칭(F-10). 모호/실패 시 추측 금지 → 호출자에 확인 요청 신호(specs/029 규칙). **repo 표면은 overlay-only**(base는 글로벌이 주입, D8) — overlay 없는 repo는 repo 파일을 만들지 않는다. `→ FR-5, D5, D8`. depends on T042. (I-5 — cwd 사용, 절대경로 산출물 금지)
+- [x] **T051** RED integration test in **`src/rules/deploy.test.ts`**: overlay 있는 임시 repo에서 cwd 배포 → `<repo>/AGENTS.md`(**overlay-only** 인라인 managed, base 제외) + `<repo>/CLAUDE.md`(`@AGENTS.md` 스텁) 생성. overlay 없는 repo → repo 파일 없음. 매칭 모호 케이스 → 추측 배포 안 함. **RED 기대**: in-place 배포 미구현 → 산출물 미생성. → **AC-2**. 검증: `node --import tsx/esm --test src/rules/deploy.test.ts`.
 
 ---
 

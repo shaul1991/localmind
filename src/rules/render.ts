@@ -47,7 +47,7 @@ export function renderCodexGlobalSection(cs: ComposedRuleset): string {
   return wrapSection(composedBody(cs));
 }
 
-/** `<repo>/AGENTS.md`에 넣을 managed 섹션 — base+overlay 합성 본문 인라인. */
+/** `<repo>/AGENTS.md`에 넣을 managed 섹션 — 프로젝트 overlay 인라인(base는 글로벌 표면이 주입). */
 export function renderRepoAgentsSection(cs: ComposedRuleset): string {
   return wrapSection(composedBody(cs));
 }

@@ -242,10 +242,13 @@ export function deployRules(opts: RulesDeployOptions = {}): RulesDeployResult {
       skippedTargets.push({ target: "repo", reason: `${repoDir} 폴더가 없습니다` });
     } else {
       const { project: matched, ambiguous } = matchProject(path.basename(repoDir), registry.overlays.keys());
-      if (ambiguous.length > 0) warnings.push(`repo "${path.basename(repoDir)}"가 여러 overlay와 모호하게 매칭됩니다(${ambiguous.join(", ")}) — overlay 없이 base만 배포합니다`);
+      if (ambiguous.length > 0) warnings.push(`repo "${path.basename(repoDir)}"가 여러 overlay와 모호하게 매칭됩니다(${ambiguous.join(", ")}) — repo 표면 배포를 건너뜁니다(base는 글로벌 표면이 주입)`);
       project = matched;
       const overlay = matched ? registry.overlays.get(matched) ?? [] : [];
-      const repoCompose = compose(registry.base, overlay);
+      // repo 표면은 **overlay-only**. base는 글로벌 표면(Claude @import·Codex ~/.codex/AGENTS.md)이
+      // 이미 주입하므로, repo에 base를 다시 인라인하면 Codex가 base를 이중 계상해 32KiB를 압박한다
+      // (T090 확정). overlay 없는 repo는 repo 파일을 만들지 않는다(base는 글로벌이 책임).
+      const repoCompose = compose([], overlay);
       const agentsMd = path.join(repoDir, "AGENTS.md");
       const claudeMd = path.join(repoDir, "CLAUDE.md");
       if (repoCompose.docs.length === 0) {

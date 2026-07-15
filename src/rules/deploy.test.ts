@@ -53,8 +53,8 @@ describe("AC-1 글로벌 양표면", () => {
   });
 });
 
-describe("AC-2 규칙 없던 repo", () => {
-  it("repo AGENTS.md(base+overlay 인라인) + CLAUDE.md(@AGENTS.md 스텁) 생성", () => {
+describe("AC-2 규칙 없던 repo (overlay-only)", () => {
+  it("repo AGENTS.md(overlay 인라인, base 제외) + CLAUDE.md(@AGENTS.md 스텁) 생성", () => {
     writeRule("overlays/pkpk/deploy.md", "main 브랜치 push 금지.");
     const repoDir = path.join(root, "pkpk");
     fs.mkdirSync(repoDir);
@@ -62,18 +62,20 @@ describe("AC-2 규칙 없던 repo", () => {
     assert.equal(r.project, "pkpk");
     const agents = read(path.join(repoDir, "AGENTS.md"));
     const claude = read(path.join(repoDir, "CLAUDE.md"));
-    assert.match(agents, /구현 전 spec 을 먼저 쓴다\./); // base
     assert.match(agents, /main 브랜치 push 금지\./); // overlay
+    // base는 글로벌 표면이 주입 — repo에 중복 인라인하지 않는다(Codex 32KiB 이중계상 방지)
+    assert.doesNotMatch(agents, /구현 전 spec 을 먼저 쓴다\./);
     assert.match(claude, /@AGENTS\.md/);
     assert.doesNotMatch(claude, /push 금지/); // 스텁에 본문 중복 없음
   });
 
-  it("overlay 없는 repo 는 base 만 배포(추측 없음)", () => {
+  it("overlay 없는 repo 는 repo 파일을 만들지 않는다(base는 글로벌)", () => {
     const repoDir = path.join(root, "unknown-proj");
     fs.mkdirSync(repoDir);
     const r = deployRules(opts({ repoDir }));
     assert.equal(r.project, null);
-    assert.match(read(path.join(repoDir, "AGENTS.md")), /구현 전 spec/);
+    assert.ok(!fs.existsSync(path.join(repoDir, "AGENTS.md")), "overlay 없는 repo에 파일 생성됨");
+    assert.ok(!fs.existsSync(path.join(repoDir, "CLAUDE.md")));
   });
 });
 
@@ -187,19 +189,19 @@ describe("matchProject (self-review 경미 2·3)", () => {
   });
 });
 
-describe("overlay-only 제거 (AC-5 보강)", () => {
-  it("overlay 파일만 지우면 base는 유지되고 overlay 내용만 섹션에서 사라진다", () => {
+describe("overlay 제거 시 repo 표면 prune (AC-5 보강)", () => {
+  it("overlay 파일을 지우면 repo 표면(overlay-only)이 정리된다", () => {
     writeRule("overlays/pkpk/deploy.md", "main push 금지");
     const repoDir = path.join(root, "pkpk");
     fs.mkdirSync(repoDir);
     deployRules(opts({ repoDir }));
-    assert.match(read(path.join(repoDir, "AGENTS.md")), /main push 금지/);
-    // overlay만 제거(base는 그대로)
+    const agentsMd = path.join(repoDir, "AGENTS.md");
+    assert.match(read(agentsMd), /main push 금지/);
+    // overlay 제거 → repo 표면은 overlay-only라 빌 것 → managed 섹션 제거(파일도 삭제)
     fs.rmSync(path.join(rulesRoot, "overlays/pkpk/deploy.md"));
     deployRules(opts({ repoDir }));
-    const agents = read(path.join(repoDir, "AGENTS.md"));
-    assert.match(agents, /구현 전 spec/); // base 유지
-    assert.doesNotMatch(agents, /main push 금지/); // overlay 내용 사라짐
+    assert.ok(!fs.existsSync(agentsMd), "overlay 제거 후에도 repo AGENTS.md 잔류");
+    assert.ok(!fs.existsSync(path.join(repoDir, "CLAUDE.md")));
   });
 });
 
@@ -224,6 +226,7 @@ describe("AC-8 대상 부재 게이트 (I-4)", () => {
     fs.rmSync(codexHome, { recursive: true });
     const repoDir = path.join(root, "some-repo");
     fs.mkdirSync(repoDir);
+    writeRule("overlays/some-repo/rules.md", "프로젝트 규칙"); // repo 표면 산출을 위한 overlay
     const r = deployRules(opts({ repoDir }));
     assert.ok(!fs.existsSync(codexHome), "부재 대상 폴더를 새로 만들었다");
     assert.ok(r.skippedTargets.some((s) => s.target === "codex-global"));

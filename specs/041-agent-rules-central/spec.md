@@ -43,9 +43,12 @@ localmind에 **규칙 정본(base + 프로젝트별 overlay)** 을 두고, **배
   **인라인**으로 기록한다. 근거 전제 — "Codex는 `@import`·`CLAUDE.md` 미지원" — 는 **T090 라이브
   재검증(T1) 하에서 확정**한다(현재 T2 기억 기반, 경미 E). 전제가 뒤집히면 렌더러 방식을 재검토.
   → goal: Constraint(Codex 비대칭)
-- [x] **FR-5 (repo 표면 — cwd in-place)**: repo에서 배포하면 cwd를 대상 경로로, cwd→project 매칭
-  (kebab 정규화, specs/029)으로 overlay를 골라 base+overlay를 합성해 `<repo>/AGENTS.md`(인라인
-  managed)와 `<repo>/CLAUDE.md`(`@AGENTS.md` 한 줄 스텁, managed)를 기록한다. → goal: Objective, D5·D7
+- [x] **FR-5 (repo 표면 — cwd in-place, overlay-only)**: repo에서 배포하면 cwd를 대상 경로로,
+  cwd→project 매칭(kebab 정규화, specs/029)으로 골라 **그 프로젝트 overlay만** `<repo>/AGENTS.md`(인라인
+  managed)와 `<repo>/CLAUDE.md`(`@AGENTS.md` 한 줄 스텁, managed)에 기록한다. **base는 repo에 다시
+  인라인하지 않는다** — 글로벌 표면(Claude @import·Codex `~/.codex/AGENTS.md`)이 이미 주입하므로
+  중복·Codex 32KiB 이중계상을 피한다(D8). overlay 없는 repo는 repo 파일을 만들지 않는다.
+  → goal: Objective, D5·D7·D8
 - [x] **FR-6 (섹션 upsert · managed-marker 불가침 · prune)**: 규칙 파일은 사용자 저작과 공존할 수
   있으므로 **managed 섹션만** upsert한다. managed-marker가 붙지 않은 파일·섹션은 절대 갱신·삭제하지
   않는다. 정본에서 사라진 overlay/규칙의 managed 산출물은 다음 배포에서 prune한다.
@@ -65,9 +68,10 @@ localmind에 **규칙 정본(base + 프로젝트별 overlay)** 을 두고, **배
 - [x] **AC-1 (글로벌 양표면 배포)**: Given base 규칙 1벌이 정본에 있고 `~/.claude`·`~/.codex`가 존재,
   When `deploy`, Then `~/.claude/CLAUDE.md` 스텁이 base를 담은 생성 파일을 `@import`하고
   `~/.codex/AGENTS.md`의 managed 섹션에 같은 base 실효 내용이 인라인으로 존재한다.
-- [x] **AC-2 (규칙 없던 repo)**: Given 규칙 파일이 없는 repo에서 cwd로 배포, When `deploy`, Then
-  `<repo>/AGENTS.md`(base+해당 overlay 인라인, managed)와 `<repo>/CLAUDE.md`(`@AGENTS.md` 스텁)가
-  생성된다.
+- [x] **AC-2 (규칙 없던 repo, overlay-only)**: Given overlay가 있는 프로젝트 repo에서 cwd로 배포,
+  When `deploy`, Then `<repo>/AGENTS.md`(그 프로젝트 **overlay만** 인라인, base 제외)와
+  `<repo>/CLAUDE.md`(`@AGENTS.md` 스텁)가 생성된다. overlay 없는 repo면 repo 파일을 만들지 않는다
+  (base는 글로벌 표면이 주입).
 - [x] **AC-3 (멱등)**: Given 방금 배포한 표면, When 같은 정본으로 재배포, Then managed 섹션 밖의
   사용자 저작·포매팅은 바이트 동일하게 유지되고 managed 섹션도 안정적(불필요한 diff 없음)이다.
 - [x] **AC-4 (엣지 — 사용자 섹션 보존)**: Given 사용자가 손으로 쓴 비managed 섹션이 있는
@@ -108,9 +112,11 @@ localmind에 **규칙 정본(base + 프로젝트별 overlay)** 을 두고, **배
   **해소(T090, 2026-07-15, T1: learn.chatgpt.com/docs/agent-configuration/agents-md)**: 전부 확정 —
   Codex는 CLAUDE.md 미인식, `AGENTS.override.md`>`AGENTS.md`>fallback, 루트→cwd 이어붙임(가까울수록
   우선), `project_doc_max_bytes` 기본 32 KiB, `@import`/`@path` 구문 없음 → **인라인 필수**. FR-4 근거 확정.
-  **파생 리스크**: Codex는 글로벌 `~/.codex/AGENTS.md`(base) + repo `AGENTS.md`를 이어붙이므로, repo에
-  base를 다시 인라인하면 base가 이중 계상돼 32 KiB 압박 — plan Open question(repo=base+overlay vs
-  overlay-only)로 이관.
+  ~~**파생 리스크**: Codex는 글로벌 `~/.codex/AGENTS.md`(base) + repo `AGENTS.md`를 이어붙이므로, repo에
+  base를 다시 인라인하면 base가 이중 계상돼 32 KiB 압박.~~ **해소(D8, 2026-07-15)**: repo 표면을
+  **overlay-only**로 확정 — repo엔 프로젝트 overlay만, base는 글로벌 표면이 주입. Codex·Claude 모두
+  base 이중계상 제거(도그푸드로 확인). 트레이드오프: repo가 localmind 없이 clone되면 base 미포함
+  (사용자가 이 비-self-contained를 수용).
 - **overlay↔project 매칭 모호성**: cwd→project 자동 매칭이 실패/모호할 때 추측 금지·사용자 확인
   규칙(specs/029) 재사용 방식. overlay가 없는 repo는 base만 배포하는지(권장) 확인.
 - **device-sync(031) 연동**: `device-sync`가 글로벌 표면 + 등록된 repo들을 순회 배포까지 포함할지,
