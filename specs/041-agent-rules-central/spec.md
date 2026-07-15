@@ -58,9 +58,13 @@ localmind에 **규칙 정본(base + 프로젝트별 overlay)** 을 두고, **배
 - [x] **FR-8 (대상 가용성 게이트)**: 표면의 대상 폴더(`~/.claude`·`~/.codex`)가 없으면 그 표면 배포를
   건너뛰고(폴더 신규 생성 안 함) 나머지는 진행한다(기존 `deploy_agents` 게이트 계승).
   → goal: Objective(멱등·안전)
-- [ ] **FR-9 (거버넌스 이관 — 단계적) [별 슬라이스 — 이번 tasks 제외]**: 벌트 `governance/*` base 규칙을 localmind 정본으로 이관하고,
+- [~] **FR-9 (거버넌스 이관 — 단계적) [진행 중 2026-07-15]**: 벌트 `governance/*` base 규칙을 localmind 정본으로 이관하고,
   검증 후 `~/.claude/CLAUDE.md` 스텁의 `@import` 대상을 localmind 생성 파일로 전환하며, 최종적으로
   벌트 `governance/*` 정본을 은퇴한다. 전환 구간에 규칙 공백이 없어야 한다. → goal: Objective, Risk(이관)
+  - [x] (b) 17개 base 이관(`~/.localmind/rules/base/` — governance 14 byte-identical + claude-base 인라인 3절). 기기파일·hot.md 제외.
+  - [x] (c) m5 실배포 + parity 확인 — `~/.claude`(managed @import 섹션)·`~/.codex`(governance 인라인, 사용자 콘텐츠 보존). **벌트 @import 유지 → 이중 주입(공백 0)**.
+  - [ ] (d) 스텁 벌트 @import 제거 — **전 기기 전파·검증 후에만**(파괴적·별도 승인). hot.md 하드주입 상실 처리 결정 필요.
+  - [ ] (e) 벌트 `governance/*` 은퇴 — **벌트 저장소 작업으로**(second-brain repo에서, 벌트 조작 규칙 준수).
 
 ## Acceptance Criteria
 
