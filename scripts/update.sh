@@ -83,7 +83,7 @@ main() {
   done < <(notes_dir_paths "$notes_value")
 
   # ── ③ 파생물 재생성: 인덱스 → 페르소나 → 스킬 (모두 멱등) ────────────
-  say "→ ③ 파생물 재생성(인덱스·페르소나·스킬)"
+  say "→ ③ 파생물 재생성(인덱스·페르소나·스킬·규칙)"
   if run bash "$DIR/scripts/reindex.sh"; then
     ok "재인덱싱"
   else
@@ -101,6 +101,14 @@ main() {
   else
     warn "스킬 배포 실패 — 'make skills-deploy'로 다시 시도하세요"
     fails="$fails skills-deploy"
+  fi
+  # 규칙(base+overlay) 배포 — 글로벌 표면만(--no-repo). 이 기기 최신화 시 governance를
+  # Claude·Codex에 재주입한다(specs/041). per-repo overlay는 그 repo에서 make rules-deploy.
+  if run npm run --silent --prefix "$DIR" rules:deploy -- --no-repo; then
+    ok "규칙 배포"
+  else
+    warn "규칙 배포 실패 — 'make rules-deploy'로 다시 시도하세요"
+    fails="$fails rules-deploy"
   fi
 
   # ── 요약 ──────────────────────────────────────────────────────────────

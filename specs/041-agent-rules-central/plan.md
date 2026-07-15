@@ -110,7 +110,7 @@ repo는 cwd를 대상 경로로 삼아 경로 발산을 회피한다. managed-ma
 ## Open questions
 
 - 규칙 배포를 MCP 도구로도 노출할지(배포는 로컬 작업 — CLI 우선, MCP는 목록/미리보기 정도?).
-- device-sync(031)의 repo 순회 범위(글로벌만 vs 등록 repo 순회 배포).
+- ~~device-sync(031)의 repo 순회 범위(글로벌만 vs 등록 repo 순회 배포).~~ **해소(2026-07-15)**: `make update`(→ device-sync가 원격에서 실행)에 `rules:deploy --no-repo`(글로벌만) 배선. per-repo overlay는 그 repo에서 `make rules-deploy`로 별도(update는 글로벌 governance 갱신만).
 - base authoring 포맷(개별 `.md` 유지 vs 단일 파일)·규칙 폴더 정확한 경로.
 - `src/rules/deploy.ts`를 신규로 둘지 `src/agents/deploy.ts`의 `writeManaged`를 섹션 단위로 일반화해
   공유할지(중복 vs 결합).
