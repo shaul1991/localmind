@@ -29,10 +29,11 @@
     "brain-report": "tsx scripts/brain-report.ts",
     "init-sdd": "tsx scripts/init-sdd.ts",
     "agents:deploy": "tsx scripts/agents-deploy.ts",
+    "rules:deploy": "tsx scripts/rules-deploy.ts",
     "retro-report": "tsx scripts/retro-report.ts",
     "retrieval:quality": "tsx scripts/retrieval-quality.ts",
     "skills:deploy": "tsx scripts/skills-deploy.ts",
-    "test": "node --import tsx/esm --test src/*.test.ts src/agents/*.test.ts src/backends/*.test.ts scripts/*.test.mjs"
+    "test": "node --import tsx/esm --test src/*.test.ts src/agents/*.test.ts src/rules/*.test.ts src/backends/*.test.ts scripts/*.test.mjs"
   },
   "keywords": [
     "claude",

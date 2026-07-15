@@ -183,6 +183,10 @@ agents-deploy: ## 페르소나 레지스트리(~/.localmind/agents)를 Claude Co
 skills-deploy: ## 오케스트레이션 스킬 정본을 시드하고 Claude Code로 복사 배포(멱등; 직접 만든 스킬은 보호)
 	@npm run --silent skills:deploy
 
+.PHONY: rules-deploy
+rules-deploy: ## 에이전트 작업 규칙(base+overlay) 정본을 Claude·Codex·현재 repo에 배포(멱등; 사용자 저작 보호)
+	@npm run --silent rules:deploy
+
 .PHONY: init-sdd
 init-sdd: ## SDD 작업 흐름(AGENTS.md+specs/)을 지정한 프로젝트에 심기 (DIR=<경로>; 기존 파일은 덮어쓰지 않음)
 	@if [ -z "$(DIR)" ]; then echo "✗ DIR을 지정하세요: make init-sdd DIR=<경로>"; exit 1; fi
