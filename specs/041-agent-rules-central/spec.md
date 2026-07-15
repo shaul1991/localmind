@@ -62,9 +62,9 @@ localmind에 **규칙 정본(base + 프로젝트별 overlay)** 을 두고, **배
   검증 후 `~/.claude/CLAUDE.md` 스텁의 `@import` 대상을 localmind 생성 파일로 전환하며, 최종적으로
   벌트 `governance/*` 정본을 은퇴한다. 전환 구간에 규칙 공백이 없어야 한다. → goal: Objective, Risk(이관)
   - [x] (b) 17개 base 이관(`~/.localmind/rules/base/` — governance 14 byte-identical + claude-base 인라인 3절). 기기파일·hot.md 제외.
-  - [x] (c) m5 실배포 + parity 확인 — `~/.claude`(managed @import 섹션)·`~/.codex`(governance 인라인, 사용자 콘텐츠 보존). **벌트 @import 유지 → 이중 주입(공백 0)**.
-  - [ ] (d) 스텁 벌트 @import 제거 — **전 기기 전파·검증 후에만**(파괴적·별도 승인). hot.md 하드주입 상실 처리 결정 필요.
-  - [ ] (e) 벌트 `governance/*` 은퇴 — **벌트 저장소 작업으로**(second-brain repo에서, 벌트 조작 규칙 준수).
+  - [x] (c) m5+m1 실배포 + parity 확인 — `~/.claude`(managed @import 섹션)·`~/.codex`(governance 인라인, 사용자 콘텐츠 보존). m1은 WIP repo 미접촉 위해 임시 클론 배포(localmind-rules.md **m5와 byte-identical**, md5 일치).
+  - [x] (d) m5 스텁에서 `@claude-base.md` 제거 — governance는 localmind 섹션에서만 주입(공백 0). hot.md는 recall-전용으로 하드주입 해제(결정). **m1은 벌트 governance를 import하지 않아(=@localmind/AGENTS.md) (d) 불필요**. 벌트 파일은 무삭제(가역).
+  - [ ] (e) 벌트 `governance/*`·`claude-base.md` 물리 은퇴 — **벌트 저장소 세션 작업**(governance를 벌트 CLAUDE.md + capture ~50개가 참조 → 리팩터 필요, 벌트 조작 규칙 준수). m5·m1 모두 이미 벌트 governance 미사용이라 **삭제해도 런타임 영향 0**(정리성 작업).
 
 ## Acceptance Criteria
 
