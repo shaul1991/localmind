@@ -58,13 +58,13 @@ localmind에 **규칙 정본(base + 프로젝트별 overlay)** 을 두고, **배
 - [x] **FR-8 (대상 가용성 게이트)**: 표면의 대상 폴더(`~/.claude`·`~/.codex`)가 없으면 그 표면 배포를
   건너뛰고(폴더 신규 생성 안 함) 나머지는 진행한다(기존 `deploy_agents` 게이트 계승).
   → goal: Objective(멱등·안전)
-- [~] **FR-9 (거버넌스 이관 — 단계적) [진행 중 2026-07-15]**: 벌트 `governance/*` base 규칙을 localmind 정본으로 이관하고,
+- [x] **FR-9 (거버넌스 이관 — 단계적) [완료 2026-07-15]**: 벌트 `governance/*` base 규칙을 localmind 정본으로 이관하고,
   검증 후 `~/.claude/CLAUDE.md` 스텁의 `@import` 대상을 localmind 생성 파일로 전환하며, 최종적으로
   벌트 `governance/*` 정본을 은퇴한다. 전환 구간에 규칙 공백이 없어야 한다. → goal: Objective, Risk(이관)
   - [x] (b) 17개 base 이관(`~/.localmind/rules/base/` — governance 14 byte-identical + claude-base 인라인 3절). 기기파일·hot.md 제외.
   - [x] (c) m5+m1 실배포 + parity 확인 — `~/.claude`(managed @import 섹션)·`~/.codex`(governance 인라인, 사용자 콘텐츠 보존). m1은 WIP repo 미접촉 위해 임시 클론 배포(localmind-rules.md **m5와 byte-identical**, md5 일치).
   - [x] (d) m5 스텁에서 `@claude-base.md` 제거 — governance는 localmind 섹션에서만 주입(공백 0). hot.md는 recall-전용으로 하드주입 해제(결정). **m1은 벌트 governance를 import하지 않아(=@localmind/AGENTS.md) (d) 불필요**. 벌트 파일은 무삭제(가역).
-  - [ ] (e) 벌트 `governance/*`·`claude-base.md` 물리 은퇴 — **벌트 저장소 세션 작업**(governance를 벌트 CLAUDE.md + capture ~50개가 참조 → 리팩터 필요, 벌트 조작 규칙 준수). m5·m1 모두 이미 벌트 governance 미사용이라 **삭제해도 런타임 영향 0**(정리성 작업).
+  - [x] (e) 벌트 `governance/*`(14)·`claude-base.md` 물리 은퇴 — 벌트 세션(사용자 명시 허용)에서 `git rm` + 커밋·push(벌트 `2d63a483f`·`9b4e6c77e` → 벌트 레인이 m1 전파). `bin/context` 빌드는 `hot`+`device`만 소비(`profiles.yaml` 확인)해 무영향, 런타임 무손상 검증. capture 텍스트 참조는 불변(규칙상 미편집). 벌트 CLAUDE.md 구조 표 갱신.
 
 ## Acceptance Criteria
 
