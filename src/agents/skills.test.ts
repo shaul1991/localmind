@@ -739,44 +739,58 @@ describe("runtime parent identity revalidation (R4-02)", () => {
     };
   }
 
-  for (const mode of ["symlink", "realdir"] as const) {
-    it(`runtime parent가 ${mode}로 교체되면 affected target은 problem, redirect 트리에 write 0, 독립 target은 성공`, () => {
-      seedWorkflows({ skillsDir: dataDir });
-      const home = path.join(root, `attack-${mode}`);
-      const agentParent = path.join(home, ".agents");
-      fs.mkdirSync(agentParent, { recursive: true }); // .agents는 실제 디렉토리로 시작
-      const agentRoot = path.join(agentParent, "skills");
-      const saved = path.join(home, "saved-agents");
-      const redirect = path.join(home, "redirect");
-      // 독립 claude target(공격 없음)
-      const claudeParent = path.join(home, ".claude");
-      fs.mkdirSync(claudeParent, { recursive: true });
-      const claudeRoot = path.join(claudeParent, "skills");
+  // 공격 대상 root를 claude/agent 양쪽으로 돌려 shared revalidateRootGuard가 두 skill-directory
+  // root에 일관 적용됨을 증명한다(R4-02 fix contract: "consistently to Claude skills, shared Agent
+  // Skills, and Gemini commands"). claude/agent는 동일한 deploySkillDirTarget→prepareRoot 경로다.
+  // Gemini(gemini-command)는 syncGeminiCommands의 별도 경로(prepareRoot root-mkdir 주입점 없음)라
+  // 이 표에서 제외한다 — 그 경로 공격은 별도 wiring이 필요하고 deploy orchestration 영역과 겹친다.
+  const parentOf: Record<"claude-skill" | "agent-skill", string> = { "claude-skill": ".claude", "agent-skill": ".agents" };
+  const attackCases = [
+    { attacked: "agent-skill", independent: "claude-skill" },
+    { attacked: "claude-skill", independent: "agent-skill" },
+  ] as const;
 
-      const ops = attackOps(defaultFsOps, agentRoot, agentParent, saved, redirect, mode);
-      const r = deployWorkflows({
-        skillsDir: dataDir,
-        claudeSkillsDir: claudeRoot,
-        agentSkillsDir: agentRoot,
-        targets: ["claude-skill", "agent-skill"],
-        ops,
+  for (const { attacked, independent } of attackCases) {
+    for (const mode of ["symlink", "realdir"] as const) {
+      it(`${attacked} runtime parent가 ${mode}로 교체되면 그 target은 problem, redirect 트리 write 0, 독립 ${independent}는 성공`, () => {
+        seedWorkflows({ skillsDir: dataDir });
+        const home = path.join(root, `attack-${attacked}-${mode}`);
+        const attackedParent = path.join(home, parentOf[attacked]);
+        fs.mkdirSync(attackedParent, { recursive: true }); // 공격 대상 부모는 실제 디렉토리로 시작
+        const attackedRoot = path.join(attackedParent, "skills");
+        const saved = path.join(home, "saved-parent");
+        const redirect = path.join(home, "redirect");
+        // 독립 target(공격 없음)
+        const indepParent = path.join(home, parentOf[independent]);
+        fs.mkdirSync(indepParent, { recursive: true });
+        const indepRoot = path.join(indepParent, "skills");
+
+        const ops = attackOps(defaultFsOps, attackedRoot, attackedParent, saved, redirect, mode);
+        // 두 target 모두 명시 경로 주입 → claude도 explicitOverride로 alwaysCreate(공격 대상이든 독립이든 root 생성).
+        const dirs = (t: "claude-skill" | "agent-skill", p: string) => (t === "claude-skill" ? { claudeSkillsDir: p } : { agentSkillsDir: p });
+        const r = deployWorkflows({
+          skillsDir: dataDir,
+          ...dirs(attacked, attackedRoot),
+          ...dirs(independent, indepRoot),
+          targets: ["claude-skill", "agent-skill"],
+          ops,
+        });
+
+        // 공격 대상 target: 어떤 goal-ready도 생성되지 않고 problem
+        const attackedItems = r.items.filter((i) => i.target === attacked);
+        assert.ok(attackedItems.length > 0 && attackedItems.every((i) => i.status === "problem"), `${attacked} 항목 전부 problem (${mode})`);
+        assert.equal(r.outcome, "failed", "aggregate failed");
+        // redirect 트리(공격 대상)에 skill write가 전혀 없어야 한다
+        const redirectSkills = mode === "symlink" ? path.join(redirect, "skills") : path.join(attackedParent, "skills");
+        assert.ok(!fs.existsSync(path.join(redirectSkills, "goal-ready")), `redirect 트리에 goal-ready write 0 (${mode})`);
+        // 저장된 원본 트리 보존
+        assert.ok(fs.existsSync(saved), "저장된 원본 부모 트리 보존");
+        // 독립 target은 정상 완료
+        const indepCreated = r.items.filter((i) => i.target === independent && i.status === "created");
+        assert.ok(indepCreated.length >= 3, `독립 ${independent} target은 세 workflow 생성 성공`);
+        assert.ok(fs.existsSync(path.join(indepRoot, "goal-ready", "SKILL.md")), `${independent} goal-ready 존재`);
       });
-
-      // affected agent target: 어떤 goal-ready도 생성되지 않고 problem
-      const agentItems = r.items.filter((i) => i.target === "agent-skill");
-      assert.ok(agentItems.every((i) => i.status === "problem"), `agent 항목 전부 problem (${mode})`);
-      assert.equal(r.outcome, "failed", "aggregate failed");
-      // redirect 트리(공격 대상)에 skill write가 전혀 없어야 한다
-      const redirectSkills = mode === "symlink" ? path.join(redirect, "skills") : path.join(agentParent, "skills");
-      const redirectHasSkill = fs.existsSync(path.join(redirectSkills, "goal-ready"));
-      assert.ok(!redirectHasSkill, `redirect 트리에 goal-ready write 0 (${mode})`);
-      // 저장된 원본 트리 보존
-      assert.ok(fs.existsSync(saved), "저장된 원본 .agents 트리 보존");
-      // 독립 claude target은 정상 완료
-      const claudeCreated = r.items.filter((i) => i.target === "claude-skill" && i.status === "created");
-      assert.ok(claudeCreated.length >= 3, "독립 claude target은 세 workflow 생성 성공");
-      assert.ok(fs.existsSync(path.join(claudeRoot, "goal-ready", "SKILL.md")), "claude goal-ready 존재");
-    });
+    }
   }
 });
 
