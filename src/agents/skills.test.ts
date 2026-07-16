@@ -805,6 +805,25 @@ describe("executable SKILL.md mode preservation (R4-03)", () => {
       });
     }
   }
+
+  it("SKILL.md chmod 실패는 stage 단계에서 problem으로 격리되고 부분 target을 노출하지 않는다", () => {
+    // source mode 적용이 ops.chmod 경유라 fault-injectable해야 한다는 R4-03 계약(no partial target).
+    const name = "mode-fault";
+    const skillRoot = path.join(dataDir, name);
+    fs.mkdirSync(skillRoot, { recursive: true });
+    fs.writeFileSync(path.join(skillRoot, "SKILL.md"), `---\nname: ${name}\ndescription: chmod 실패 격리 — 필요할 때\n---\n${skillMarkerComment(name)}\n# ${name}\n\n1. 한다.\n`);
+    fs.chmodSync(path.join(skillRoot, "SKILL.md"), 0o755);
+    const a = agentHome();
+    // 이 custom skill의 SKILL.md render 중 첫 chmod(=source mode 적용)에서 실패를 주입한다.
+    const ops = faultyOps(defaultFsOps, { chmod: 1 });
+    const r = deployWorkflows({ skillsDir: dataDir, agentSkillsDir: a.skillsDir, targets: ["agent-skill"], ops });
+    assert.equal(r.outcome, "failed", "chmod 실패 → 전역 failed");
+    assert.equal(r.items.find((i) => i.logicalId === name)!.status, "problem", "해당 항목 problem");
+    // 부분 target 미노출: target 디렉토리도, 남은 stage 고아도 없다.
+    assert.ok(!fs.existsSync(path.join(a.skillsDir, name)), "부분 target 미생성");
+    const orphans = fs.readdirSync(a.skillsDir).filter((x) => x.startsWith(".localmind-"));
+    assert.deepEqual(orphans, [], "실패한 stage 고아 0(정리됨)");
+  });
 });
 
 // ── R1-14: 결과에 target별 activation enforcement level 표시 ──────────────────
