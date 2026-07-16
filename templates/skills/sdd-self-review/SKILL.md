@@ -1,12 +1,12 @@
 ---
 name: sdd-self-review
-description: /goal 구현 완료 직후의 self-review 오케스트레이션 — Claude 크리틱 서브에이전트(적대 리뷰)와 localmind codex 교차 검증을 함께 돌려 병합 보고한다. self-review, 자기 검토, 교차 검증이 필요할 때 사용.
+description: /goal-impl 구현 완료 직후의 self-review 오케스트레이션 — Claude 크리틱 서브에이전트(적대 리뷰)와 localmind codex 교차 검증을 함께 돌려 병합 보고한다. self-review, 자기 검토, 교차 검증이 필요할 때 사용.
 ---
 <!-- managed-by: localmind (skill: sdd-self-review) — localmind 정본(데이터 폴더 skills/)에서 배포됨. 수정은 정본에서. -->
 
 # SDD Self-Review — 크리틱 교차 검증 오케스트레이션
 
-`/goal` 구현이 끝나면 이 절차로 self-review를 수행한다. 3단계를 순서대로, 생략 없이.
+`/goal-impl` 구현이 끝나면 이 절차로 self-review를 수행한다. 3단계를 순서대로, 생략 없이.
 
 ## 1. Claude 크리틱 적대 리뷰 (필수 — 끄지 않는다)
 
@@ -42,7 +42,7 @@ stdin으로 파이프한다:
 
 1·2의 발견을 **하나의 self-review 보고**로 합친다:
 
-- **차단(blocking)**: 어느 쪽이 찾았든 치명·중대 결함과 미충족 AC — `/goal` 5단계의
+- **차단(blocking)**: 어느 쪽이 찾았든 치명·중대 결함과 미충족 AC — `/goal-impl` 5단계의
   수정→재검 루프로 넘긴다(이 스킬은 보고까지만 — 스스로 수정하지 않는다). 수정 후에는
   1단계부터 다시 돈다(clean까지).
 - **조언(advisory)**: 참고로 표기만 한다. 수정을 강제하지 않는다.
