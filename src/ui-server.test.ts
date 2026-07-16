@@ -34,6 +34,16 @@ function fixtureDeps(): UiDeps {
       files: { "notes/a.md": { hash: "h", folder: "notes", chunks: [{ path: "notes/a.md", text: "t", slot: 0 }], linksOut: [] } },
     }),
   );
+  // specs/048 — 거버넌스 조회 픽스처(규칙·스킬)
+  const rulesDir = path.join(TMP, "rules");
+  fs.mkdirSync(path.join(rulesDir, "base"), { recursive: true });
+  fs.writeFileSync(path.join(rulesDir, "base", "spec-first.md"), "spec 먼저 작성한다.");
+  const skillsDir = path.join(TMP, "skills");
+  fs.mkdirSync(path.join(skillsDir, "my-skill"), { recursive: true });
+  fs.writeFileSync(
+    path.join(skillsDir, "my-skill", "SKILL.md"),
+    "---\nname: my-skill\ndescription: 테스트 스킬\n---\n<!-- managed-by: localmind (skill: my-skill) -->\n본문\n",
+  );
   return {
     projectDir: TMP,
     envFile,
@@ -43,6 +53,8 @@ function fixtureDeps(): UiDeps {
     registryDir: path.join(TMP, "agents-none"),
     claudeAgentsDir: path.join(TMP, "claude-agents"),
     codexHome: path.join(TMP, "codex"),
+    rulesDir,
+    skillsDir,
     services: [], // 헬스 프로브는 수집기 테스트에서 검증 — 라우트 테스트는 지연 없이
     publicDir: path.resolve("public/ui"),
   };
@@ -147,6 +159,50 @@ describe("상태 API", () => {
         { headers: KEY },
       );
       assert.equal(res.status, 400, `차단: ${file}`);
+    }
+  });
+});
+
+describe("거버넌스 API (specs/048)", () => {
+  it("/ui/api/rules — base 목록(전문 제외)·problems/warnings 포함", async () => {
+    const res = await fetch(`${baseUrl}/ui/api/rules`, { headers: KEY });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { base: { name: string; layer: string }[]; problems: unknown[] };
+    assert.ok(body.base.some((r) => r.name === "spec-first" && r.layer === "base"));
+    assert.equal(body.problems.length, 0);
+  });
+  it("/ui/api/rule?name= — 전문 반환(AC-2), 미존재 name은 400(AC-7)", async () => {
+    const ok = await fetch(`${baseUrl}/ui/api/rule?name=spec-first`, { headers: KEY });
+    assert.equal(ok.status, 200);
+    const body = (await ok.json()) as { content: string };
+    assert.ok(body.content.includes("spec 먼저"));
+    const bad = await fetch(`${baseUrl}/ui/api/rule?name=no-such-rule`, { headers: KEY });
+    assert.equal(bad.status, 400);
+  });
+  it("/ui/api/skills — 목록(managed 배지 판정 포함, AC-3)", async () => {
+    const res = await fetch(`${baseUrl}/ui/api/skills`, { headers: KEY });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { skills: { name: string; managed: boolean }[] };
+    assert.ok(body.skills.some((s) => s.name === "my-skill" && s.managed === true));
+  });
+  it("/ui/api/skill?name= — 전문 반환(AC-3), traversal·절대경로 거부(AC-7)", async () => {
+    const ok = await fetch(`${baseUrl}/ui/api/skill?name=my-skill`, { headers: KEY });
+    assert.equal(ok.status, 200);
+    const body = (await ok.json()) as { content: string };
+    assert.ok(body.content.includes("본문"));
+    for (const bad of ["..", "../secret", "/etc/passwd"]) {
+      const res = await fetch(`${baseUrl}/ui/api/skill?name=${encodeURIComponent(bad)}`, { headers: KEY });
+      assert.equal(res.status, 400, `거부돼야 함: ${bad}`);
+    }
+  });
+  it("/ui/api/agent?name= — 알 수 없는 이름은 400(레지스트리 밖 접근 없음, AC-7)", async () => {
+    const res = await fetch(`${baseUrl}/ui/api/agent?name=no-such-persona`, { headers: KEY });
+    assert.equal(res.status, 400);
+  });
+  it("키 없이 거버넌스 엔드포인트 요청 → 401(AC-8)", async () => {
+    for (const p of ["/rules", "/skills", "/rule?name=spec-first", "/skill?name=my-skill", "/agent?name=x"]) {
+      const res = await fetch(`${baseUrl}/ui/api${p}`);
+      assert.equal(res.status, 401, `401이어야 함: ${p}`);
     }
   });
 });

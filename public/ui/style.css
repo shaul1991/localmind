@@ -107,6 +107,7 @@ h2 { margin: 0 0 var(--space-md); font: var(--font-page-title); }
 .badge.warn { background: var(--color-warn); }
 .badge.error { background: var(--color-error); }
 .badge.idle { background: var(--color-idle); }
+.badge.managed { background: var(--color-primary); }
 
 /* ── DataTable ── */
 table { width: 100%; border-collapse: collapse; table-layout: fixed; }

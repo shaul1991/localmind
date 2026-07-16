@@ -10,6 +10,8 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { loadRegistry, agentsDir } from "./agents/registry.js";
 import { defaultCodexHome, MANAGED_MARKER } from "./agents/deploy.js";
+import { listSkills, skillsDir as defaultSkillsDir } from "./agents/skills.js";
+import { loadRules, type RuleDoc, type RuleProblem } from "./rules/registry.js";
 import { readRecords } from "./query-analysis.js";
 
 // ── config(.env) — 시크릿은 서버 단계에서 마스킹(FR-7·AC-5) ────────────────
@@ -337,6 +339,118 @@ export function readReportNote(
     return { ok: true, content: fs.readFileSync(realTarget, "utf8") };
   } catch {
     return { ok: false, reason: "노트를 찾을 수 없어요." };
+  }
+}
+
+// ── governance(규칙·스킬·페르소나) — specs/048 read-only 조회 ────────────────
+
+export interface RulesStatusItem {
+  name: string;
+  /** "base" | `overlay:<project>` */
+  layer: string;
+  order: number;
+  /** 정본 파일 상대경로 — 리더 subtitle 표시용 */
+  file: string;
+}
+export interface RulesStatus {
+  base: RulesStatusItem[];
+  /** project → 규칙 목록(Map은 JSON 직렬화 불가 — 평범한 객체로 변환) */
+  overlays: Record<string, RulesStatusItem[]>;
+  problems: RuleProblem[];
+  warnings: string[];
+}
+
+/** 규칙 목록(전문 제외) — loadRules(F-4) 재사용, 재검증 없음(I-6). */
+export function rulesStatus(opts: { rulesDir?: string } = {}): RulesStatus {
+  const reg = loadRules(opts.rulesDir);
+  const toItem = (d: RuleDoc, layer: string): RulesStatusItem => ({ name: d.name, layer, order: d.order, file: d.file });
+  const overlays: Record<string, RulesStatusItem[]> = {};
+  for (const [project, docs] of reg.overlays) {
+    overlays[project] = docs.map((d) => toItem(d, `overlay:${project}`));
+  }
+  return {
+    base: reg.base.map((d) => toItem(d, "base")),
+    overlays,
+    problems: reg.problems,
+    warnings: reg.warnings,
+  };
+}
+
+/**
+ * 규칙 전문 — 로드된 레지스트리에서 name 조회(경로 입력 없음, 본문은 메모리 상주 — FR-7).
+ * project를 주면 그 overlay에서, 없으면 base에서 찾는다 — base·overlay 동명 규칙에서
+ * 클릭한 계층의 전문을 정확히 반환한다(overlay-wins override 가시성).
+ */
+export function ruleContent(
+  name: string,
+  opts: { rulesDir?: string; project?: string } = {},
+): { ok: true; content: string } | { ok: false; reason: string } {
+  const reg = loadRules(opts.rulesDir);
+  const pool = opts.project ? (reg.overlays.get(opts.project) ?? []) : reg.base;
+  const found = pool.find((d) => d.name === name);
+  if (!found) return { ok: false, reason: "알 수 없는 규칙 이름이에요." };
+  return { ok: true, content: found.content };
+}
+
+export interface SkillsStatusItem {
+  name: string;
+  description: string;
+  managed: boolean;
+  /** SKILL.md 상대경로 — 리더 subtitle 표시용 */
+  file: string;
+}
+export interface SkillsStatus {
+  skills: SkillsStatusItem[];
+}
+
+/** 스킬 목록(전문 제외) — listSkills(F-5) 래핑. */
+export function skillsStatus(opts: { skillsDir?: string } = {}): SkillsStatus {
+  return {
+    skills: listSkills(opts.skillsDir).map(({ name, description, managed, file }) => ({ name, description, managed, file })),
+  };
+}
+
+/** 페르소나 전문 — 로드된 레지스트리에서 name 조회(경로 입력 없음, 본문은 메모리 상주 — FR-7). */
+export function personaContent(
+  name: string,
+  opts: { registryDir?: string } = {},
+): { ok: true; content: string } | { ok: false; reason: string } {
+  const reg = loadRegistry(opts.registryDir);
+  const found = reg.personas.find((p) => p.name === name);
+  if (!found) return { ok: false, reason: "알 수 없는 페르소나 이름이에요." };
+  return { ok: true, content: found.prompt };
+}
+
+/**
+ * 스킬 전문 — SKILL.md 파일 read(스킬만 경로 안전 필요, FR-7·I-4). name은 skillsDir()
+ * 하위 단일 디렉토리명이어야 한다(readNoteContent와 동일한 이중 방어: 렉시컬 검증 +
+ * realpath 재확인 — 심링크로 skillsDir 밖을 가리켜도 걸러진다).
+ */
+export function skillContent(
+  name: string,
+  opts: { skillsDir?: string } = {},
+): { ok: true; content: string } | { ok: false; reason: string } {
+  const root = opts.skillsDir ?? defaultSkillsDir();
+  if (!name || name.includes("..") || name.includes("/") || name.includes("\\")) {
+    return { ok: false, reason: "스킬 이름이 올바르지 않아요." };
+  }
+  const rootReal = path.resolve(root);
+  const target = path.resolve(root, name, "SKILL.md");
+  if (target !== path.join(rootReal, name, "SKILL.md") || !target.startsWith(rootReal + path.sep)) {
+    return { ok: false, reason: "스킬 폴더 밖의 파일은 열 수 없어요." };
+  }
+  try {
+    if (fs.lstatSync(target).isSymbolicLink()) {
+      return { ok: false, reason: "심볼릭 링크는 열 수 없어요." };
+    }
+    const realTarget = fs.realpathSync(target);
+    const realDir = fs.realpathSync(rootReal);
+    if (!realTarget.startsWith(realDir + path.sep)) {
+      return { ok: false, reason: "스킬 폴더 밖의 파일은 열 수 없어요." };
+    }
+    return { ok: true, content: fs.readFileSync(realTarget, "utf8") };
+  } catch {
+    return { ok: false, reason: "스킬을 찾을 수 없어요." };
   }
 }
 

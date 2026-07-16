@@ -11,10 +11,15 @@ import {
   configStatus,
   indexStatus,
   overviewStatus,
+  personaContent,
   readNoteContent,
   readReportNote,
   reportsStatus,
   reposStatus,
+  ruleContent,
+  rulesStatus,
+  skillContent,
+  skillsStatus,
   type RepoTarget,
   type ServiceProbe,
 } from "../ui-status.js";
@@ -30,6 +35,9 @@ export interface UiDeps {
   registryDir?: string;
   claudeAgentsDir?: string;
   codexHome?: string;
+  /** specs/048 — 거버넌스 뷰어: 규칙·스킬 정본 위치(미지정 시 각 모듈 기본값) */
+  rulesDir?: string;
+  skillsDir?: string;
   /** 스택 헬스 프로브 대상(make health와 동일 3종) */
   services: ServiceProbe[];
   /** 정적 UI 폴더(public/ui) */
@@ -96,6 +104,28 @@ export function createUiRouter(deps: UiDeps): Router {
     const note = readNoteContent(deps.folders, String(req.query.path ?? ""));
     if (note.ok) res.json({ content: note.content });
     else res.status(400).json({ error: { message: note.reason, type: "invalid_request_error" } });
+  });
+
+  // specs/048 — 거버넌스 뷰어(read-only): 규칙·스킬·페르소나 목록 + 전문 드릴인
+  r.get("/rules", wrap(() => rulesStatus({ rulesDir: deps.rulesDir })));
+  r.get("/rule", (req, res) => {
+    const rule = ruleContent(String(req.query.name ?? ""), {
+      rulesDir: deps.rulesDir,
+      project: req.query.project ? String(req.query.project) : undefined,
+    });
+    if (rule.ok) res.json({ content: rule.content });
+    else res.status(400).json({ error: { message: rule.reason, type: "invalid_request_error" } });
+  });
+  r.get("/skills", wrap(() => skillsStatus({ skillsDir: deps.skillsDir })));
+  r.get("/skill", (req, res) => {
+    const skill = skillContent(String(req.query.name ?? ""), { skillsDir: deps.skillsDir });
+    if (skill.ok) res.json({ content: skill.content });
+    else res.status(400).json({ error: { message: skill.reason, type: "invalid_request_error" } });
+  });
+  r.get("/agent", (req, res) => {
+    const persona = personaContent(String(req.query.name ?? ""), { registryDir: deps.registryDir });
+    if (persona.ok) res.json({ content: persona.content });
+    else res.status(400).json({ error: { message: persona.reason, type: "invalid_request_error" } });
   });
 
   r.use((_req, res) => {

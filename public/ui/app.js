@@ -371,19 +371,109 @@ function pageConfig() {
   ]);
 }
 
-// ── 페이지: 에이전트 ────────────────────────────────────────────────────
-function pageAgents() {
-  const content = card("페르소나 레지스트리", async () => {
-    const a = await api("/agents");
-    if (a.personas.length === 0) {
-      return el("p", { class: "dim" }, "등록된 페르소나가 없어요 — make agents-deploy가 기본 페르소나를 심어줘요.");
-    }
+// ── 페이지: 거버넌스(specs/048) — 규칙·스킬·페르소나 조회, 읽기 전용 ─────
+// HealthSummary(design.md §3.2) — problems+warnings 0건이면 ok, 있으면 warn+상세.
+function healthSummary(problems, warnings) {
+  const items = [...(problems || []), ...(warnings || [])];
+  if (items.length === 0) return el("p", {}, badge("ok", "무결성 정상"));
+  return el("div", { class: "error-state" }, [
+    el("p", {}, badge("warn", `문제 ${items.length}건`)),
+    ...items.map((it) => el("p", { class: "hint" },
+      typeof it === "string" ? it : `${it.name || it.file || "?"}: ${it.reason || ""}`)),
+  ]);
+}
+
+function rulesSection() {
+  return card("규칙", async () => {
+    const data = await api("/rules");
+    const base = (data.base || []).map((r) => ({ ...r, layer: "base" }));
+    const overlays = data.overlays || {};
+    const overlayRows = Object.entries(overlays).flatMap(([project, rules]) =>
+      (rules || []).map((r) => ({ ...r, layer: "overlay", project })),
+    );
+    const rows = [...base, ...overlayRows];
     const wrap = el("div", {});
+    wrap.append(healthSummary(data.problems, data.warnings));
+    if (rows.length === 0) {
+      wrap.append(el("p", { class: "dim" }, "표시할 규칙이 없어요 — make rules-deploy로 규칙을 배포할 수 있어요."));
+      return wrap;
+    }
+    wrap.append(
+      table(
+        ["이름", "계층", "순서"],
+        rows.map((r) => [
+          el("button", {
+            class: "note-link",
+            onclick: () => openGovReader({
+              title: r.name,
+              subtitle: r.file || "",
+              loader: () => api(`/rule?name=${encodeURIComponent(r.name)}` +
+                (r.layer === "base" ? "" : `&project=${encodeURIComponent(r.project)}`)),
+            }),
+          }, r.name),
+          r.layer === "base"
+            ? el("span", { class: "chip" }, "base(공통)")
+            : el("span", { class: "chip" }, r.project ? `overlay: ${r.project}` : "overlay"),
+          el("span", { class: "mono" }, String(r.order ?? "")),
+        ]),
+      ),
+    );
+    return wrap;
+  });
+}
+
+function skillsSection() {
+  return card("스킬", async () => {
+    const data = await api("/skills");
+    const skills = data.skills || [];
+    const wrap = el("div", {});
+    wrap.append(healthSummary(data.problems, data.warnings));
+    if (skills.length === 0) {
+      wrap.append(el("p", { class: "dim" }, "표시할 스킬이 없어요 — make skills-deploy가 기본 스킬을 심어줘요."));
+      return wrap;
+    }
+    wrap.append(
+      table(
+        ["이름", "설명", "관리"],
+        skills.map((s) => [
+          el("button", {
+            class: "note-link",
+            onclick: () => openGovReader({
+              title: s.name,
+              subtitle: s.path || s.file || "",
+              loader: () => api(`/skill?name=${encodeURIComponent(s.name)}`),
+            }),
+          }, s.name),
+          s.description || "",
+          s.managed ? badge("managed", "localmind") : badge("idle", "사용자"),
+        ]),
+      ),
+    );
+    return wrap;
+  });
+}
+
+function personasSection() {
+  return card("페르소나", async () => {
+    const a = await api("/agents");
+    const wrap = el("div", {});
+    wrap.append(healthSummary(a.problems, []));
+    if (a.personas.length === 0) {
+      wrap.append(el("p", { class: "dim" }, "등록된 페르소나가 없어요 — make agents-deploy가 기본 페르소나를 심어줘요."));
+      return wrap;
+    }
     wrap.append(
       table(
         ["이름", "설명", "Claude", "Codex"],
         a.personas.map((p) => [
-          el("span", { class: "mono" }, p.name),
+          el("button", {
+            class: "note-link",
+            onclick: () => openGovReader({
+              title: p.name,
+              subtitle: p.file || "",
+              loader: () => api(`/agent?name=${encodeURIComponent(p.name)}`),
+            }),
+          }, p.name),
           p.description,
           p.targets.claude ? (p.deployed.claude ? badge("ok", "배포됨") : badge("warn", "미배포")) : badge("idle", "대상 아님"),
           p.targets.codex ? (p.deployed.codex ? badge("ok", "배포됨") : badge("warn", "미배포")) : badge("idle", "대상 아님"),
@@ -393,17 +483,18 @@ function pageAgents() {
     if (a.personas.some((p) => (p.targets.claude && !p.deployed.claude) || (p.targets.codex && !p.deployed.codex))) {
       wrap.append(el("p", { class: "dim" }, "미배포 항목이 있어요 — 터미널에서 make agents-deploy로 배포할 수 있어요."));
     }
-    if (a.problems.length > 0) {
-      wrap.append(
-        el("div", { class: "error-state" }, [
-          el("p", {}, "정의에 문제가 있는 파일:"),
-          ...a.problems.map((p) => el("p", { class: "hint" }, `${p.file}: ${p.reason}`)),
-        ]),
-      );
-    }
     return wrap;
   });
-  return el("div", {}, [el("h2", {}, "에이전트"), content]);
+}
+
+function pageGovernance() {
+  return el("div", {}, [
+    el("h2", {}, "거버넌스"),
+    el("p", { class: "dim" }, "활성 규칙·스킬·페르소나를 조회해요. 읽기 전용 — 편집·배포는 터미널의 make/CLI로."),
+    rulesSection(),
+    skillsSection(),
+    personasSection(),
+  ]);
 }
 
 // ── 페이지: 리포트 ──────────────────────────────────────────────────────
@@ -462,16 +553,18 @@ function closeReader() {
   if (readerPrevFocus && document.contains(readerPrevFocus)) readerPrevFocus.focus();
   readerPrevFocus = null;
 }
-function openReader(n) {
+// GovernanceReader(design.md §3.4) — 노트 리더를 일반화. title/subtitle/loader({content})만 주입받아
+// 규칙·스킬·페르소나·노트 4부류가 같은 우측 슬라이드 패널·Esc/오버레이 닫기·포커스 복원을 공유한다.
+function openGovReader({ title, subtitle, loader }) {
   closeReader();
-  readerPrevFocus = document.activeElement; // 닫으면 열었던 카드로 포커스 복귀
+  readerPrevFocus = document.activeElement; // 닫으면 열었던 행으로 포커스 복귀
   const body = el("div", { class: "reader-scroll" }, [el("div", { class: "skeleton" }), el("div", { class: "skeleton" })]);
   const closeBtn = el("button", { class: "secondary", "aria-label": "닫기", onclick: closeReader }, "✕");
-  const panel = el("div", { class: "reader-panel", role: "dialog", "aria-modal": "true", "aria-label": n.title }, [
+  const panel = el("div", { class: "reader-panel", role: "dialog", "aria-modal": "true", "aria-label": title }, [
     el("div", { class: "reader-head" }, [
       el("div", { class: "reader-headmeta" }, [
-        el("div", { class: "note-title" }, n.title),
-        el("div", { class: "mono dim" }, n.path),
+        el("div", { class: "note-title" }, title),
+        el("div", { class: "mono dim" }, subtitle || ""),
       ]),
       closeBtn,
     ]),
@@ -486,13 +579,16 @@ function openReader(n) {
   closeBtn.focus(); // 패널로 포커스 이동(다이얼로그 a11y)
   (async () => {
     try {
-      const note = await api(`/note?path=${encodeURIComponent(n.path)}`);
-      body.replaceChildren(el("pre", { class: "note-body" }, note.content));
+      const { content } = await loader();
+      body.replaceChildren(el("pre", { class: "note-body" }, content));
     } catch (e) {
       if (e instanceof AuthError) { closeReader(); return showKeyGate("세션 키가 더 이상 유효하지 않아요 — 다시 입력해 주세요."); }
       body.replaceChildren(el("p", { class: "error-state" }, `본문을 못 불러왔어요: ${e.message} — 다시 시도해 주세요.`));
     }
   })();
+}
+function openReader(n) {
+  openGovReader({ title: n.title, subtitle: n.path, loader: () => api(`/note?path=${encodeURIComponent(n.path)}`) });
 }
 
 function noteCard(n) {
@@ -585,10 +681,11 @@ function pageNotes() {
 }
 
 // ── 해시 라우터 ─────────────────────────────────────────────────────────
-const PAGES = { dashboard: pageDashboard, config: pageConfig, agents: pageAgents, reports: pageReports, notes: pageNotes };
+const PAGES = { dashboard: pageDashboard, config: pageConfig, governance: pageGovernance, reports: pageReports, notes: pageNotes };
 function route() {
-  closeReader(); // 페이지 이동 시 열린 노트 리더 정리
-  const name = (location.hash.replace(/^#\//, "") || "dashboard").split("?")[0];
+  closeReader(); // 페이지 이동 시 열린 노트/거버넌스 리더 정리
+  let name = (location.hash.replace(/^#\//, "") || "dashboard").split("?")[0];
+  if (name === "agents") name = "governance"; // specs/048 I-5 — 레거시 해시(#/agents) 리다이렉트 별칭
   const page = PAGES[name] ? name : "dashboard";
   document.querySelectorAll(".sidebar nav a").forEach((a) => {
     a.classList.toggle("active", a.dataset.page === page);

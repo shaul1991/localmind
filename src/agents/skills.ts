@@ -152,6 +152,62 @@ export function deploySkills(opts: { skillsDir?: string; claudeSkillsDir?: strin
   return { items: syncSkills(opts.skillsDir ?? skillsDir(), dest, true) };
 }
 
+// ── 읽기 전용 카탈로그 (specs/048 FR-3) ────────────────────────────────────
+
+/** SKILL.md의 name·description만 읽는 최소 프론트매터 파서. YAML 의존 없음(specs/010). */
+function parseSkillFrontmatter(src: string): { name?: string; description?: string } {
+  const normalized = src.replace(/\r\n/g, "\n");
+  if (!normalized.startsWith("---\n")) return {};
+  const end = normalized.indexOf("\n---", 3);
+  if (end < 0) return {};
+  const head = normalized.slice(4, end);
+  const fm: { name?: string; description?: string } = {};
+  for (const rawLine of head.split("\n")) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const colon = line.indexOf(":");
+    if (colon <= 0) continue;
+    const key = line.slice(0, colon).trim();
+    const value = line.slice(colon + 1).trim().replace(/^["']|["']$/g, "");
+    if (key === "name") fm.name = value;
+    else if (key === "description") fm.description = value;
+  }
+  return fm;
+}
+
+export interface SkillCatalogItem {
+  /** 디렉토리명(= 전문 조회 시 skillContent의 name 파라미터 키) */
+  name: string;
+  description: string;
+  managed: boolean;
+  /** skillsDir 기준 상대경로 — 문제 보고·표시용 */
+  file: string;
+}
+
+/** 스킬 카탈로그(read-only) — skillsDir() 하위 SKILL.md 보유 디렉토리를 열거한다.
+ *  name은 디렉토리명(전문 조회 시 경로 구성의 키가 되므로 frontmatter name과 무관하게
+ *  디렉토리명을 정본으로 삼는다 — RuleDoc의 basename 폴백과 같은 결). */
+export function listSkills(dir: string = skillsDir()): SkillCatalogItem[] {
+  const items: SkillCatalogItem[] = [];
+  for (const name of listSkillDirs(dir)) {
+    const file = path.join(name, "SKILL.md");
+    let src: string;
+    try {
+      src = fs.readFileSync(path.join(dir, file), "utf8");
+    } catch {
+      continue;
+    }
+    const fm = parseSkillFrontmatter(src);
+    items.push({
+      name,
+      description: fm.description ?? "",
+      managed: isManagedSkillDir(path.join(dir, name), name),
+      file,
+    });
+  }
+  return items;
+}
+
 /** 결과를 비개발자도 읽을 수 있는 한국어로 요약한다. */
 export function formatSkillsResult(label: string, r: SkillSyncResult): string {
   const status: Record<SkillItem["status"], string> = {

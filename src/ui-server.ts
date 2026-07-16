@@ -12,6 +12,8 @@ import { loadConfig, type Config } from "./config.js";
 import { authMiddleware, hostGuardMiddleware } from "./server.js";
 import { createUiRouter, type UiDeps } from "./routes/ui.js";
 import { notesFolders, brainIndexPath } from "./brain.js";
+import { rulesDir } from "./rules/registry.js";
+import { skillsDir } from "./agents/skills.js";
 import { log, setLogLevel } from "./util/log.js";
 
 export type { UiDeps } from "./routes/ui.js";
@@ -28,6 +30,8 @@ export function defaultUiDeps(): UiDeps {
     indexPath: brainIndexPath(),
     queryLogPath:
       process.env.QUERY_LOG ?? path.join(process.env.HOME ?? ".", ".localmind", "query-log.jsonl"),
+    rulesDir: rulesDir(),
+    skillsDir: skillsDir(),
     services: [
       { name: "gateway", url: "http://127.0.0.1:8787/v1/models" },
       { name: "embeddings", url: "http://127.0.0.1:4000/health/liveliness" },

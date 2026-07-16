@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
-import { deploySkills, formatSkillsResult, seedSkills } from "./skills.js";
+import { deploySkills, formatSkillsResult, listSkills, seedSkills } from "./skills.js";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const BRAIN_JS = path.join(REPO_ROOT, "src", "brain.js");
@@ -101,6 +101,55 @@ describe("deploySkills (데이터 폴더 → Claude Code) — AC-9·10·11", () 
     assert.match(r.skippedTarget!, /Claude Code 미설치/);
     const text = formatSkillsResult("배포", r);
     assert.match(text, /건너뜀/);
+  });
+});
+
+describe("listSkills — 읽기 전용 카탈로그 (specs/048 T010)", () => {
+  it("SKILL.md 열거 + frontmatter name/description 파싱", () => {
+    makeSkill(dataSkills, "my-skill", { body: "본문" });
+    fs.writeFileSync(
+      path.join(dataSkills, "my-skill", "SKILL.md"),
+      "---\nname: my-skill\ndescription: 테스트용 스킬\n---\n<!-- managed-by: localmind (skill: my-skill) -->\n본문\n",
+    );
+    const items = listSkills(dataSkills);
+    assert.equal(items.length, 1);
+    assert.equal(items[0].name, "my-skill");
+    assert.equal(items[0].description, "테스트용 스킬");
+    assert.equal(items[0].file, path.join("my-skill", "SKILL.md"));
+  });
+
+  it("managed 마커 없는 스킬은 managed:false", () => {
+    makeSkill(dataSkills, "unmanaged-skill", { managed: false, body: "직접 만든 스킬" });
+    fs.writeFileSync(
+      path.join(dataSkills, "unmanaged-skill", "SKILL.md"),
+      "---\nname: unmanaged-skill\ndescription: 사용자 스킬\n---\n직접 만든 스킬\n",
+    );
+    const items = listSkills(dataSkills);
+    assert.equal(items.find((i) => i.name === "unmanaged-skill")?.managed, false);
+  });
+
+  it("managed 마커 있는 스킬은 managed:true", () => {
+    makeSkill(dataSkills, "managed-skill", { body: "관리되는 스킬" });
+    const items = listSkills(dataSkills);
+    assert.equal(items.find((i) => i.name === "managed-skill")?.managed, true);
+  });
+
+  it("SKILL.md 없는 디렉토리는 목록에서 제외된다", () => {
+    fs.mkdirSync(path.join(dataSkills, "not-a-skill"), { recursive: true });
+    fs.writeFileSync(path.join(dataSkills, "not-a-skill", "README.md"), "스킬 아님");
+    const items = listSkills(dataSkills);
+    assert.ok(!items.some((i) => i.name === "not-a-skill"));
+  });
+
+  it("description 프론트매터가 없으면 빈 문자열", () => {
+    fs.mkdirSync(path.join(dataSkills, "no-desc"), { recursive: true });
+    fs.writeFileSync(path.join(dataSkills, "no-desc", "SKILL.md"), "---\nname: no-desc\n---\n본문\n");
+    const items = listSkills(dataSkills);
+    assert.equal(items.find((i) => i.name === "no-desc")?.description, "");
+  });
+
+  it("정본 폴더가 없으면 빈 배열(오류 아님)", () => {
+    assert.deepEqual(listSkills(path.join(root, "no-such-dir")), []);
   });
 });
 
