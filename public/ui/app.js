@@ -487,10 +487,38 @@ function personasSection() {
   });
 }
 
+// 정본(localmind-backup) 동기 신선도 배너 — 로컬 복제본이 정본을 언제 반영했나(specs/049)
+function syncBanner() {
+  return card("정본 동기", async () => {
+    const s = await api("/source-sync");
+    if (!s.isGitRepo) {
+      return el("div", {}, [
+        badge("warn", "정본 git 동기 안 됨"),
+        el("p", { class: "hint" },
+          "이 기기의 로컬 사본이 정본(localmind-backup) git 클론이 아니에요 — 로컬 전용/수동 배포. make update로 정본 동기를 배선할 수 있어요."),
+      ]);
+    }
+    const fetched = s.lastFetch ? fmtTime(Date.parse(s.lastFetch)) : "기록 없음";
+    const head = s.headDate
+      ? `${fmtTime(Date.parse(s.headDate))}${s.headSha ? ` (${s.headSha})` : ""}`
+      : "커밋 없음";
+    const wrap = el("div", {}, [
+      el("p", { class: "dim" }, `정본 마지막 동기 확인: ${fetched} · HEAD ${head}`),
+    ]);
+    if (s.remote && !s.remote.includes("localmind-backup")) {
+      wrap.append(el("p", {}, badge("warn", "origin이 localmind-backup이 아니에요")));
+    }
+    wrap.append(el("p", { class: "hint" },
+      "‘마지막 동기 확인’은 정본을 마지막으로 fetch한 때예요(정본과 같음 보장은 아님). 최신화는 make update."));
+    return wrap;
+  });
+}
+
 function pageGovernance() {
   return el("div", {}, [
     el("h2", {}, "거버넌스"),
     el("p", { class: "dim" }, "활성 규칙·스킬·페르소나를 조회해요. 읽기 전용 — 편집·배포는 터미널의 make/CLI로."),
+    syncBanner(),
     rulesSection(),
     skillsSection(),
     personasSection(),

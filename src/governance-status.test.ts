@@ -8,12 +8,14 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import {
   personaContent,
   ruleContent,
   rulesStatus,
   skillContent,
   skillsStatus,
+  sourceSyncStatus,
 } from "./ui-status.js";
 
 function tmp(prefix: string): string {
@@ -192,5 +194,29 @@ describe("skillContent — SKILL.md 파일 read + 경로 안전 (T022, I-4, AC-7
     }
     const r = skillContent("linked-skill", { skillsDir: dir });
     assert.equal(r.ok, false, "심링크 디렉토리는 거부돼야 함");
+  });
+});
+
+describe("sourceSyncStatus — 정본 동기 신선도 (specs/049)", () => {
+  it("git 클론이면 isGitRepo=true + remote·HEAD 메타를 반환한다 (AC-1)", async () => {
+    const dir = tmp("lm-sync-git-");
+    const g = (...a: string[]) =>
+      execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "-C", dir, ...a], { stdio: "ignore" });
+    g("init", "-q");
+    g("remote", "add", "origin", "https://github.com/shaul1991/localmind-backup.git");
+    fs.writeFileSync(path.join(dir, "a.txt"), "x");
+    g("add", "-A");
+    g("commit", "-qm", "c1");
+    const s = await sourceSyncStatus({ dir });
+    assert.equal(s.isGitRepo, true);
+    assert.ok(s.remote?.includes("localmind-backup"), "origin remote 포함");
+    assert.ok(s.headSha && s.headDate, "HEAD sha·date 존재");
+  });
+
+  it("git 클론이 아니면 isGitRepo=false (AC-2, home-server식)", async () => {
+    const dir = tmp("lm-sync-plain-");
+    fs.writeFileSync(path.join(dir, "x.md"), "y");
+    const s = await sourceSyncStatus({ dir });
+    assert.equal(s.isGitRepo, false);
   });
 });

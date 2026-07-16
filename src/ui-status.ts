@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
-import { loadRegistry, agentsDir } from "./agents/registry.js";
+import { loadRegistry, agentsDir, firstNotesDir } from "./agents/registry.js";
 import { defaultCodexHome, MANAGED_MARKER } from "./agents/deploy.js";
 import { listSkills, skillsDir as defaultSkillsDir } from "./agents/skills.js";
 import { loadRules, type RuleDoc, type RuleProblem } from "./rules/registry.js";
@@ -452,6 +452,58 @@ export function skillContent(
   } catch {
     return { ok: false, reason: "스킬을 찾을 수 없어요." };
   }
+}
+
+// ── 정본 동기 신선도(specs/049) — 로컬 복제본이 정본(localmind-backup)을 언제 반영했나 ──────
+export interface SourceSyncStatus {
+  dir: string;
+  /** firstNotesDir이 localmind-backup git 클론(자기 자신이 repo 루트)인가 */
+  isGitRepo: boolean;
+  remote?: string;
+  headSha?: string;
+  /** HEAD 커밋 시각(ISO) — 반영된 정본 내용의 최신성 */
+  headDate?: string;
+  /** 마지막 fetch 시각(ISO) = .git/FETCH_HEAD mtime — 마지막으로 정본을 *확인*한 때(같음 보장 아님) */
+  lastFetch?: string;
+}
+
+/**
+ * 정본 동기 신선도 — 로컬 firstNotesDir의 git 메타만 사용(네트워크 fetch 없음, FR-4).
+ * git 클론이 아니면(예: home-server식 rsync 사본) isGitRepo:false → 프런트가 경고로 표면화.
+ */
+export async function sourceSyncStatus(
+  opts: { dir?: string } = {},
+  timeoutMs = 3000,
+): Promise<SourceSyncStatus> {
+  const dir = opts.dir ?? firstNotesDir();
+  try {
+    const top = (await gitOut(dir, ["rev-parse", "--show-toplevel"], timeoutMs)).trim();
+    // dir 자신이 repo 루트일 때만 "정본 클론"으로 본다(상위 repo에 얹힌 경우 제외)
+    if (fs.realpathSync(top) !== fs.realpathSync(dir)) return { dir, isGitRepo: false };
+  } catch {
+    return { dir, isGitRepo: false }; // .git 없음 = 클론 아님
+  }
+  const out: SourceSyncStatus = { dir, isGitRepo: true };
+  try {
+    out.remote = (await gitOut(dir, ["remote", "get-url", "origin"], timeoutMs)).trim();
+  } catch {
+    /* remote 없음 */
+  }
+  try {
+    const [sha, iso] = (await gitOut(dir, ["log", "-1", "--format=%H%n%cI"], timeoutMs)).trim().split("\n");
+    out.headSha = sha?.slice(0, 8);
+    out.headDate = iso;
+  } catch {
+    /* 커밋 없음 */
+  }
+  try {
+    const gitDir = (await gitOut(dir, ["rev-parse", "--git-dir"], timeoutMs)).trim();
+    const abs = path.isAbsolute(gitDir) ? gitDir : path.join(dir, gitDir);
+    out.lastFetch = fs.statSync(path.join(abs, "FETCH_HEAD")).mtime.toISOString();
+  } catch {
+    /* fetch 이력 없음 */
+  }
+  return out;
 }
 
 /**

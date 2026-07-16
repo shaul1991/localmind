@@ -20,6 +20,7 @@ import {
   rulesStatus,
   skillContent,
   skillsStatus,
+  sourceSyncStatus,
   type RepoTarget,
   type ServiceProbe,
 } from "../ui-status.js";
@@ -122,6 +123,7 @@ export function createUiRouter(deps: UiDeps): Router {
     if (skill.ok) res.json({ content: skill.content });
     else res.status(400).json({ error: { message: skill.reason, type: "invalid_request_error" } });
   });
+  r.get("/source-sync", wrap(() => sourceSyncStatus()));
   r.get("/agent", (req, res) => {
     const persona = personaContent(String(req.query.name ?? ""), { registryDir: deps.registryDir });
     if (persona.ok) res.json({ content: persona.content });

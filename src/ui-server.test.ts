@@ -200,7 +200,7 @@ describe("거버넌스 API (specs/048)", () => {
     assert.equal(res.status, 400);
   });
   it("키 없이 거버넌스 엔드포인트 요청 → 401(AC-8)", async () => {
-    for (const p of ["/rules", "/skills", "/rule?name=spec-first", "/skill?name=my-skill", "/agent?name=x"]) {
+    for (const p of ["/rules", "/skills", "/rule?name=spec-first", "/skill?name=my-skill", "/agent?name=x", "/source-sync"]) {
       const res = await fetch(`${baseUrl}/ui/api${p}`);
       assert.equal(res.status, 401, `401이어야 함: ${p}`);
     }
