@@ -11,9 +11,13 @@
  *     (0이면 판정에 NOTES_DIR가 쓰였다 — 후퇴 가드의 적용 대상, spec 공통 가드 원칙)
  */
 import { agentsDir } from "../src/agents/registry.js";
-import { skillsDir } from "../src/agents/skills.js";
+import { skillsDir, claudeSkillsDir, agentSkillsDir, geminiCommandsDir } from "../src/agents/skills.js";
 
 console.log(`agents=${agentsDir()}`);
 console.log(`skills=${skillsDir()}`);
 console.log(`agents_override=${process.env.LOCALMIND_AGENTS_DIR?.trim() ? 1 : 0}`);
 console.log(`skills_override=${process.env.LOCALMIND_SKILLS_DIR?.trim() ? 1 : 0}`);
+// specs/044 additive — workflow 배포 target 경로(셸 lifecycle의 marker 검증용). 정본은 위 skills=.
+console.log(`claude_skills=${claudeSkillsDir()}`);
+console.log(`agent_skills=${agentSkillsDir()}`);
+console.log(`gemini_commands=${geminiCommandsDir()}`);

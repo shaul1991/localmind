@@ -3,6 +3,7 @@
   "workflows": {
     "goal-ready": { "activation": "intent", "sideEffects": "docs-only" },
     "sdd-implement": { "activation": "explicit", "sideEffects": "mutating" },
-    "sdd-self-review": { "activation": "delegated-or-explicit", "sideEffects": "report-only" }
+    "sdd-self-review": { "activation": "delegated-or-explicit", "sideEffects": "report-only" },
+    "localmind-rules": { "activation": "explicit", "sideEffects": "mutating" }
   }
 }

@@ -1,5 +1,7 @@
 # Plan: Device-Local Asset Sync (기기 로컬 자산 동기화 완결)
 
+> **044 확장 포인터**: `restore-assets.sh`의 `skills:deploy` 호출이 specs/044에서 multi-target(Claude·공용 `.agents`·Gemini) 배포로 확장된다. 스크립트 이름·흐름은 유지된다.
+
 상위: [goal](goal.md) · [spec](spec.md)
 
 ## 접근 요약

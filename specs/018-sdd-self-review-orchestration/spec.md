@@ -1,5 +1,7 @@
 # Spec: SDD Self-Review Orchestration
 
+> **044 확장/대체 포인터**: FR-1/4(provider/model orchestration)·FR-6(old `/goal` trigger)·FR-7(Claude-only fallback)·FR-8(Claude-only copy)·FR-10(provider-specific 문서)는 specs/044가 대체한다. FR-2/3 structured transport/output·FR-5 report-only ownership·FR-6 optional adapter toggle은 유지되고, backup/index/unmanaged·speckit invariants(FR-8/9)와 plain docs(FR-8/9/10)는 044 FR-11/12/13이 흡수한다. canonical `SKILL.md`는 `localmind-review` 이름을 전제하지 않는다(optional adapter로 보존).
+
 상위: [goal](goal.md)
 
 > 2026-07-03 인터뷰 7건 결정 반영: 범위=self-review만 / 실체=하이브리드(스킬+localmind

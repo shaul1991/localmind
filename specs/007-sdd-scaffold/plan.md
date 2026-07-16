@@ -1,5 +1,7 @@
 # Plan: SDD Scaffold
 
+> **044 확장 포인터**: specs/044가 `scaffoldSdd()`에 `CLAUDE.md`/`GEMINI.md` bridge item을 create-if-absent로 추가한다. 기존 단계·검증 기록은 유지된다.
+
 상위: [goal](goal.md) · [spec](spec.md)
 
 ## 접근 요약

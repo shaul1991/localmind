@@ -1,5 +1,7 @@
 # Plan: Device Sync Pipeline (기기 동기화 파이프라인)
 
+> **044 확장 포인터**: 수신 워커의 자산 배포·마커 검증 단계에 workflow target별 marker 확인이 추가된다(specs/044, `asset-dirs.ts`의 target 경로 노출 재사용). 흐름·이름은 유지된다.
+
 상위: [goal](goal.md) · [spec](spec.md)
 
 ## 도메인 경계

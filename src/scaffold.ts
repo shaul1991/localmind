@@ -40,26 +40,56 @@ export function scaffoldSdd(targetDir: string): ScaffoldResult {
 
   const items: ScaffoldItem[] = [];
 
-  const agentsDest = path.join(dir, "AGENTS.md");
-  if (fs.existsSync(agentsDest)) {
-    items.push({ path: "AGENTS.md", status: "skipped" });
-  } else {
-    fs.copyFileSync(path.join(TEMPLATES_DIR, "AGENTS.md"), agentsDest);
-    items.push({ path: "AGENTS.md", status: "created" });
+  // 컨텍스트 브리지 파일 — 각 item 단위 create-if-absent. AGENTS.md가 정본이고 CLAUDE.md/
+  // GEMINI.md는 얇은 import stub이다. 어느 하나가 이미 있어도 나머지 missing item은 만들며,
+  // 기존 파일 내용은 절대 병합·수정·덮어쓰기 하지 않는다(specs/044 FR-10).
+  //
+  // R4-04: no-follow 존재 판정(lstat) + exclusive create("wx", O_EXCL). existsSync는 dangling
+  // symlink를 따라가 false를 주고, copyFileSync는 링크를 따라가 프로젝트 밖에 referent를 만든다.
+  // lstat는 어떤 형태(파일/디렉토리/dangling·live symlink)든 항목을 감지해 보존하고, O_EXCL은
+  // 검사 후 생긴 항목(경쟁)까지 EEXIST로 잡아 링크/외부 대상을 따라가거나 덮어쓰지 않는다.
+  for (const name of ["AGENTS.md", "CLAUDE.md", "GEMINI.md"]) {
+    items.push({ path: name, status: createIfAbsent(path.join(dir, name), path.join(TEMPLATES_DIR, name)) });
   }
 
   const specsDir = path.join(dir, "specs");
-  if (fs.existsSync(specsDir)) {
+  if (entryExists(specsDir)) {
     items.push({ path: "specs/", status: "skipped" });
   } else {
     fs.mkdirSync(specsDir, { recursive: true });
     for (const name of ["goal.template.md", "spec.template.md", "plan.template.md"]) {
-      fs.copyFileSync(path.join(TEMPLATES_DIR, name), path.join(specsDir, name));
+      createIfAbsent(path.join(specsDir, name), path.join(TEMPLATES_DIR, name));
     }
     items.push({ path: "specs/", status: "created" });
   }
 
   return { items };
+}
+
+/** 경로에 어떤 형태(파일/디렉토리/live·dangling symlink)든 항목이 있는가 — symlink 미추종(lstat). */
+function entryExists(p: string): boolean {
+  try {
+    fs.lstatSync(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * dest가 없을 때만 template을 exclusive create로 심는다(symlink 미추종·경쟁 안전).
+ * 이미 있거나(검사 시점) 검사 후 생겼으면(O_EXCL EEXIST) 보존하고 "skipped"를 반환한다.
+ */
+function createIfAbsent(dest: string, templatePath: string): "created" | "skipped" {
+  if (entryExists(dest)) return "skipped";
+  try {
+    // O_WRONLY|O_CREAT|O_EXCL — 최종 경로 요소가 symlink이면 따라가지 않고 EEXIST로 실패한다.
+    fs.writeFileSync(dest, fs.readFileSync(templatePath), { flag: "wx" });
+    return "created";
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") return "skipped"; // 검사 후 생긴 항목 보존
+    throw err;
+  }
 }
 
 /** 결과를 사람이 읽기 쉬운 텍스트로 변환한다. */

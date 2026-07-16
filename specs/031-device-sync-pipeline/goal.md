@@ -1,5 +1,7 @@
 # Goal: Device Sync Pipeline (기기 동기화 파이프라인 — device-sync 한 방 명령)
 
+> **044 확장 포인터**: specs/044가 device-sync 수신 후 배포 마커 검증을 workflow **target별**(공용 `.agents/skills`의 3종 marker 등)로 additive 확장한다. unavailable target은 실패로 오인하지 않는다. 과거 검증 체크는 다시 쓰지 않는다.
+
 ## Background — 배경
 
 019(기기 로컬 자산 동기화)가 `make backup` → `make recover`/`make restore`로

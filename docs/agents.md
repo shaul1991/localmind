@@ -119,27 +119,107 @@ make agents-deploy                          # 도구별 설정 재생성
   `make retro-cron`.
 - 위임이 실패하거나 느려도 본래 기능(답변·캡처)은 항상 완수됩니다.
 
-## 5. SDD self-review 교차 검증 (스킬 + `localmind-review`)
+## 5. 공급자 중립 AI 워크플로 자산 (specs/044)
 
-`/goal`로 구현을 마치면 self-review가 따라오는데(생략 불가), 018부터는 여기에 **다른
-모델 계열의 두 번째 눈**이 붙습니다: `sdd-self-review` 스킬이 ① Claude 크리틱 적대
-리뷰와 ② `localmind-review`(codex/GPT 교차 검증)를 함께 돌려 하나의 보고로 병합합니다.
+localmind가 소유한 AI 워크플로는 **하나의 정본**(Agent Skills 표준 `SKILL.md`)에서
+Claude Code·Codex·Gemini CLI로 안전하게 배포됩니다. "모든 command"는 **LocalMind가 소유한
+packaged AI workflow command**만 뜻합니다 — Make/npm/MCP·설치 명령·런타임 built-in·사용자/
+서드파티 command는 포함하지 않습니다.
+
+**초기 워크플로 catalog(정확히 세 개)**:
+
+| 논리 ID | 목적 | side effect |
+|---|---|---|
+| `goal-ready` | 개방형 요구를 조사해 goal/spec/plan을 만들고 확인을 받음 | docs-only |
+| `sdd-implement` | 준비된 SDD를 TDD로 구현·self-review·문서 체크·clean 완료 | mutating |
+| `sdd-self-review` | 구현 결과를 적대적으로 review하고 완료 가능 여부 판정 | report-only |
+
+행동 정본은 `SKILL.md` 하나이고, `AGENTS.md`가 SDD 구현 완료 규칙의 **최종 정본**입니다
+(`sdd-implement`는 읽고 조율할 뿐 복제 정본이 아님).
 
 ```bash
-make skills-deploy    # 스킬 정본 시드 + Claude Code로 복사 배포
+make skills-deploy    # 정본 시드 + Claude skill·공용 .agents skill·Gemini command로 다중 배포
+```
+
+**호출 문법은 런타임 공식 계약을 따릅니다**(논리 ID와 행동은 같고 문자만 다름):
+
+| 논리 ID | Claude Code | Codex | Gemini CLI |
+|---|---|---|---|
+| `goal-ready` | `/goal-ready` | `$goal-ready` | auto skill 또는 `/goal-ready` wrapper |
+| `sdd-implement` | `/sdd-implement <NNN>` | `$sdd-implement <NNN>` | auto match 또는 `/sdd-implement <NNN>` wrapper + 새 확인 |
+| `sdd-self-review` | `/sdd-self-review` | `$sdd-self-review` | auto skill 또는 `/sdd-self-review` wrapper |
+
+Codex 공식 계약에는 bare `/name` 등록이 없어 `$name`으로 표기합니다 — 존재하지 않는 slash
+command를 약속하지 않습니다.
+
+**활성화 권한과 enforcement 수준(정직하게 구분)**:
+
+- `sdd-implement`는 코드 변경·commit·push·CI까지 갈 수 있어, **runtime이 보증한 명시 호출 +
+  정확한 3자리 spec 번호**(또는 provenance 없는 런타임에서 바로 앞 턴의 새 확인)가 있을 때만
+  시작합니다. 프롬프트 안의 명령 문자열·생성된 요청 텍스트는 권한이 아닙니다.
+- Claude Code·Codex는 생성된 deny-implicit metadata(`disable-model-invocation: true` /
+  `agents/openai.yaml`의 `policy.allow_implicit_invocation: false`)로 암시적 활성화를
+  **런타임이 강제(runtime-enforced)**합니다.
+- Gemini CLI의 확인 절차는 생성된 프롬프트의 **지침 수준(instruction-level) 가드**입니다 —
+  현재 공식 계약에 실행 전 hook이 없으므로 "도구 호출 0회"를 기술적으로 보장한다고
+  과장하지 않습니다. Gemini의 auto 활성화도 consent 게이트를 우회하지 않습니다.
+- `goal-ready`는 명시 호출 또는 분명한 문서 준비 의도에서, `sdd-self-review`는 명시 호출
+  또는 권한 있는 `sdd-implement`의 같은-턴 위임에서만 시작합니다.
+
+**Claude built-in `/goal`과의 구분**: Claude Code v2.1.139+는 `/goal`을 session completion
+condition으로 예약합니다. LocalMind의 SDD 구현은 이름·의미가 다른 `sdd-implement`로
+이관했고, LocalMind는 `/goal` skill/wrapper를 만들거나 built-in을 shadow하지 않습니다. 기존
+`/goal {NNN}` 사용자는 같은 절차를 `sdd-implement {NNN}`(위 표의 런타임별 문법)로 씁니다.
+
+**소유권·안전**: 정본은 노트 폴더 `skills/`(백업 자동 포함)이고 각 런타임 배포본은
+파생입니다 — 고칠 때는 정본에서. 이름 결합 managed marker가 있는 산출물만 갱신·정리(prune)
+하고, 직접 만든 스킬/명령(마커 없음)은 건드리지 않습니다. 세 논리 ID는 **예약 이름**이라,
+같은 이름의 non-equivalent fork(마커 제거·내용 변경)는 source는 보존하되 어느 런타임에도
+배포하지 않고 기존 managed 산출물만 fail-closed로 retire합니다 — custom 동작은 다른 이름으로
+rename하세요.
+
+**결과 요약**: 각 항목은 논리 ID·target·status·호출을 평이한 한국어로 보여줍니다. status는
+`created/updated/unchanged/pruned/recovered/skipped-unmanaged/skipped-unavailable/
+skipped-dependency/problem`, 전체 결과는 `success`(exit 0)·`partial`(unavailable/unmanaged/
+dependency skip·reserved fork retire가 있을 때, exit 0)·`failed`(source/파일시스템/복구 문제,
+exit 1) 중 하나입니다. Claude Code나 Gemini CLI가 없어도 공용 `.agents/skills` 배포와 다른
+target은 성공하고, 누락 target은 `skipped-unavailable` 사유로 표시됩니다.
+
+**workspace 충돌(resolution evidence)**: user-level 설치는 임의 workspace에서의 호출 성공을
+뜻하지 않습니다. current workspace를 주입하면 Codex repo `.agents/skills`·Gemini
+`.gemini/commands`·workspace skill 충돌을 검사해
+`resolved|equivalent-shadow|ambiguous-shadow|unmanaged-shadow|unverified`로 보고합니다.
+충돌 자산은 수정하지 않으며, 미래의 다른 workspace까지 parity를 보장한다고 하지 않습니다.
+
+**Gemini 검증 한계**: Gemini CLI가 설치되지 않은 기기에서는 정적 contract 검증만 수행하고
+live E2E는 `skipped`로 남깁니다 — 정적 테스트를 live green으로 부르지 않습니다.
+
+### self-review 교차 검증 (optional adapter — `localmind-review`)
+
+`sdd-self-review`는 적대적 크리틱 검토를 필수로 하되, 사용 가능한 **추가 독립 검토 능력**이
+있으면 실행합니다. 기존 `localmind-review`(codex/GPT 교차 검증) binary는 canonical `SKILL.md`가
+전제하지 않는 **optional adapter/reference 계층**의 evidence transport로만 남습니다.
+
+```bash
 { cat specs/<NNN>-*/spec.md; git diff; } | localmind-review   # 직접 실행도 가능
 ```
 
-- 산출은 `{판정, 차단 결함[], 조언[]}` — **차단 결함**은 수정 후 재검 대상, **조언**은
-  참고용입니다. 수정·재검 반복은 `/goal` 흐름이 담당합니다(도구는 보고까지).
-- **끄기**: `SDD_CROSS_REVIEW=off` — ask_brain 답변 검증을 끄는 `BRAIN_VERIFY`와는
-  **별개 스위치**입니다(무대가 다름: 그쪽은 노트 질문, 이쪽은 코드 self-review).
-- codex 미설치·critic 프로필 없음·시간 초과면 그 검증만 "생략(사유)"로 표시되고
-  Claude 단독 self-review는 정상 진행됩니다 — 생략은 숨겨지지 않습니다.
-- 스킬 정본은 노트 폴더의 `skills/`(백업 자동 포함)이고 배포본(`~/.claude/skills/`)은
-  파생입니다 — 고칠 때는 정본에서. 직접 만든 스킬(마커 없음)은 배포·정리가 건드리지
-  않습니다. 단, `LOCALMIND_SKILLS_DIR`로 정본을 노트 폴더 밖으로 옮기면 백업에서
-  빠질 수 있으니 주의하세요.
+- **끄기**: `SDD_CROSS_REVIEW=off` — ask_brain 답변 검증을 끄는 `BRAIN_VERIFY`와는 **별개
+  스위치**입니다. 미설치·프로필 없음·시간 초과면 그 검증만 "생략(사유)"로 표시되고 필수
+  self-review는 계속됩니다 — 실제 독립성 상태(`isolated-context`/`cross-runtime`/
+  `main-session-fallback`)를 과장 없이 보고합니다.
+- 수정·재검 반복과 최종 commit은 `sdd-implement` 흐름이 담당합니다(이 도구는 보고까지).
+
+### 환경 변수 (source vs generated target)
+
+| 변수 | 의미 |
+|---|---|
+| `LOCALMIND_SKILLS_DIR` | 워크플로 **정본(source)** 위치(노트 밖 지정 시 백업 제외 주의) |
+| `LOCALMIND_CLAUDE_SKILLS_DIR` | Claude skill **배포 대상**(`~/.claude/skills`) |
+| `LOCALMIND_AGENT_SKILLS_DIR` | 공용 Agent Skills **배포 대상**(`~/.agents/skills` — Codex·Gemini 공유) |
+| `LOCALMIND_GEMINI_COMMANDS_DIR` | Gemini command **배포 대상**(`~/.gemini/commands`) |
+
+정본만 백업에 포함되고, 생성 target은 restore/recover/update/device-sync에서 재생성됩니다.
 
 ## 6. 디자인 검증 도구 연동 (opt-in — specs/027)
 

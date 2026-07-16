@@ -1,5 +1,7 @@
 # Goal: SDD Scaffold (일관된 작업 흐름을 어디서든 심기)
 
+> **044 확장 포인터**: specs/044(공급자 중립 AI 워크플로 자산)가 이 AGENTS.md+specs scaffold 계약을 `CLAUDE.md`/`GEMINI.md` context bridge까지 **item 단위 create-if-absent**로 확장한다(기존 파일 불가침). 과거 검증 기록은 다시 쓰지 않는다.
+
 ## Background — 배경
 
 ROADMAP.md의 비전이 확장됐다: "누구든 어느 기기·어느 AI 도구를 쓰든 localmind를 통해 같은

@@ -1,5 +1,7 @@
 # Goal: SDD Self-Review Orchestration — 크리틱 교차 검증 배관
 
+> **044 확장/대체 포인터**: specs/044(공급자 중립 AI 워크플로 자산)가 provider/model-specific orchestration(FR-1/4), old `/goal` 기본 trigger(FR-6), Claude-only fallback(FR-7), Claude-only copy(FR-8), provider-specific 문서(FR-10)를 **대체**한다. FR-2/3의 structured transport/output, FR-5의 report-only ownership, FR-6의 optional adapter toggle은 **유지**된다. FR-8의 backup/index/unmanaged invariants·FR-9 speckit 불가침은 044 FR-11/13이, plain observability·toggle·judgment 문서 의무는 044 FR-12/13이 **흡수**한다. `localmind-review` binary와 cross-review API는 optional adapter로 보존된다. 과거 검증 체크는 다시 쓰지 않는다.
+
 ## Background — 배경
 
 specs/016으로 페르소나 정의를 정본 관리·배포하고, specs/017로 localmind 런타임(지식

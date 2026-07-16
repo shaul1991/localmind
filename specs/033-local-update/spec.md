@@ -1,5 +1,7 @@
 # Spec — `make update` (specs/033)
 
+> **044 확장 포인터**: `update.sh`의 `skills:deploy`가 specs/044에서 all-target 워크플로 배포를 수행함을 고정한다(이름·단계 불변). 과거 검증 체크는 그대로 둔다.
+
 > **검증 표기**: 각 항목의 `[x]`는 2026-07-05 self-review(독립 크리틱 2라운드 clean)에서
 > 구현+테스트로 충족이 확인됐다는 표시다. 근거는 `scripts/update.test.sh`의 시나리오(s1~s8)
 > 및 실기기 도그푸드. 미충족 항목은 체크 없이 사유를 부기한다.

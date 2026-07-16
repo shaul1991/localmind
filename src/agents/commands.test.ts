@@ -475,7 +475,7 @@ describe("workflow-invocation: AC-7", () => {
     assert.equal(goalReady.enforcement["claude-skill"], "not-applicable");
     // 예약 이름은 sdd-implement/goal-ready/sdd-self-review — built-in `/goal`과 이름이 다르다
     assert.ok(!rows.some((r) => r.logicalId === "goal"));
-    assert.deepEqual(rows.map((r) => r.logicalId), ["goal-ready", "sdd-implement", "sdd-self-review"]);
+    assert.deepEqual(rows.map((r) => r.logicalId), ["goal-ready", "localmind-rules", "sdd-implement", "sdd-self-review"]);
   });
 
   it("summary는 target/status/invocation/resolution을 평이한 한국어로 표시하고 Codex /name·LocalMind /goal을 주장하지 않는다", () => {

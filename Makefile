@@ -66,6 +66,9 @@ clean: ## 완전 초기화: 정지 + 데이터 볼륨 삭제(메모리·모델·
 purge: ## 완전 제거(로컬만·GitHub 백업 보존): 컨테이너·볼륨·이미지·MCP등록. 노트까지: NOTES=1 make purge
 	@NOTES="$(NOTES)" FORCE="$(FORCE)" BACKUP_DIR="$(BACKUP_DIR)" bash "$(CURDIR)/scripts/purge.sh"
 
+.PHONY: uninstall
+uninstall: purge ## 완전 제거(purge의 별칭 — 직관적 이름). 노트까지: NOTES=1 make uninstall
+
 .PHONY: restart
 restart: ## localmind 다시 시작
 	@echo "→ 다시 시작하는 중..."
@@ -180,7 +183,7 @@ agents-deploy: ## 페르소나 레지스트리(~/.localmind/agents)를 Claude Co
 	@npm run --silent agents:deploy
 
 .PHONY: skills-deploy
-skills-deploy: ## 오케스트레이션 스킬 정본을 시드하고 Claude Code로 복사 배포(멱등; 직접 만든 스킬은 보호)
+skills-deploy: ## AI 워크플로 정본을 시드하고 Claude·공용(.agents)·Gemini로 배포(멱등; 직접 만든 자산은 보호)
 	@npm run --silent skills:deploy
 
 .PHONY: rules-deploy

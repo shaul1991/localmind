@@ -1,5 +1,7 @@
 # Goal: Device-Local Asset Sync (기기 로컬 자산 동기화 완결 — 멀티 디바이스 복구)
 
+> **044 확장 포인터**: specs/044가 restore/recover의 자산 배포를 Claude skill·공용 `.agents` skill·Gemini command **multi-target** 재생성으로 additive 확장한다(정본만 백업, 생성 target은 재생성). 과거 검증 체크는 다시 쓰지 않는다.
+
 ## Background — 배경
 
 localmind의 백업·복원 축은 두 번에 걸쳐 다져졌다: 006이 노트+memory.md에 개인 설정

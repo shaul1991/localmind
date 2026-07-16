@@ -13,9 +13,14 @@
 번호는 3자리(`001`, `002`, ...), 슬러그는 kebab-case. 다음 사용 가능 번호는 기존 `specs/`
 폴더의 최댓값 + 1이다(폴더가 없으면 `001`부터 시작).
 
-## `/goal {NNN}` 처리 방법
+## `sdd-implement {NNN}` 처리 방법 (SDD 구현 워크플로)
 
-사용자가 `/goal {NNN}`(숫자만)으로 작업을 지시하면:
+이 규약이 SDD 구현 완료 규칙의 정본이다. 논리 command ID는 `sdd-implement`이고 호출은 runtime별로
+Claude Code `/sdd-implement {NNN}`, Codex `$sdd-implement {NNN}`, Gemini CLI 생성 wrapper `/sdd-implement {NNN}`다.
+Claude Code built-in `/goal`(session completion condition)과는 이름·의미가 다르며 shadow하지 않는다.
+
+runtime이 명시 호출을 보증하고 원인자가 정확히 3자리 숫자일 때(또는 provenance 없는 runtime의 새
+확인이 있을 때) 다음을 수행한다:
 
 1. `specs/{NNN}-*/` 폴더를 찾는다(번호 프리픽스로 매칭, 슬러그는 몰라도 됨).
 2. 해당 폴더의 `goal.md` · `spec.md` · `plan.md`를 모두 읽는다.
@@ -48,7 +53,7 @@
 - **Live-Verify Facts (기억 불신 원칙)**: 기억·주입 컨텍스트·이전 대화는 **100% 신뢰하지
   않는다** — 출발점일 뿐 근거가 아니다. **낡을 수 있는 사실**(외부 API·SDK·라이브러리 거동,
   가격·요금·모델명·버전·한도, 표준/명세 등 시간에 따라 변하는 것)은 코드·스펙·검수에 넣기
-  전에 **라이브 최신 공식문서로 확인**한다(WebFetch/WebSearch 등 실시간 조회). 확인 못 하면
+  전에 **라이브 최신 공식문서로 확인**한다(runtime이 제공하는 실시간 웹/문서 조회 능력 사용). 확인 못 하면
   단정하지 말고 **Open question + 검증 태스크로 남긴다**. 이 검증은 self-review 점검 범위 (5)의
   강제 게이트다. (핵심: 불완전함은 허용되나 — Open question으로 정직하게 표시 — **거짓·낡은
   정보로 진행하는 것은 불완전함보다 해롭다**. 불변 사실(수학·문법)은 제외.)
