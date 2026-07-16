@@ -275,6 +275,13 @@ export function replaceManagedDirectory(o: ReplaceDirOptions): ReconcileResult {
     }
   }
 
+  // update: target이 검증-후 unmanaged로 교체됐으면 중단. Linux inode 재사용(rm+재생성이 같은
+  // inode)이 아래 inode 비교를 우회하므로 ownedBy(마커 부재)로 먼저 잡는다 — 안 그러면 target을
+  // backup으로 rename 후 그 backup을 정리하며 사용자의 unmanaged 것을 파괴한다(pruneと 동일 방어).
+  if (!o.ownedBy(target)) {
+    safeRm(ops, stage, true);
+    return { status: "problem", reason: "교체 직전 대상이 unmanaged로 변경(덮어쓰기 금지)" };
+  }
   // update: target identity가 검증 시점과 다르면 중단(race).
   if (targetInode(target) !== inodeBefore) {
     safeRm(ops, stage, true);
@@ -439,6 +446,10 @@ export function pruneManagedDirectory(o: PruneDirOptions): ReconcileResult {
 
   o.beforeMutate?.();
   if (!reCheckIdentity(o.parent, parent.id)) return { status: "problem", reason: "정리 직전 부모 식별자 변경(중단)" };
+  // ownership 재검을 inode 재검보다 먼저 둔다: Linux는 rm 직후 재생성이 같은 inode를 재사용할 수
+  // 있어(inode 재사용) inode 비교만으로는 unmanaged 대상으로의 교체를 놓친다. 교체된 unmanaged
+  // 대상은 managed 마커가 없으므로 ownedBy가 이를 확실히 잡는다.
+  if (!o.ownedBy(target)) return { status: "problem", reason: "정리 직전 대상이 unmanaged로 변경 — retire 중단" };
   if (targetInode(target) !== inodeBefore) return { status: "problem", reason: "정리 직전 대상 식별자 변경 — retire 중단" };
 
   const retired = path.join(o.parent, HIDDEN("retired", o.name, nonce()));
@@ -527,6 +538,12 @@ export function replaceManagedFile(o: ReplaceFileOptions): ReconcileResult {
     }
   }
 
+  // update: target이 검증-후 unmanaged로 교체됐으면 중단. Linux inode 재사용이 아래 inode 비교를
+  // 우회하므로 ownedBy(마커 부재)로 먼저 잡는다 — 안 그러면 사용자의 unmanaged 파일을 파괴한다.
+  if (!o.ownedBy(target)) {
+    safeRm(ops, stage, false);
+    return { status: "problem", reason: "교체 직전 대상이 unmanaged로 변경(덮어쓰기 금지)" };
+  }
   if (targetInode(target) !== inodeBefore) {
     safeRm(ops, stage, false);
     return { status: "problem", reason: "교체 직전 대상 식별자가 바뀌었습니다(중단)" };
@@ -677,6 +694,10 @@ export function pruneManagedFile(o: PruneFileOptions): ReconcileResult {
 
   o.beforeMutate?.();
   if (!reCheckIdentity(o.parent, parent.id)) return { status: "problem", reason: "정리 직전 부모 식별자 변경(중단)" };
+  // ownership 재검을 inode 재검보다 먼저 둔다: Linux는 rm 직후 재생성이 같은 inode를 재사용할 수
+  // 있어(inode 재사용) inode 비교만으로는 unmanaged 대상으로의 교체를 놓친다. 교체된 unmanaged
+  // 대상은 managed 마커가 없으므로 ownedBy가 이를 확실히 잡는다.
+  if (!o.ownedBy(target)) return { status: "problem", reason: "정리 직전 대상이 unmanaged로 변경 — retire 중단" };
   if (targetInode(target) !== inodeBefore) return { status: "problem", reason: "정리 직전 대상 식별자 변경 — retire 중단" };
 
   const retired = path.join(o.parent, HIDDEN("retired", o.fileName, nonce()));

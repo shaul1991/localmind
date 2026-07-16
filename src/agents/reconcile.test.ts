@@ -339,6 +339,17 @@ describe("exact orphan matching + identity guard (R1-08)", () => {
     assert.match(readTarget(), /갑자기 사용자 것/, "새 unmanaged 보존");
   });
 
+  it("update: 검증-후 target이 unmanaged로 in-place 교체되면 problem(inode 재사용 방어)", () => {
+    replaceManagedDirectory({ parent, name: "demo", ownedBy, isUpToDate: () => false, render: renderDir("v1") });
+    // managed SKILL.md를 unmanaged 내용으로 in-place 덮어씀(dir inode 보존 = inode 재사용과 동일 효과).
+    const beforeMutate = () => {
+      fs.writeFileSync(path.join(parent, "demo", "SKILL.md"), "---\nname: demo\n---\n사용자가 덮어씀\n");
+    };
+    const r = replaceManagedDirectory({ parent, name: "demo", ownedBy, isUpToDate: () => false, render: renderDir("v2"), beforeMutate });
+    assert.equal(r.status, "problem", "unmanaged로 바뀌면 덮어쓰지 않는다");
+    assert.match(readTarget(), /사용자가 덮어씀/, "사용자 unmanaged 보존(파괴 금지)");
+  });
+
   it("recover restore: rename 직전 target이 생기면 problem(덮어쓰기 0)", () => {
     mkBackupDir("demo", "abc123", "backup-v");
     const beforeMutate = () => {
@@ -436,6 +447,31 @@ describe("managed-write-recovery: AC-20", () => {
     const r2 = pruneManagedFile({ parent, fileName: "keep.toml", ownedBy: cmdOwned });
     assert.equal(r2.status, "skipped-unmanaged");
     assert.ok(fs.existsSync(path.join(parent, "keep.toml")));
+  });
+
+  it("prune file: rename 직전 target이 unmanaged로 바뀌면 problem(inode 재사용 방어)", () => {
+    replaceManagedFile({ parent, fileName: "demo.toml", content: cmdContent("v1"), ownedBy: cmdOwned });
+    // 검증-후 rename-전 사이에 target을 unmanaged 파일로 교체(Linux inode 재사용 race 시뮬레이션):
+    // rm 직후 재생성이 같은 inode를 받으면 inode 비교만으로는 못 잡는다 — ownedBy(마커 부재)가 잡는다.
+    const beforeMutate = () => {
+      fs.rmSync(path.join(parent, "demo.toml"), { force: true });
+      fs.writeFileSync(path.join(parent, "demo.toml"), 'prompt = "갑자기 사용자 것"\n');
+    };
+    const r = pruneManagedFile({ parent, fileName: "demo.toml", ownedBy: cmdOwned, beforeMutate });
+    assert.equal(r.status, "problem", "unmanaged로 바뀌면 retire하지 않는다");
+    assert.match(readFile(), /갑자기 사용자 것/, "새 unmanaged 파일 보존");
+  });
+
+  it("update file: 검증-후 target이 unmanaged로 in-place 교체되면 problem(inode 재사용 방어)", () => {
+    replaceManagedFile({ parent, fileName: "demo.toml", content: cmdContent("v1"), ownedBy: cmdOwned });
+    // managed v1을 unmanaged 내용으로 in-place 덮어씀(inode 보존 = Linux rm+create 재사용과 동일 효과).
+    // 방어 없으면 target→backup rename 후 backup 정리로 사용자 파일이 파괴된다.
+    const beforeMutate = () => {
+      fs.writeFileSync(path.join(parent, "demo.toml"), 'prompt = "USER OWN FILE"\n');
+    };
+    const r = replaceManagedFile({ parent, fileName: "demo.toml", content: cmdContent("v2"), ownedBy: cmdOwned, beforeMutate });
+    assert.equal(r.status, "problem", "unmanaged로 바뀌면 덮어쓰지 않는다");
+    assert.match(readFile(), /USER OWN FILE/, "사용자 unmanaged 파일 보존(파괴 금지)");
   });
 
   it("recovery file: target 부재 + 유효(complete) backup 1개 → 복구", () => {

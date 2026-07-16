@@ -14,7 +14,7 @@ import { execFileSync } from "node:child_process";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-let root, home, canonical, claudeSkills, agentSkills, geminiCmds;
+let root, home, canonical, claudeSkills, agentSkills, geminiCmds, notesEnvFile;
 before(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "lm-lifecycle-"));
   home = path.join(root, "home");
@@ -24,6 +24,10 @@ before(() => {
   geminiCmds = path.join(home, ".gemini", "commands");
   fs.mkdirSync(path.join(home, ".claude"), { recursive: true }); // Claude 설치 흔적
   fs.mkdirSync(path.join(home, ".gemini"), { recursive: true }); // Gemini 설치 흔적
+  // backup-assets.sh 호출을 헤르메틱하게: 격리 NOTES_DIR을 주입해 저장소의 ambient .env에
+  // 의존하지 않게 한다(그것이 있으면 dev 머신은 통과, 클린 체크아웃(CI)은 실패로 갈렸다).
+  notesEnvFile = path.join(root, "notes.env");
+  fs.writeFileSync(notesEnvFile, `NOTES_DIR=notes=${path.join(home, ".localmind")}\n`);
 });
 after(() => fs.rmSync(root, { recursive: true, force: true }));
 
@@ -107,7 +111,7 @@ describe("workflow-lifecycle E2E entry points: AC-17 (R4-05)", () => {
     runDeployCli(); // 정본 seed + 전 target 배포
     const backupDir = path.join(root, "backup");
     fs.mkdirSync(backupDir, { recursive: true });
-    runShell("scripts/backup-assets.sh", { ...deployEnv(), BACKUP_DIR: backupDir });
+    runShell("scripts/backup-assets.sh", { ...deployEnv(), BACKUP_DIR: backupDir, LOCALMIND_ENV_FILE: notesEnvFile });
     const mirror = path.join(backupDir, "skills");
     for (const n of WORKFLOWS) assert.ok(fs.existsSync(path.join(mirror, n, "SKILL.md")), `정본 ${n} 미러`);
     assert.ok(fs.existsSync(path.join(mirror, ".localmind-mirror")), "미러 마커");
@@ -123,7 +127,7 @@ describe("workflow-lifecycle E2E entry points: AC-17 (R4-05)", () => {
     fs.mkdirSync(path.join(backupDir, "skills"), { recursive: true });
     runDeployCli();
     // 정본을 백업 미러로 복사(backup-assets 경유)
-    runShell("scripts/backup-assets.sh", { ...deployEnv(), BACKUP_DIR: backupDir });
+    runShell("scripts/backup-assets.sh", { ...deployEnv(), BACKUP_DIR: backupDir, LOCALMIND_ENV_FILE: notesEnvFile });
     // 기기 초기화: canonical + 전 target 삭제
     for (const d of [canonical, claudeSkills, agentSkills, geminiCmds]) fs.rmSync(d, { recursive: true, force: true });
     const envFile = path.join(root, "restore.env");
@@ -148,7 +152,7 @@ describe("workflow-lifecycle E2E entry points: AC-17 (R4-05)", () => {
     const mirrorSkills = path.join(backupDir, "skills");
     fs.mkdirSync(mirrorSkills, { recursive: true });
     runDeployCli();
-    runShell("scripts/backup-assets.sh", { ...deployEnv(), BACKUP_DIR: backupDir });
+    runShell("scripts/backup-assets.sh", { ...deployEnv(), BACKUP_DIR: backupDir, LOCALMIND_ENV_FILE: notesEnvFile });
     assert.ok(fs.existsSync(path.join(mirrorSkills, ".localmind-mirror")), "미러 마커 존재");
     for (const d of [claudeSkills, agentSkills, geminiCmds]) fs.rmSync(d, { recursive: true, force: true });
     // 노트 미설정(.env 없음) + recover → 보류: target 미생성

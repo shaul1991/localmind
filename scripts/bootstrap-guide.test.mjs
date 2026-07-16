@@ -124,7 +124,9 @@ describe("AC-1 — 심링크 경로에서도 서브프로세스로 실제 기동
       assert.equal(JSON.parse(res.body).env, "missing"); // 격리 폴더엔 .env 없음(AC-4 missing 분기)
     } finally {
       child.kill();
-      fs.rmSync(link, { force: true });
+      // 심링크 자신만 제거한다(unlink는 대상을 따라가지 않음). Linux의 rmSync는 심링크를 따라가
+      // 디렉토리로 보고 EISDIR로 실패하므로 rmSync 대신 unlinkSync를 쓴다. 대상 real은 아래서 삭제.
+      fs.unlinkSync(link);
       fs.rmSync(real, { recursive: true, force: true });
     }
   });
