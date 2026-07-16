@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "workflows": {
+    "goal-ready": { "activation": "intent", "sideEffects": "docs-only" },
+    "sdd-implement": { "activation": "explicit", "sideEffects": "mutating" },
+    "sdd-self-review": { "activation": "delegated-or-explicit", "sideEffects": "report-only" }
+  }
+}
