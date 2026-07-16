@@ -26,9 +26,11 @@ describe("scaffoldSdd", () => {
       assert.ok(fs.existsSync(path.join(dir, "specs", "goal.template.md")));
       assert.ok(fs.existsSync(path.join(dir, "specs", "spec.template.md")));
       assert.ok(fs.existsSync(path.join(dir, "specs", "plan.template.md")));
+      assert.ok(fs.existsSync(path.join(dir, "CLAUDE.md")));
+      assert.ok(fs.existsSync(path.join(dir, "GEMINI.md")));
       assert.deepEqual(
         result.items.map((i) => i.status),
-        ["created", "created"],
+        ["created", "created", "created", "created"],
       );
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
@@ -105,8 +107,104 @@ describe("scaffoldSdd", () => {
       const second = scaffoldSdd(dir);
       assert.deepEqual(
         second.items.map((i) => i.status),
-        ["skipped", "skipped"],
+        ["skipped", "skipped", "skipped", "skipped"],
       );
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("scaffold-runtime-bridges: AC-16", () => {
+  it("root: CLAUDE.md·GEMINI.md가 AGENTS.md를 import한다", () => {
+    const claude = fs.readFileSync(path.join(REPO_ROOT, "CLAUDE.md"), "utf8");
+    const gemini = fs.readFileSync(path.join(REPO_ROOT, "GEMINI.md"), "utf8");
+    assert.match(claude, /@AGENTS\.md/);
+    assert.match(gemini, /@\.\/AGENTS\.md/);
+  });
+
+  it("scaffold: 없는 bridge만 생성하고 AGENTS.md를 import한다", () => {
+    const dir = tmpDir();
+    try {
+      scaffoldSdd(dir);
+      assert.match(fs.readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /@AGENTS\.md/);
+      assert.match(fs.readFileSync(path.join(dir, "GEMINI.md"), "utf8"), /@\.\/AGENTS\.md/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("기존 bridge 파일은 절대 덮어쓰지 않고, 없는 것만 채운다(item 단위)", () => {
+    const dir = tmpDir();
+    try {
+      fs.writeFileSync(path.join(dir, "CLAUDE.md"), "내 CLAUDE 설정 — 건드리지 말 것");
+      const result = scaffoldSdd(dir);
+      assert.equal(fs.readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), "내 CLAUDE 설정 — 건드리지 말 것");
+      assert.equal(result.items.find((i) => i.path === "CLAUDE.md")?.status, "skipped");
+      assert.equal(result.items.find((i) => i.path === "AGENTS.md")?.status, "created");
+      assert.equal(result.items.find((i) => i.path === "GEMINI.md")?.status, "created");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("새 scaffold SDD 실행 규약은 sdd-implement를 쓴다(built-in /goal shadow 아님)", () => {
+    const dir = tmpDir();
+    try {
+      scaffoldSdd(dir);
+      const agents = fs.readFileSync(path.join(dir, "AGENTS.md"), "utf8");
+      assert.match(agents, /sdd-implement/);
+      assert.ok(!/## `\/goal \{NNN\}` 처리 방법/.test(agents), "old /goal 구현 표면 없음");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("scaffold dangling-symlink safety (R4-04)", () => {
+  for (const name of ["AGENTS.md", "CLAUDE.md", "GEMINI.md"]) {
+    it(`${name}: dangling bridge symlink을 따라가 외부 파일을 만들지 않는다(skipped, 링크 불변)`, () => {
+      const parent = tmpDir();
+      try {
+        const external = path.join(parent, "outside.md"); // 존재하지 않는 외부 referent
+        const dir = path.join(parent, "proj");
+        fs.mkdirSync(dir);
+        fs.symlinkSync(external, path.join(dir, name)); // dangling symlink
+        const result = scaffoldSdd(dir);
+        assert.ok(fs.lstatSync(path.join(dir, name)).isSymbolicLink(), `${name} 심링크 유지(변경 없음)`);
+        assert.ok(!fs.existsSync(external), `${name} 외부 referent를 만들지 않는다`);
+        assert.equal(result.items.find((i) => i.path === name)!.status, "skipped", `${name} skipped 보고`);
+      } finally {
+        fs.rmSync(parent, { recursive: true, force: true });
+      }
+    });
+  }
+
+  it("기존 파일을 가리키는 bridge symlink은 referent 내용을 덮어쓰지 않는다", () => {
+    const parent = tmpDir();
+    try {
+      const dir = path.join(parent, "proj");
+      fs.mkdirSync(dir);
+      const real = path.join(parent, "real-agents.md");
+      fs.writeFileSync(real, "원본 내용 — 건드리지 말 것");
+      fs.symlinkSync(real, path.join(dir, "AGENTS.md"));
+      const result = scaffoldSdd(dir);
+      assert.equal(fs.readFileSync(real, "utf8"), "원본 내용 — 건드리지 말 것", "referent 내용 불변");
+      assert.equal(result.items.find((i) => i.path === "AGENTS.md")!.status, "skipped");
+    } finally {
+      fs.rmSync(parent, { recursive: true, force: true });
+    }
+  });
+
+  it("bridge 이름이 디렉토리로 점유되어 있으면 덮어쓰지 않고 skipped", () => {
+    const dir = tmpDir();
+    try {
+      fs.mkdirSync(path.join(dir, "CLAUDE.md"));
+      const result = scaffoldSdd(dir);
+      assert.ok(fs.statSync(path.join(dir, "CLAUDE.md")).isDirectory(), "디렉토리 그대로");
+      assert.equal(result.items.find((i) => i.path === "CLAUDE.md")!.status, "skipped");
+      // 없는 형제 bridge는 정상 생성
+      assert.equal(result.items.find((i) => i.path === "AGENTS.md")!.status, "created");
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

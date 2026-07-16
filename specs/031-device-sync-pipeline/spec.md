@@ -1,5 +1,7 @@
 # Spec: Device Sync Pipeline (기기 동기화 파이프라인)
 
+> **044 확장 포인터**: `device-sync-receive.sh`의 배포 마커 검증에 workflow target별 확인(공용 `.agents/skills` 3종 marker)이 additive로 추가된다(specs/044). 기존 persona marker 검증은 유지된다.
+
 상위: [goal](goal.md)
 
 ## Scope

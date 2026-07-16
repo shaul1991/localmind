@@ -1,5 +1,7 @@
 # Plan: SDD Self-Review 오케스트레이션
 
+> **044 확장/대체 포인터**: specs/044가 `sdd-self-review`를 공급자 중립 canonical `SKILL.md`로 이관하고 다중 target 배포를 소유한다. 018의 optional cross-review adapter(`localmind-review`)와 report-only 소유 경계는 유지되며, provider-specific trigger/copy/docs는 044로 대체된다. 과거 검증 체크는 그대로 둔다.
+
 상위: [goal](goal.md) · [spec](spec.md)
 
 > 2026-07-03 인터뷰 결정 7건 위에 서 있다. goal/spec은 인터뷰어 페르소나가, 이 plan은

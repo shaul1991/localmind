@@ -1,5 +1,7 @@
 # Plan — `make update` (specs/033)
 
+> **044 확장 포인터**: update 단계의 `npm run skills:deploy`가 specs/044에서 Claude·공용 `.agents`·Gemini 전 target 재생성으로 확장된다. 단계 이름은 유지된다.
+
 ## 도메인 경계
 
 운영 스크립트 레이어(bash) — 기존 개념 재사용:

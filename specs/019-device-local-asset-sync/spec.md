@@ -1,5 +1,7 @@
 # Spec: Device-Local Asset Sync (기기 로컬 자산 동기화 완결)
 
+> **044 확장 포인터**: restore/recover 후 `skills:deploy`가 Claude·공용 `.agents`·Gemini command 전 target을 재생성한다(specs/044 additive). 기본 구성은 즉시 배포, mirror-deferred recover는 notes 연결 후 restore로 배포. 과거 검증 체크는 그대로 둔다.
+
 상위: [goal](goal.md)
 
 ## Scope

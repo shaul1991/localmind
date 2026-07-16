@@ -102,6 +102,20 @@ else
   FAILURES="$FAILURES 마커"
 fi
 
+# ── ⓖ 워크플로 자산 target별 검증(specs/044 R4-05) ──────────────────────────────
+# 판정의 단일 소스는 TS(verify-targets) — 셸이 가용성·경로·소유권·marker 규칙을 재구현하지 않는다.
+# 모든 available target(공용은 필수, Claude/Gemini는 부모 존재/override 시)의 이름 결합 marker와
+# deny-implicit 정책 metadata, Gemini command marker를 확인한다. **verifier 실행 자체가 실패하면
+# (resolver 실패) 조용히 건너뛰지 않고 검증 실패로 본다.** unavailable target은 실패가 아니다.
+WF_VERIFY_OUT="$(cd "$PROJECT_DIR" && node --import tsx/esm scripts/verify-targets.ts 2>&1)"; wf_rc=$?
+[ -n "$WF_VERIFY_OUT" ] && printf '%s\n' "$WF_VERIFY_OUT"
+if [ "$wf_rc" -eq 0 ]; then
+  ok "워크플로 자산 검증(모든 available target marker·정책)"
+else
+  warn "워크플로 자산 검증 실패 — 'make skills-deploy'로 재생성하세요."
+  FAILURES="$FAILURES 워크플로검증"
+fi
+
 if [ -z "$FAILURES" ]; then
   echo "✓ 수신 완료"
 else

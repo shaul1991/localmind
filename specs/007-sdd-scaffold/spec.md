@@ -1,5 +1,7 @@
 # Spec: SDD Scaffold
 
+> **044 확장 포인터**: specs/044가 이 scaffold 계약에 `CLAUDE.md`/`GEMINI.md` bridge를 item 단위 create-if-absent로 additive 확장한다(기존 파일 불가침). 과거 검증 체크는 그대로 둔다.
+
 상위: [goal](goal.md)
 
 ## Scope

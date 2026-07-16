@@ -245,7 +245,8 @@ curl -X POST http://localhost:8767/api/v1/memories/filter -H "Content-Type: appl
 | `BRAIN_VERIFY_TIMEOUT_MS` / `BRAIN_VERIFY_DAILY_LIMIT` | `60000` / `50` | 크리틱 검증 시간 상한 / 일일 횟수 상한 |
 | `BRAIN_TAG_TIMEOUT_MS` / `BRAIN_REPORT_TIMEOUT_MS` | `30000` / `60000` | 큐레이터 태깅 / 분석가 해석 시간 상한 |
 | `SDD_CROSS_REVIEW` / `SDD_CROSS_REVIEW_TIMEOUT_MS` | (켜짐) / `300000` | `off`로 self-review codex 교차 검증 끄기(`BRAIN_VERIFY`와 별개) / 시간 상한 |
-| `LOCALMIND_SKILLS_DIR` / `LOCALMIND_CLAUDE_SKILLS_DIR` | `<첫 NOTES_DIR 폴더>/skills` / `~/.claude/skills` | 스킬 정본(노트 밖 지정 시 백업 제외 주의) / 배포 대상 |
+| `LOCALMIND_SKILLS_DIR` / `LOCALMIND_CLAUDE_SKILLS_DIR` | `<첫 NOTES_DIR 폴더>/skills` / `~/.claude/skills` | 워크플로 정본(source, 노트 밖 지정 시 백업 제외 주의) / Claude skill 배포 대상 |
+| `LOCALMIND_AGENT_SKILLS_DIR` / `LOCALMIND_GEMINI_COMMANDS_DIR` | `~/.agents/skills` / `~/.gemini/commands` | 공용 Agent Skills 배포 대상(Codex·Gemini 공유) / Gemini command wrapper 배포 대상 — 둘 다 파생(백업 제외, 재생성) — [워크플로 자산](agents.md#5-공급자-중립-ai-워크플로-자산-specs044) |
 | `LOCALMIND_CLAUDE_AGENTS_DIR` | `~/.claude/agents` | 페르소나 배포 대상(Claude Code 서브에이전트) |
 | `LOCALMIND_CODEX_HOME` | `$CODEX_HOME` 또는 `~/.codex` | 페르소나 배포 대상(Codex 프로필·에이전트) |
 

@@ -1,5 +1,7 @@
 # Goal — 이 기기 최신화 한 방 명령 (`make update`)
 
+> **044 확장 포인터**: specs/044가 `make update`의 `skills:deploy`를 all-target(Claude·공용 `.agents`·Gemini) 재생성으로 additive 확장한다. 스크립트 이름·단계는 그대로다. 과거 검증 체크는 다시 쓰지 않는다.
+
 ## Background
 
 - specs/031이 **원격 기기** 최신화(`make device-sync HOST=...`)를, `make recover`가 **새 기기**
