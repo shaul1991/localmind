@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "workflows": {
+    "deep-research": { "activation": "explicit", "sideEffects": "report-only" },
     "goal-ready": { "activation": "intent", "sideEffects": "docs-only" },
     "goal-impl": { "activation": "explicit", "sideEffects": "mutating" },
     "sdd-self-review": { "activation": "delegated-or-explicit", "sideEffects": "report-only" },

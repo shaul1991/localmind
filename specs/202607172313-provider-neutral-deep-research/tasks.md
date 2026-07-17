@@ -136,22 +136,24 @@ audience: ai
 ## Phase 2 — canonical package·catalog GREEN (worker)
 > depends-on: L1 RED 배리어 · files: `templates/skills/catalog.json`, `templates/skills/deep-research/SKILL.md`, `templates/skills/deep-research/references/research-contract.md`
 
-- [ ] **T2.1 — catalog:** `deep-research`를 `activation: explicit`, `sideEffects: report-only`로 정확히
+- [x] **T2.1 — catalog:** `deep-research`를 `activation: explicit`, `sideEffects: report-only`로 정확히
       1회 추가한다(I-3). 다른 workflow policy·순서를 불필요하게 바꾸지 않는다.
-- [ ] **T2.2 — SKILL frontmatter:** Agent Skills 표준의 `name: deep-research`와 무엇/언제 쓰는지
+- [x] **T2.2 — SKILL frontmatter:** Agent Skills 표준의 `name: deep-research`와 무엇/언제 쓰는지
       설명하는 `description`만 공통 frontmatter에 둔다. runtime extension metadata는 넣지 않는다.
-- [ ] **T2.3 — workflow body:** reference 선행 읽기 → explicit/no-topic gate → research brief·확인 →
+- [x] **T2.3 — workflow body:** reference 선행 읽기 → explicit/no-topic gate → research brief·확인 →
       prior context/source strategy → independent question fan-out/fallback → evidence → synthesis → final
       critic → conclusion-first report의 순서를 작성한다. provider/model/runtime/tool명 없이 capability와
       역할로만 지시하고, scout=economy·coordinator/researcher=standard·synthesizer/critic=
       critical-reasoning 배치를 명시한다(I-2·I-14).
-- [ ] **T2.4 — research contract:** source tiers, live verification, evidence ledger 최소 schema,
+- [x] **T2.4 — research contract:** source tiers, live verification, evidence ledger 최소 schema,
       conflict 처리, 사실/추론/권고/미검증 label, degraded mode, report headings, critic checklist,
       report-only 금지 행동, retrieved-content distrust, prompt-injection 무시, secret/private query 경계를
       자기완결 text reference로 작성한다. runtime binding이 concrete model을 소유하며 선택 능력 부재 시
       current-session fallback과 비독립 상태를 보고한다는 계약도 포함한다.
-- [ ] **T2.5 — GREEN:** Phase 1A·1B tests를 실행해 신규 package가 production engine 변경 없이
+- [x] **T2.5 — GREEN:** Phase 1A·1B tests를 실행해 신규 package가 production engine 변경 없이
       GREEN인지 확인한다. generic defect가 입증되지 않으면 `src/agents/*.ts` 제품 코드를 수정하지 않는다.
+      — 2026-07-18 루트 재실행: Phase 1A 17/17, Phase 1B 103/103 GREEN;
+      neutrality findings 0, `quick_validate.py` valid, build green. 제품 코드 변경 0건.
 
 ## Phase 3 — 사람용 docs·catalog drift GREEN (worker)
 > depends-on: Phase 2, Phase 1C · files: `README.md`, `docs/agents.md`, `docs/workflows.md`, `CHANGELOG.md`
