@@ -473,9 +473,14 @@ describe("workflow-invocation: AC-7", () => {
     assert.equal(impl.enforcement["gemini-command"], "instruction-level");
     const goalReady = rows.find((r) => r.logicalId === "goal-ready")!;
     assert.equal(goalReady.enforcement["claude-skill"], "not-applicable");
+    // localmind-binding도 sdd-implement와 같은 explicit·mutating enforcement matrix를 가진다(F-6, specs/050 T2.2).
+    const binding = rows.find((r) => r.logicalId === "localmind-binding")!;
+    assert.equal(binding.enforcement["claude-skill"], "runtime-enforced");
+    assert.equal(binding.enforcement["agent-skill"], "runtime-enforced");
+    assert.equal(binding.enforcement["gemini-command"], "instruction-level");
     // 예약 이름은 sdd-implement/goal-ready/sdd-self-review — built-in `/goal`과 이름이 다르다
     assert.ok(!rows.some((r) => r.logicalId === "goal"));
-    assert.deepEqual(rows.map((r) => r.logicalId), ["goal-ready", "localmind-rules", "sdd-implement", "sdd-self-review"]);
+    assert.deepEqual(rows.map((r) => r.logicalId), ["goal-ready", "localmind-binding", "localmind-rules", "sdd-implement", "sdd-self-review"]);
   });
 
   it("summary는 target/status/invocation/resolution을 평이한 한국어로 표시하고 Codex /name·LocalMind /goal을 주장하지 않는다", () => {

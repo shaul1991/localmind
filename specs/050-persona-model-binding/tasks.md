@@ -82,19 +82,19 @@ plan **"확정 사실 표" F-1~F-14**(근거 파일:라인 포함)를 그대로 
 
 ## Phase 2 — 온보딩 스킬 패키지 (worker, T1.2의 계약 확정에 의존)
 
-- [ ] **T2.1 (RED — F-13 회귀 핀)** `templates/skills/catalog.json`의 `workflows`에
+- [x] **T2.1 (RED — F-13 회귀 핀)** `templates/skills/catalog.json`의 `workflows`에
       `"localmind-binding": { "activation": "explicit", "sideEffects": "mutating" }` 추가만 먼저.
       **RED 기대**: `npm test`에서 기존 두 하드코딩 목록 테스트가 배열 불일치로 실패해야 한다 —
       `src/agents/skills.test.ts:80`(seed 결과 4개 이름 deepEqual)·
       `src/agents/commands.test.ts:478`(invocationReport logicalId 목록 deepEqual).
       실패하지 않으면 핀이 죽은 것 — 원인 조사가 우선(진행 금지).
-- [ ] **T2.2 (GREEN)** 두 테스트의 기대 목록에 `localmind-binding` 추가(정렬 위치:
+- [x] **T2.2 (GREEN)** 두 테스트의 기대 목록에 `localmind-binding` 추가(정렬 위치:
       `["goal-ready", "localmind-binding", "localmind-rules", "sdd-implement", "sdd-self-review"]`).
       explicit 렌더(deny-implicit metadata) 검증은 기존 explicit 스킬(`sdd-implement`) 테스트
       패턴 재사용 — `localmind-binding`에 대해 3타깃 enforcement(F-6: Claude/공용
       runtime-enforced · Gemini instruction-level) 케이스 1개 추가.
       검증: `npm test` green.
-- [ ] **T2.3** `templates/skills/localmind-binding/SKILL.md` 신규 — 온보딩·재설정 워크플로 지침
+- [x] **T2.3** `templates/skills/localmind-binding/SKILL.md` 신규 — 온보딩·재설정 워크플로 지침
       (plan "영향 모듈" 표 그대로): 활성화 확인(explicit) → runtime-id 도출·**사용자 확정**(D-5)
       → 등급별 추천 초안 제시(**세션의 최신 지식으로 제안 + "추천은 낡을 수 있고 정본은 사용자
       확정 값" 고지** — FR-2①) → 레지스트리 나열·역할별 후보 추천·확정(FR-2③) → 검증(I-4:
@@ -104,15 +104,15 @@ plan **"확정 사실 표" F-1~F-14**(근거 파일:라인 포함)를 그대로 
       수정 기본(D-6) → `mergeBinding` 의미와 동일하게 나머지 보존.
       **I-2 준수**: 본문에 provider명·모델명·런타임 도구명 금지(F-5). frontmatter는 기존
       packaged 스킬 관례(managed-by marker 등)를 따른다.
-- [ ] **T2.4** `templates/skills/localmind-binding/references/binding-contract.md` 신규 —
+- [x] **T2.4** `templates/skills/localmind-binding/references/binding-contract.md` 신규 —
       **소비 규약 정본**(051이 스킬 본문에 반영할 계약, 중립 서술 — I-2 적용): 파일 위치
       (`<데이터 폴더>/_bindings/<runtime-id>.json`) · D-1 스키마 · runtime-id 도출·정확 일치
       규칙(D-5, I-5) · 부재 시 정책(D-4, I-6 — "이번만" 예외 포함) · 페르소나 fallback(FR-5:
       비독립 명시·중단 금지) · **모델 우선순위 명문화**(I-7: 페르소나 정의 `targets.*.model` >
       바인딩 tiers). **T1.2 함수 의미와 1:1** — 드리프트 = 결함(plan Phase 2).
-- [ ] **T2.5** `templates/skills/localmind-binding/references/binding.example.json` 신규 —
+- [x] **T2.5** `templates/skills/localmind-binding/references/binding.example.json` 신규 —
       D-1 스키마 형태의 플레이스홀더 예시(`"<모델 식별자>"` — 구체 모델명 0건, I-2).
-- [ ] **T2.6 (정적 AC 검증 + 스캔 핀 확인)** 스킬 계약 정적 테스트에 `localmind-binding` 케이스
+- [x] **T2.6 (정적 AC 검증 + 스캔 핀 확인)** 스킬 계약 정적 테스트에 `localmind-binding` 케이스
       추가: AC-1(추천 낡음 고지·확정·요약 지시 존재) · AC-3/AC-4(계약 문서에 D-4 부재 문구·
       FR-5 비독립 문구 존재) · AC-7/AC-8(재선택 유도·건너뜀 안내 지시 존재) ·
       **AC-9(모델 가용성 미검증 고지 지시 존재)** · **I-7(계약 문서에 "페르소나 정의 model >
