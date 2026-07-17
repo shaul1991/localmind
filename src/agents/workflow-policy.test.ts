@@ -172,6 +172,28 @@ describe("goal-impl-contract: AC-10", () => {
     assert.equal(enforcementFor("claude-skill", policyOf("goal-ready")), "not-applicable");
   });
 
+  it("goal-impl은 중립성 clean(AC-2 특성화, specs/051)", () => {
+    const reg = loadSkillRegistry(TEMPLATES, { packaged: true });
+    assert.equal(scanPackagedNeutrality(reg.skills.find((s) => s.name === "goal-impl")!).length, 0);
+  });
+
+  it("핵심 절 앵커 존재 — 끊김 방어·tasks 재사용 금지·TDD/RED·중단 규율·DoD·보고(AC-5, specs/051)", () => {
+    has(
+      "goal-impl",
+      "끊김 방어",
+      "재작성·재분해 금지",
+      "TDD 강제",
+      "RED 확인 생략 금지",
+      "중단 규율",
+      "DoD",
+      "보고·정직",
+    );
+  });
+
+  it("활성화 게이트 정직 표기 — provenance·3자리 정규식·challenge·instruction-level(AC-3, specs/051)", () => {
+    has("goal-impl", "provenance", "^[0-9]{3}$", "일회용 확인 문구(challenge)", "지침 수준(instruction-level)");
+  });
+
   it("canonical body: activation contract + AGENTS SSoT + TDD + self-review + evidence + completion + honesty", () => {
     has(
       "goal-impl",

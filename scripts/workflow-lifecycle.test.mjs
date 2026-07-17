@@ -164,6 +164,34 @@ describe("workflow-lifecycle E2E entry points: AC-17 (R4-05)", () => {
     assertAllTargetsReproduced();
   });
 
+  it("구 이름 잔재(데이터 정본 + gemini wrapper)가 seed→deploy 후 정리된다(specs/051 D-2, AC-9)", () => {
+    // 이름 무관(generic, I-2) 은퇴 기제를 통합 레벨에서 관찰한다 — 재유입 가드(I-4)가
+    // 활성 표면의 은퇴 리터럴 자체를 금지하므로, 실제 구 논리 ID 문자열이 아니라 일반화된
+    // fixture 이름으로 "packaged 정본에서 빠진 managed 잔재 → seed+deploy가 함께 정리"를 검증한다.
+    const RETIRED = "wf-legacy-retired";
+    runDeployCli(); // 정상 배포 먼저 — canonical에 세 workflow가 자리잡는다
+
+    const staleDir = path.join(canonical, RETIRED);
+    fs.mkdirSync(staleDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(staleDir, "SKILL.md"),
+      `---\nname: ${RETIRED}\ndescription: old\n---\n<!-- managed-by: localmind (skill: ${RETIRED}) -->\nold body\n`,
+    );
+    fs.writeFileSync(
+      path.join(geminiCmds, `${RETIRED}.toml`),
+      `# managed-by: localmind (command: ${RETIRED})\ndescription = "old"\nprompt = "old"\n`,
+    );
+    assert.ok(fs.existsSync(staleDir), "사전조건: 데이터 정본 잔재 생성됨");
+    assert.ok(fs.existsSync(path.join(geminiCmds, `${RETIRED}.toml`)), "사전조건: gemini wrapper 잔재 생성됨");
+
+    const out = runDeployCli();
+
+    assert.ok(!fs.existsSync(staleDir), "데이터 정본 잔재가 seed sweep으로 정리됨(D-2①)");
+    assert.ok(!fs.existsSync(path.join(geminiCmds, `${RETIRED}.toml`)), "gemini wrapper 잔재가 sweep으로 정리됨(D-2②)");
+    assert.match(out, new RegExp(`${RETIRED}: 정리됨 \\(packaged 정본에서 은퇴됨\\)`));
+    assertAllTargetsReproduced(); // 개명된 세 workflow는 여전히 정상 배포돼 있다
+  });
+
   it("device-sync 검증 진입점: 전 target 정상이면 verify-targets 통과, 하나라도 깨지면 실패", () => {
     runDeployCli();
     // 통과

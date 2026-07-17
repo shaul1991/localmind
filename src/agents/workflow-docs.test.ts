@@ -94,6 +94,34 @@ describe("workflow-doc-contract: AC-21", () => {
   });
 });
 
+describe("goal-impl-completion-delegation: AC-4 (specs/051 I-5, D-6)", () => {
+  const rootAgents = () => read("AGENTS.md");
+  const skillBody = () => read("templates/skills/goal-impl/SKILL.md");
+
+  it("AGENTS.md 절 제목·호출 문법이 goal-impl이다", () => {
+    const a = rootAgents();
+    assert.match(a, /## `goal-impl \{NNN\}` 처리 방법/);
+    assert.match(a, /`\/goal-impl \{NNN\}`/);
+    assert.match(a, /\$goal-impl \{NNN\}/);
+  });
+
+  it("goal-impl 본문에 commit/push/CI 완료 규칙 자체 정의가 없고 AGENTS.md 참조만 있다", () => {
+    const s = skillBody();
+    for (const literal of ["main 직접 push는 금지", "PR을 생성한다", "머지는 사람이 한다"]) {
+      assert.ok(!s.includes(literal), `본문에 완료 규칙 자체 서술 잔존: "${literal}"`);
+    }
+    assert.match(s, /AGENTS\.md 규약대로/);
+    assert.match(s, /AGENTS\.md가 정본이다/);
+  });
+
+  it("AGENTS.md 규약7에 PR 게이트(main 직접 push 금지 → PR 생성, 머지는 사람)가 명문으로 존재한다(D-6)", () => {
+    const a = rootAgents();
+    assert.match(a, /main 직접 push는 금지/);
+    assert.match(a, /PR을 생성한다/);
+    assert.match(a, /머지는 사람이 한다/);
+  });
+});
+
 describe("workflow-boundary: AC-18", () => {
   it("canonical/template/bridge/신규 소스에 실제 개인 절대경로·secret이 없다", () => {
     const scan: string[] = [];

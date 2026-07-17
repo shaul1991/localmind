@@ -111,15 +111,15 @@
 - depends-on: P3 · 담당: 쓰기 실행 역할(standard)
 - files: `src/agents/workflow-docs.test.ts`(또는 신규 가드 테스트 파일) · `src/agents/workflow-policy.test.ts` · `src/execution-policy.test.ts` · `scripts/workflow-lifecycle.test.mjs`
 
-- [ ] **T4.1 재유입 가드(walk grep-0)** — 활성 표면(`src/` · `docs/` · `templates/` · `scripts/` ·
+- [x] **T4.1 재유입 가드(walk grep-0)** — 활성 표면(`src/` · `docs/` · `templates/` · `scripts/` ·
       `AGENTS.md` · `README.md`)을 walk하며 구명 리터럴 검색, 허용 = I-4의 2종만 → 0건 단언(**AC-1·AC-6**).
       **RED 기대(핀 실증)**: 임의 활성 파일에 리터럴을 일시 삽입해 테스트가 **실제로 실패**하는지
       확인 후 원복 — "그냥 통과"하는 가드 금지. 수동 교차 확인:
       `grep -rn "sdd-implement" --exclude-dir={node_modules,dist,specs,.git} .` → 가드 테스트 자신만.
-- [ ] **T4.2 중립성 특성화** — goal-impl 본문 `scanPackagedNeutrality` 결과 `[]` 단언(**AC-2**).
+- [x] **T4.2 중립성 특성화** — goal-impl 본문 `scanPackagedNeutrality` 결과 `[]` 단언(**AC-2**).
       **RED 기대(핀 실증)**: 본문에 금지 토큰 1개를 일시 삽입 → 이 테스트 실패 + 기존 packaged
       강제(→ plan F-9: 위반 = source problem → seed/deploy 전역 실패)가 함께 잡는지 확인 후 원복(**AC-7**).
-- [ ] **T4.3 게이트·위임·강점 특성화** — 신 본문 텍스트 단언 3종:
+- [x] **T4.3 게이트·위임·강점 특성화** — 신 본문 텍스트 단언 3종:
       ① 게이트 문구 존재 — provenance·`^[0-9]{3}$`·challenge·instruction-level 정직 표기(**AC-3**;
       workflow-policy grant 판정 테스트는 T3.1 개명본 유지),
       ② AGENTS.md 절 제목·호출 문법 = goal-impl ∧ 본문에 commit/push/CI 자체 규칙 **부재** ∧
@@ -127,7 +127,7 @@
       명문 존재**(**AC-4**, I-5, D-6),
       ③ 핵심 절 앵커 존재 — 끊김 방어·tasks 재사용(재분해 금지)·TDD/RED·중단 규율·DoD·보고(**AC-5**).
       **RED 기대(핀 실증)**: 앵커 1개를 일시 제거 → ③ 실패 확인 후 원복.
-- [ ] **T4.4 lifecycle 은퇴 관찰** — `scripts/workflow-lifecycle.test.mjs`: WORKFLOWS 배열
+- [x] **T4.4 lifecycle 은퇴 관찰** — `scripts/workflow-lifecycle.test.mjs`: WORKFLOWS 배열
       개명(T3.1) 위에, "구 이름 잔재(데이터 정본·wrapper)가 seed→deploy 후 정리됨" 시나리오 추가
       (**AC-9의 통합 레벨**). 검증: `node --import tsx/esm --test scripts/workflow-lifecycle.test.mjs` 후 `npm test`.
 
