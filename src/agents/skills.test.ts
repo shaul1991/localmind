@@ -153,6 +153,65 @@ describe("skills-seed: AC-3", () => {
   });
 });
 
+// ── P1 T1.1: seed source-absence sweep(D-2①) — 이름 무관, 마커 결합 ─────────────
+describe("skills-seed retirement sweep (P1 D-2①)", () => {
+  it("① managed(마커 결합) 디렉토리가 template 집합에서 사라지면 seed 후 pruned된다", () => {
+    const pkgFull = path.join(root, "pkg-sweep-full");
+    buildPkg(pkgFull, [
+      { name: "w-alpha", activation: "intent", sideEffects: "docs-only" },
+      { name: "w-stale", activation: "intent", sideEffects: "docs-only" },
+    ]);
+    seedWorkflows({ templatesDir: pkgFull, skillsDir: dataDir });
+    assert.ok(fs.existsSync(path.join(dataDir, "w-stale", "SKILL.md")), "선행 seed로 stale 디렉토리 존재");
+
+    const pkgSlim = path.join(root, "pkg-sweep-slim");
+    buildPkg(pkgSlim, [{ name: "w-alpha", activation: "intent", sideEffects: "docs-only" }]);
+    const r = seedWorkflows({ templatesDir: pkgSlim, skillsDir: dataDir });
+
+    assert.ok(!fs.existsSync(path.join(dataDir, "w-stale")), "template 부재 managed 디렉토리는 은퇴됨");
+    const item = r.items.find((i) => i.logicalId === "w-stale");
+    assert.ok(item && item.status === "pruned", `pruned 항목 보고: ${JSON.stringify(item)}`);
+    assert.equal(item!.reason, "packaged 정본에서 은퇴됨");
+  });
+
+  it("② marker 없는(unmanaged) 동명 디렉토리는 template 부재여도 보존된다 — 경계 핀", () => {
+    const pkgFull = path.join(root, "pkg-sweep-full2");
+    buildPkg(pkgFull, [
+      { name: "w-alpha", activation: "intent", sideEffects: "docs-only" },
+      { name: "w-fork", activation: "intent", sideEffects: "docs-only" },
+    ]);
+    seedWorkflows({ templatesDir: pkgFull, skillsDir: dataDir });
+    const forkMd = path.join(dataDir, "w-fork", "SKILL.md");
+    const forked = read(forkMd).replace(/<!-- managed-by[^\n]*-->\n/, "") + "\n내 fork";
+    fs.writeFileSync(forkMd, forked);
+
+    const pkgSlim = path.join(root, "pkg-sweep-slim2");
+    buildPkg(pkgSlim, [{ name: "w-alpha", activation: "intent", sideEffects: "docs-only" }]);
+    const r = seedWorkflows({ templatesDir: pkgSlim, skillsDir: dataDir });
+
+    assert.ok(fs.existsSync(forkMd), "unmanaged 디렉토리는 삭제되지 않음");
+    assert.equal(read(forkMd), forked, "내용 byte 보존");
+    assert.ok(!r.items.some((i) => i.logicalId === "w-fork" && i.status === "pruned"), "unmanaged은 pruned 대상 아님");
+  });
+
+  it("③ template registry problem 시 sweep은 실행되지 않는다 — 어떤 삭제도 없음(F-18 가드)", () => {
+    const pkg = path.join(root, "pkg-sweep-broken");
+    buildPkg(pkg, [
+      { name: "w-alpha", activation: "intent", sideEffects: "docs-only" },
+      { name: "w-stale3", activation: "intent", sideEffects: "docs-only" },
+    ]);
+    seedWorkflows({ templatesDir: pkg, skillsDir: dataDir });
+    assert.ok(fs.existsSync(path.join(dataDir, "w-stale3")), "선행 seed로 stale 디렉토리 존재");
+    // catalog를 깨뜨려 template registry problem을 만든다(부재가 아니라 검증 실패).
+    fs.writeFileSync(path.join(pkg, "catalog.json"), "{ broken");
+
+    const r = seedWorkflows({ templatesDir: pkg, skillsDir: dataDir });
+    assert.ok(r.problems.length > 0, "template registry problem 보고됨");
+    assert.equal(r.items.length, 0, "어떤 write도 하지 않음");
+    assert.ok(fs.existsSync(path.join(dataDir, "w-stale3")), "부재 기반 오삭제 없음(early return 가드)");
+  });
+});
+
 // ── AC-4: Claude skill target ────────────────────────────────────────────────
 describe("skills-deploy-claude: AC-4", () => {
   it("세 skill 생성 + sdd-implement에만 disable-model-invocation, 재실행 unchanged", () => {

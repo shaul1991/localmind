@@ -191,6 +191,67 @@ describe("commands-gemini: AC-6", () => {
   });
 });
 
+// ── P1 T1.2: Gemini wrapper source-absence sweep(D-2②) — 이름 무관, 마커 결합 ────
+describe("gemini wrapper retirement sweep (P1 D-2②)", () => {
+  const tplFor = (name: string) => {
+    const reg = loadSkillRegistry(TEMPLATES_DIR, { packaged: true });
+    const s = reg.skills.find((x) => x.name === name);
+    assert.ok(s, `${name} 패키지 존재`);
+    return s!;
+  };
+
+  it("① commandsDir의 이름 결합 managed .toml 중 template 집합에 없는 이름은 pruned된다", () => {
+    const g = geminiHome();
+    fs.mkdirSync(g, { recursive: true });
+    const stalePath = path.join(g, "w-stale.toml");
+    fs.writeFileSync(stalePath, `# managed-by: localmind (command: w-stale)\n# source-payload-sha256: ${"a".repeat(64)}\ndescription = "옛 것"\nprompt = "옛 프롬프트"\n`);
+    const items = syncGeminiCommands({
+      templates: [tplFor("goal-ready")],
+      eligible: () => true,
+      ineligibleReason: () => "n/a",
+      commandsDir: g,
+      available: true,
+    });
+    assert.ok(!fs.existsSync(stalePath), "template 부재 managed toml은 은퇴됨");
+    const item = items.find((i) => i.logicalId === "w-stale");
+    assert.ok(item && item.status === "pruned", `pruned 항목 보고: ${JSON.stringify(item)}`);
+  });
+
+  it("② marker 없는(unmanaged) .toml은 template 부재여도 보존된다 — 경계 핀", () => {
+    const g = geminiHome();
+    fs.mkdirSync(g, { recursive: true });
+    const userPath = path.join(g, "my-command.toml");
+    fs.writeFileSync(userPath, 'description = "내 것"\nprompt = "내 프롬프트"\n');
+    const items = syncGeminiCommands({
+      templates: [tplFor("goal-ready")],
+      eligible: () => true,
+      ineligibleReason: () => "n/a",
+      commandsDir: g,
+      available: true,
+    });
+    assert.ok(fs.existsSync(userPath), "unmanaged toml은 삭제되지 않음");
+    assert.match(read(userPath), /내 프롬프트/, "내용 보존");
+    assert.ok(!items.some((i) => i.logicalId === "my-command"), "unmanaged은 sweep 대상 아님");
+  });
+
+  it("③ pruneSuppressed 시(타깃 불가용 등) sweep은 보류된다 — 삭제 없음", () => {
+    const g = geminiHome();
+    fs.mkdirSync(g, { recursive: true });
+    const stalePath = path.join(g, "w-stale2.toml");
+    fs.writeFileSync(stalePath, `# managed-by: localmind (command: w-stale2)\n# source-payload-sha256: ${"a".repeat(64)}\ndescription = "옛 것"\nprompt = "옛 프롬프트"\n`);
+    const items = syncGeminiCommands({
+      templates: [tplFor("goal-ready")],
+      eligible: () => true,
+      ineligibleReason: () => "n/a",
+      commandsDir: g,
+      available: true,
+      pruneSuppressed: true,
+    });
+    assert.ok(fs.existsSync(stalePath), "pruneSuppressed 시 삭제 없음");
+    assert.ok(!items.some((i) => i.logicalId === "w-stale2"), "sweep 미실행 — 항목 없음");
+  });
+});
+
 // ── R2-03: 복구 완전성은 "생성 wrapper와 byte 동일"로 증명한다(닮음이 아님) ────────
 describe("gemini wrapper recovery completeness (R2-03)", () => {
   const goalReady = () => {
