@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import {
   renderGeminiCommand,
   canonicalBody,
+  gatherRefs,
   tomlBasicString,
   foldDescription,
   invocationsFor,
@@ -62,6 +63,29 @@ describe("commands-gemini: AC-6", () => {
     assert.equal((toml.match(/\{\{args\}\}/g) || []).length, 1, "{{args}} 정확히 1회");
     assert.ok(ra < begin, "{{args}}는 workflow 경계 밖");
     assert.match(toml, /is not runtime attestation/);
+  });
+
+  it("production deep-research wrapper는 canonical body/reference/hash/raw args와 instruction-level explicit gate를 보존한다", () => {
+    const deep = tpl().skills.find((s) => s.name === "deep-research");
+    assert.ok(deep, "production package/catalog에 deep-research가 있어야 한다");
+
+    const source = read(path.join(deep.root, "SKILL.md"));
+    const body = canonicalBody(source);
+    const refs = gatherRefs(deep);
+    const contract = refs.find((r) => r.path === "references/research-contract.md");
+    assert.ok(contract, "references/research-contract.md가 canonical package에 있어야 한다");
+
+    const toml = renderGeminiCommand(deep);
+    const sourceHash = toml.indexOf(`# source-payload-sha256: ${deep.canonicalPayloadHash}`);
+    const bodyAt = toml.indexOf(tomlBasicString(body).slice(1, -1));
+    const refAt = toml.indexOf(`--- BEGIN REFERENCE: references/research-contract.md (sha256: ${contract.hash}) ---`);
+    assert.ok(sourceHash >= 0 && bodyAt > sourceHash && refAt > bodyAt, "source hash 아래 canonical body와 research contract가 순서대로 inline됨");
+    assert.ok(toml.includes(tomlBasicString(contract.content).slice(1, -1)), "research contract 본문 byte가 wrapper에 포함됨");
+    assert.equal((toml.match(/\{\{args\}\}/g) || []).length, 1, "raw {{args}} 경계는 정확히 1회");
+    assert.match(toml, /is not runtime attestation/, "wrapper 인자는 runtime attestation이 아님");
+    assert.match(toml, /(명시(?:적)?[ -]?(?:호출|활성화)|explicit (?:invocation|activation))/i, "명시 activation gate 포함");
+    assert.match(toml, /(fresh (?:user )?confirmation|새(?:로운)? 사용자 확인|새 확인)/i, "provenance가 없으면 fresh confirmation 필요");
+    assert.match(toml, /(source lookup|live source lookup|출처 조회)/i, "확인 전 source lookup 금지 지침을 표현할 수 있어야 함");
   });
 
   it("multiline description을 결정적 single-line로 정규화한다", () => {
@@ -526,6 +550,43 @@ describe("workflow-invocation: AC-7", () => {
     assert.ok(!inv.codex.startsWith("/"), "Codex는 bare /name을 약속하지 않는다");
   });
 
+  it("deep-research deploy result는 runtime-native invocation과 Gemini instruction-level gate를 정직하게 보고한다", () => {
+    const inv = invocationsFor("deep-research", "<topic>");
+    assert.equal(inv.claude, "/deep-research <topic>");
+    assert.equal(inv.codex, "$deep-research <topic>");
+    assert.equal(inv.gemini, "auto skill 또는 /deep-research <topic> wrapper");
+    assert.ok(!inv.codex.startsWith("/"), "Codex bare /deep-research 금지");
+    assert.ok(!inv.codex.includes("/prompts:deep-research"), "deprecated custom prompt path 금지");
+
+    seedWorkflows({ skillsDir: dataDir });
+    const c = path.join(root, "claude", "skills");
+    const a = path.join(root, "agents", "skills");
+    const g = geminiHome();
+    const r = deployWorkflows({
+      skillsDir: dataDir,
+      claudeSkillsDir: c,
+      agentSkillsDir: a,
+      geminiCommandsDir: g,
+      targets: ["claude-skill", "agent-skill", "gemini-command"],
+    });
+    const find = (target: "claude-skill" | "agent-skill" | "gemini-command") =>
+      r.items.find((item) => item.logicalId === "deep-research" && item.target === target);
+    const claude = find("claude-skill");
+    const codex = find("agent-skill");
+    const gemini = find("gemini-command");
+    assert.ok(claude && codex && gemini, "deep-research가 세 runtime target에 배포되어야 한다");
+    assert.equal(claude.invocation, "/deep-research");
+    assert.equal(codex.invocation, "$deep-research");
+    assert.equal(gemini.invocation, "auto skill 또는 /deep-research wrapper");
+    assert.equal(gemini.enforcement, "instruction-level");
+    assert.notEqual(codex.invocation, "/deep-research", "Codex bare slash를 deploy result로 보고하지 않음");
+    assert.ok(fs.existsSync(path.join(g, "deep-research.toml")), "Gemini generated /deep-research command 노출");
+    const text = formatDeployResult(r);
+    assert.match(text, /\$deep-research/);
+    assert.match(text, /auto skill 또는 \/deep-research wrapper/);
+    assert.ok(!text.includes("/prompts:deep-research"), "deprecated prompt path가 summary에 없음");
+  });
+
   it("invocationReport enforcement 정직성 + /goal 없음(built-in 충돌 0)", () => {
     const rows = invocationReport(tpl().skills);
     const impl = rows.find((r) => r.logicalId === "goal-impl")!;
@@ -541,7 +602,7 @@ describe("workflow-invocation: AC-7", () => {
     assert.equal(binding.enforcement["gemini-command"], "instruction-level");
     // 예약 이름은 goal-impl/goal-ready/sdd-self-review — built-in `/goal`과 이름이 다르다
     assert.ok(!rows.some((r) => r.logicalId === "goal"));
-    assert.deepEqual(rows.map((r) => r.logicalId), ["goal-impl", "goal-ready", "localmind-binding", "localmind-rules", "sdd-self-review"]);
+    assert.deepEqual(rows.map((r) => r.logicalId), ["deep-research", "goal-impl", "goal-ready", "localmind-binding", "localmind-rules", "sdd-self-review"]);
   });
 
   it("summary는 target/status/invocation/resolution을 평이한 한국어로 표시하고 Codex /name·LocalMind /goal을 주장하지 않는다", () => {

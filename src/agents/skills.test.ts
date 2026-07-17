@@ -73,11 +73,11 @@ const frontmatterOf = (p: string) => read(p).split("\n---")[0];
 
 // ── AC-2: fresh seed catalog ────────────────────────────────────────────────
 describe("skills-seed: AC-2", () => {
-  it("production package + 빈 data → 정확히 네 workflow + marker, 재실행 unchanged", () => {
+  it("production package + 빈 data → 정확히 여섯 workflow + marker, 재실행 unchanged", () => {
     const r1 = seedWorkflows({ skillsDir: dataDir });
     assert.equal(r1.problems.length, 0);
     const names = r1.items.map((i) => i.logicalId).sort();
-    assert.deepEqual(names, ["goal-impl", "goal-ready", "localmind-binding", "localmind-rules", "sdd-self-review"]);
+    assert.deepEqual(names, ["deep-research", "goal-impl", "goal-ready", "localmind-binding", "localmind-rules", "sdd-self-review"]);
     assert.ok(r1.items.every((i) => i.status === "created"));
     for (const n of names) {
       const md = read(path.join(dataDir, n, "SKILL.md"));
@@ -498,6 +498,12 @@ describe("workflow-missing-target: AC-15", () => {
       assert.ok(r.items.some((i) => i.target === "agent-skill" && i.status === "created"));
       assert.ok(r.items.some((i) => i.target === "claude-skill" && i.status === "skipped-unavailable"));
       assert.ok(r.items.some((i) => i.target === "gemini-command" && i.status === "skipped-unavailable"));
+      assert.ok(r.items.some((i) => i.logicalId === "deep-research" && i.target === "agent-skill" && i.status === "created"), "deep-research Agent Skill은 생성됨");
+      assert.ok(r.items.some((i) => i.logicalId === "deep-research" && i.target === "claude-skill" && i.status === "skipped-unavailable"), "deep-research Claude target 부재를 skipped로 보고");
+      assert.ok(r.items.some((i) => i.logicalId === "deep-research" && i.target === "gemini-command" && i.status === "skipped-unavailable"), "deep-research Gemini target 부재를 skipped로 보고");
+      const text = formatDeployResult(r);
+      assert.match(text, /deep-research/);
+      assert.match(text, /런타임 미설치/);
       assert.ok(!fs.existsSync(path.join(home, ".claude")), "미설치 부모를 임의 생성하지 않음");
     } finally {
       if (saved.HOME === undefined) delete process.env.HOME;
@@ -913,6 +919,12 @@ describe("result enforcement level (R1-14)", () => {
     assert.equal(find("goal-impl", "claude-skill").enforcement, "runtime-enforced");
     assert.equal(find("goal-impl", "agent-skill").enforcement, "runtime-enforced");
     assert.equal(find("goal-impl", "gemini-command").enforcement, "instruction-level");
+    assert.ok(find("deep-research", "claude-skill"), "deep-research Claude item 존재");
+    assert.ok(find("deep-research", "agent-skill"), "deep-research Agent Skill item 존재");
+    assert.ok(find("deep-research", "gemini-command"), "deep-research Gemini item 존재");
+    assert.equal(find("deep-research", "claude-skill").enforcement, "runtime-enforced");
+    assert.equal(find("deep-research", "agent-skill").enforcement, "runtime-enforced");
+    assert.equal(find("deep-research", "gemini-command").enforcement, "instruction-level");
     // intent workflow는 runtime-enforced로 표시하지 않는다
     assert.notEqual(find("goal-ready", "claude-skill").enforcement, "runtime-enforced");
     assert.notEqual(find("goal-ready", "gemini-command").enforcement, "runtime-enforced");
