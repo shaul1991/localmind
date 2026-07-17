@@ -11,7 +11,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { firstNotesDir, MODEL_RE, MODEL_MSG } from "./registry.js";
+import { firstNotesDir, MODEL_RE, MODEL_MSG, NAME_RE } from "./registry.js";
 
 export const TIER_KEYS = ["critical-reasoning", "standard", "economy"] as const;
 export type TierKey = (typeof TIER_KEYS)[number];
@@ -128,8 +128,16 @@ function listBindingFiles(dir: string): string[] {
  * 손상 시 throw하지 않고(I-6) 기존 파일 목록을 함께 반환해 소비자가 부재 규칙을 적용하게 한다.
  * personaNames를 모르는 소비 시점이라 구조 검증만 하고(페르소나 존재는 저장 시점 몫 — I-4),
  * 구조가 무효면 부재와 동일하게 취급한다.
+ *
+ * runtimeId는 path.join 전에 kebab-case 형식(NAME_RE, registry.ts 재사용)을 강제한다 — 세션
+ * 자기보고값이라 `../`·`/etc/passwd` 등으로 dir 밖 파일을 읽는 path traversal을 막는다
+ * (self-review 중대 결함, I-5 위반 수정). 파일 내부 `runtime` 필드는 대조하지 않는다 —
+ * 파일명 정확 일치가 곧 신원이며(AC-5 기존 회귀), 내부 필드와 달라도 의도된 동작이다.
  */
 export function loadBinding(runtimeId: string, dir: string = bindingsDir()): LoadBindingResult {
+  if (!NAME_RE.test(runtimeId)) {
+    return { found: false, existingFiles: listBindingFiles(dir) };
+  }
   const file = path.join(dir, `${runtimeId}.json`);
   let raw: string;
   try {

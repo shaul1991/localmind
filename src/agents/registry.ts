@@ -68,7 +68,9 @@ export function firstNotesDir(): string {
   return path.resolve(path.join(process.env.HOME ?? ".", ".localmind"));
 }
 
-const NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+// export: specs/050 binding.ts가 runtimeId(파일명 세그먼트) 검증에 같은 kebab-case 규칙을
+// 재사용한다(path traversal 가드, 복제 금지).
+export const NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 // model은 산출물(YAML/TOML)에 삽입되므로 형식을 깨는 문자(따옴표·공백·제어문자)를 막는다.
 // export: specs/050 binding.ts가 바인딩의 모델 식별자에 같은 형식 규칙을 재사용한다(F-12, 복제 금지).
 export const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._/:\[\]-]*$/;

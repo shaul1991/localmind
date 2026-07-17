@@ -264,4 +264,55 @@ describe("loadBinding — 정확 일치만 읽기(AC-5, I-5)", () => {
     assert.equal(result.found, false);
     if (!result.found) assert.deepEqual(result.existingFiles, []);
   });
+
+  it("회귀(critic 지적): runtimeId에 상위 디렉터리 이탈(../)이 있으면 dir 밖 파일을 읽지 않는다", () => {
+    const dir = tmpBindingsDir();
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-bindings-outside-"));
+    try {
+      fs.writeFileSync(path.join(outsideDir, "secret.json"), JSON.stringify(FULL_BINDING));
+
+      const result = loadBinding("../" + path.basename(outsideDir) + "/secret", dir);
+      assert.equal(result.found, false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+      fs.rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
+
+  it("회귀(critic 지적): sub/../../ 형태의 이탈 경로도 거부한다", () => {
+    const dir = tmpBindingsDir();
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-bindings-outside-"));
+    try {
+      fs.writeFileSync(path.join(outsideDir, "secret.json"), JSON.stringify(FULL_BINDING));
+
+      const result = loadBinding(
+        "sub/../../" + path.basename(outsideDir) + "/secret",
+        dir,
+      );
+      assert.equal(result.found, false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+      fs.rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
+
+  it("회귀: 절대경로 runtimeId는 거부한다", () => {
+    const dir = tmpBindingsDir();
+    try {
+      const result = loadBinding("/etc/passwd", dir);
+      assert.equal(result.found, false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("회귀: 빈 runtimeId는 거부한다", () => {
+    const dir = tmpBindingsDir();
+    try {
+      const result = loadBinding("", dir);
+      assert.equal(result.found, false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
