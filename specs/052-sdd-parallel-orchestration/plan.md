@@ -1,6 +1,6 @@
 # Plan: SDD 병렬 오케스트레이션 규약
 
-> 모델 이력 — 작성: Fable 5 · 검토: 미정 · 구현(예상): 미정
+> 모델 이력 — 작성: Fable 5 · 검토: Fable 5(critic)+codex 교차 · 구현: Opus 4.8(fan-out worker 위임)
 
 <!-- 어떻게(how). 상위: [goal](goal.md) · [spec](spec.md) -->
 <!-- 검증 표기: self-review clean 시 단계·테스트 전략 항목을 [x] + 근거로 표기한다(AGENTS.md 규약 5). -->
@@ -97,31 +97,31 @@ fan-out §에 위상을 명문화한다: **메인 = 유일 오케스트레이터
 
 각 phase의 선언이 D-1 문법의 도그푸드다. 예상 fan-out: **레이어 1 = Phase 1 ∥ Phase 3**, **레이어 2 = Phase 2**, **레이어 3 = Phase 4 ∥ Phase 5**, **레이어 4 = Phase 6**.
 
-- [ ] **Phase 0 — Live-Verify 게이트 확인** (worker, 착수 시 1회)
+- [x] **Phase 0 — Live-Verify 게이트 확인** (worker, 착수 시 1회)
   > depends-on: 없음 · files: 없음(확인만)
   이 slice의 산출물은 산문 규약이라 낡을 수 있는 외부 사실이 없다. Agent Skills 표준 준수는 044에서 검증됐고 이번에 frontmatter·구조를 바꾸지 않음을 확인만 하고 self-review 보고에 1줄 명시.
 
-- [ ] **Phase 1 — tasks-format 규약 정본 신설** (worker)
+- [x] **Phase 1 — tasks-format 규약 정본 신설** (worker)
   > depends-on: 없음 · files: `templates/skills/sdd-implement/references/tasks-format.md`
   D-1 문법·D-2 판정·D-3·D-5·비용 가드(FR-5)·레거시 규정을 중립 어휘(D-6)로 성문화.
 
-- [ ] **Phase 2 — 구현 스킬 fan-out 절** (worker)
+- [x] **Phase 2 — 구현 스킬 fan-out 절** (worker)
   > depends-on: Phase 1 · files: `templates/skills/sdd-implement/SKILL.md`
   FR-2·6 규칙 § 신설(F-2 — 기존 절 확장 아님) + tasks-format reference 지시 + 위상(D-7). Phase 1의 확정 문법을 참조하므로 내용 의존 — **AC-6 시연점**(Phase 1 배리어 전 spawn 보류).
 
-- [ ] **Phase 3 — 문서 작성 스킬 곁가지 병렬 절** (worker)
+- [x] **Phase 3 — 문서 작성 스킬 곁가지 병렬 절** (worker)
   > depends-on: 없음 · files: `templates/skills/goal-ready/SKILL.md`
   FR-3(a)(b) § 신설 — 크리틱 최종 배리어·두 체제 구분 명문화. Phase 1과 파일 disjoint·의존 없음 — **AC-4 시연점**(Phase 1 ∥ Phase 3 동시 spawn).
 
-- [ ] **Phase 4 — 정적 계약 테스트** (worker)
+- [x] **Phase 4 — 정적 계약 테스트** (worker)
   > depends-on: Phase 1, Phase 2, Phase 3 · files: `src/agents/skill-contract.test.ts`
   F-7 패턴으로 AC-1~3·9 문구 존재 assert + packaged 전수 스캔에 신설 reference 포함·clean 확인. 규약 문구가 확정돼야 assert 문자열을 못 박을 수 있어 사후 핀 성격(050 T2.6과 동일 — TDD 변형임을 보고에 명시). 검증: `npm test` green + `npm run build` clean.
 
-- [ ] **Phase 5 — 포인터·사람용 문서 (잔task 묶음 — AC-8 시연)** (worker)
+- [x] **Phase 5 — 포인터·사람용 문서 (잔task 묶음 — AC-8 시연)** (worker)
   > depends-on: Phase 1, Phase 2, Phase 3 · files: `AGENTS.md`, `docs/workflows.md`
   AGENTS.md 1~2줄 + workflows.md 예시는 각각 잔task라 **의도적으로 단일 worker로 묶는다**(FR-5 규약의 자기 적용). Phase 4와 파일 disjoint — **AC-4 두 번째 시연점**(Phase 4 ∥ Phase 5).
 
-- [ ] **Phase 6 — 배포·도그푸드 기록·self-review·검증 표기** (worker 실행 · 최종 판정 격리 리뷰어)
+- [x] **Phase 6 — 배포·도그푸드 기록·self-review·검증 표기** (worker 실행 · 최종 판정 격리 리뷰어)
   > depends-on: Phase 0~5 전부 · files: `specs/052-sdd-parallel-orchestration/goal.md`, `spec.md`, `plan.md`, `tasks.md`
   `make skills-deploy`로 전파(F-9) → 구현 중 관찰한 fan-out/배리어/보류/묶음 기록을 AC별로 정리(아래 표) → self-review(점검 5범위) clean → 세 문서 `[x]` + 근거 표기 → 커밋·push·CI 감시(AGENTS.md 규약 7). 곁가지 없는 이 phase 자체가 직렬 완주 — **AC-7 시연점**.
 
@@ -153,3 +153,10 @@ fan-out §에 위상을 명문화한다: **메인 = 유일 오케스트레이터
 ## Open questions 해소 매핑
 
 spec OQ 5건 전부 이 plan에서 확정: 문법=D-1, disjoint 판정=D-2, worktree 임계=D-3, 051 순서=D-4, spawn 상한=D-5. FR-6 위상=D-7. (구현 완료 시 spec OQ 항목에 취소선 + 본 절 포인터를 남긴다 — AGENTS.md OQ 해결 표기 규약.)
+
+## 구현 완료 (2026-07-17)
+
+- **Phase 0~6 전부 완료** — 052를 **자기 fan-out으로 dogfood** 구현: L1(P1∥P3)·L2(P2)·L3(P4∥P5)·L4(P6) 레이어를 실제 동시 spawn + 배리어(메인 통합검증·phase 커밋)로 수행.
+- **D-4 분기 발동**: 051 완료로 편집 대상을 `sdd-implement` → `goal-impl`로 치환(§4A는 051이 넣은 §4 I-3 순차 위임 위에 신설).
+- **테스트 전략 충족** — 정적(AC-1·2·3·5·6·7·8·9: skill-contract.test.ts 10케이스) + 도그푸드(AC-4·6·8 관찰). AC-5·7 도그푸드 양성은 미발생(겹침 쌍·후속 단순작업 없음) → 후속 승계(spec 검증 결과 절에 정직 명시).
+- **self-review clean**: Claude critic + codex 교차(§6/§10 정합 등 배칭 수정 후). 전체 `npm test` 877 green + build clean. 근거는 spec 「검증 결과」 절 참조.

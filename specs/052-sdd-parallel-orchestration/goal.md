@@ -1,6 +1,6 @@
 # Goal: SDD 병렬 오케스트레이션 규약
 
-> 모델 이력 — 작성: Fable 5 · 검토: 미정 · 구현(예상): 미정
+> 모델 이력 — 작성: Fable 5 · 검토: Fable 5(critic)+codex 교차 · 구현: Opus 4.8(fan-out worker 위임)
 
 ## Background — 배경
 
@@ -50,16 +50,16 @@ spawn하며, 배리어에서 통합 검증 후 다음 레이어를 해금한다.
 
 ## Success metrics — 성공 지표
 
-- [ ] SDD 구현 스킬 정본에 fan-out 규칙(의존 충족 + 파일 disjoint → 동시 spawn, 배리어 통합
+- [x] SDD 구현 스킬 정본에 fan-out 규칙(의존 충족 + 파일 disjoint → 동시 spawn, 배리어 통합
       검증·커밋 후 해금)이, 문서 작성 스킬 정본에 곁가지 병렬 규칙(크리틱 최종 배리어 포함)이
       명문으로 존재한다(정적 점검으로 확인).
-- [ ] tasks 설계 규약이 각 task/phase에 depends-on·files 선언을 요구하고, 규약 개정 후 새로
+- [x] tasks 설계 규약이 각 task/phase에 depends-on·files 선언을 요구하고, 규약 개정 후 새로
       산출되는 tasks 문서가 이 선언을 포함한다.
-- [ ] 도그푸드 1회: depends-on·files가 선언된 실제 slice에서, 파일 disjoint하고 의존이 풀린
+- [x] 도그푸드 1회: depends-on·files가 선언된 실제 slice에서, 파일 disjoint하고 의존이 풀린
       노드 2개 이상이 규약에 근거해 동시 spawn되고, 배리어에서 메인 통합 검증이 수행됨이
       관찰된다.
-- [ ] 같은 도그푸드에서 파일이 겹치거나 의존이 안 풀린 노드가 병렬로 spawn된 사례 0건.
-- [ ] 곁가지·병렬 여지가 없는 단순 작업에서 규약이 불필요한 병렬화를 유발한 사례 0건(직렬
+- [x] 같은 도그푸드에서 파일이 겹치거나 의존이 안 풀린 노드가 병렬로 spawn된 사례 0건.
+- [x] 곁가지·병렬 여지가 없는 단순 작업에서 규약이 불필요한 병렬화를 유발한 사례 0건(직렬
       그대로 완주).
 
 ## Non-goals — 비목표

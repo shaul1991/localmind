@@ -1,6 +1,6 @@
 # Tasks: SDD 병렬 오케스트레이션 규약
 
-> 모델 이력 — 작성: Fable 5 · 검토: 미정 · 구현(예상): 미정
+> 모델 이력 — 작성: Fable 5 · 검토: Fable 5(critic)+codex 교차 · 구현: Opus 4.8(fan-out worker 위임)
 
 <!-- 근거 정본은 plan(F-1~12·D-1~7·영향 모듈·테스트 전략) — 재조사 금지, 백포인터로 인용만.
      이 문서 자체가 D-1 문법의 첫 산출물(AC-2 도그푸드): 각 phase 헤더 직하 선언 줄이 그것이다. -->
@@ -113,17 +113,17 @@ I-6 위반(회귀).
 
 곁가지 없는 이 phase 자체가 직렬 완주 — AC-7 시연점.
 
-- [ ] **T6.1** `make skills-deploy`로 전파(→ plan F-9) — 배포 성공이 중립성 clean의 이중 확인.
-- [ ] **T6.2** 도그푸드 기록: 구현 중 관찰한 fan-out(P1∥P3, P4∥P5)·배리어 통합 검증·커밋·
+- [x] **T6.1** `make skills-deploy`로 전파(→ plan F-9) — 배포 성공이 중립성 clean의 이중 확인.
+- [x] **T6.2** 도그푸드 기록: 구현 중 관찰한 fan-out(P1∥P3, P4∥P5)·배리어 통합 검증·커밋·
       보류(P2)·묶음(P5)·직렬 완주(P6)를 AC-4~9별로 정리(→ plan 테스트 전략 표 우측 열).
       AC-5 양성 사례(겹침 쌍) 미발생 시 그 사실을 명시하고 후속 slice 관찰로 승계(은폐 금지).
       AC-7도 동일하게 처리: P6 완주는 보조 증거일 뿐, 후속 단순 작업 1건의 직렬 관찰은 052
       DoD 이후에만 가능하므로 미발생을 명시하고 **후속 slice 관찰로 승계**(은폐 금지).
-- [ ] **T6.3** self-review(격리 리뷰어, 점검 5범위 — AGENTS.md 규약 5) clean까지 반복.
+- [x] **T6.3** self-review(격리 리뷰어, 점검 5범위 — AGENTS.md 규약 5) clean까지 반복.
       기계적 수정은 모아서 1라운드 배칭.
-- [ ] **T6.4** 검증 표기: spec FR-1~6·AC-1~9 `[x]`+근거, plan 단계·테스트 전략 체크, goal
+- [x] **T6.4** 검증 표기: spec FR-1~6·AC-1~9 `[x]`+근거, plan 단계·테스트 전략 체크, goal
       Success metrics 표기, spec Open questions 5건 취소선 + plan D-n 포인터(AGENTS.md OQ 규약).
-- [ ] **T6.5** 커밋(self-review 요약 포함)·push·CI 감시 `gh run watch <run-id> --exit-status`
+- [x] **T6.5** 커밋(self-review 요약 포함)·push·CI 감시 `gh run watch <run-id> --exit-status`
       (전체 sha 사용 — AGENTS.md 규약 7).
 
 ## AC 매핑 요약 (→ plan 테스트 전략 표가 정본)

@@ -52,8 +52,8 @@ describe("goal-ready-contract: AC-9", () => {
   it("중립적 지속 결정 기록 + fallback 사유", () => {
     has("goal-ready", "결정 로그(decision-log)", "지속적 기록 능력", "지속 기록을 하지 못한 사유", "특정 도구 이름을 전제하지 않는다");
   });
-  it("세 문서 + 실제 max+1 + 조건부 design/SSoT gate", () => {
-    has("goal-ready", "goal.md·spec.md·plan.md", "최댓값 + 1", "디자인 사전 정의", "실제로 존재하는", "없는 문서를 필수라고 추측하지 않는다");
+  it("네 문서(goal/spec/plan/tasks) + 실제 max+1 + 조건부 design/SSoT gate", () => {
+    has("goal-ready", "goal.md·spec.md·plan.md·tasks.md", "최댓값 + 1", "디자인 사전 정의", "실제로 존재하는", "없는 문서를 필수라고 추측하지 않는다");
   });
   it("역할 위임 + 크리틱 fallback(비독립 표기)", () => {
     has("goal-ready", "역할 + 과제 + 기대 산출물", "크리틱(critic)", "독립(independent) 검토라고 부르지 않는다");
