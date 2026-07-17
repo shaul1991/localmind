@@ -4,6 +4,22 @@ localmind의 주요 변경 이력. 최신이 위.
 
 > 버전 체계: **CalVer `YYYY.MM.MICRO`** — 버전은 **릴리스(PR 머지) 시점** 기준. 확정 규칙은 `AGENTS.md`의 버전·릴리스 절이 정본이다.
 
+## 미릴리스
+
+### Provider-neutral Deep Research 워크플로 (specs/202607172313)
+
+- **공용 논리 command ID** — `deep-research` 하나를 Agent Skills 정본으로 추가했다. Claude Code는
+  `/deep-research <topic>`, Codex는 `$deep-research <topic>`, Gemini CLI는 auto skill 또는 생성된
+  `/deep-research <topic>` wrapper로 같은 조사 계약을 실행한다.
+- **정확한 호출 경계** — Codex의 bare `/deep-research`는 공식 문법이 아니므로 지원·권장하지 않고,
+  deprecated Custom Prompts와 `/prompts:deep-research`도 사용하지 않는다.
+- **근거·안전 계약** — `explicit`·`report-only`로 brief 확인, live evidence, 상충 근거, final critic,
+  결론 우선 보고를 묶었다. isolated/live capability가 없으면 current-session/context-only fallback과
+  비독립·미검증 상태를 정직하게 표시하며 final critic을 조용히 다운시프트하지 않는다.
+- **범위** — 벤더 first-party Deep Research와 별개이며 전용 backend/model을 복제하지 않는다.
+  Agent Skills 호환 runtime용 워크플로이고 모델 단독 실행 대상이 아니다. Gemini CLI는 현재 target,
+  Antigravity 전용 adapter는 범위 밖이다. 추상 실행 등급의 실제 model 선택은 설치별 binding이 맡는다.
+
 ## 2026.07.1 — 2026-07-17 — 버전/릴리스 프로세스 규약 (specs/053)
 
 첫 CalVer 릴리스(`2026.07.0`)를 dogfood하며 합의한 버전/릴리스 프로세스를 성문 규약으로 정착시켰다.

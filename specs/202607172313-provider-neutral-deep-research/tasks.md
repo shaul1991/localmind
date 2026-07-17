@@ -158,18 +158,20 @@ audience: ai
 ## Phase 3 — 사람용 docs·catalog drift GREEN (worker)
 > depends-on: Phase 2, Phase 1C · files: `README.md`, `docs/agents.md`, `docs/workflows.md`, `CHANGELOG.md`
 
-- [ ] **T3.1 — README:** current packaged workflow catalog와 runtime별 quick-start에 `deep-research`를
+- [x] **T3.1 — README:** current packaged workflow catalog와 runtime별 quick-start에 `deep-research`를
       추가한다. 특정 개인 경로 대신 일반 예시를 쓰고 비개발자가 이해할 문장으로 작성한다.
-- [ ] **T3.2 — agents guide:** stale "정확히 세 개" 표현을 현재 catalog 관점으로 고치고 policy와
+- [x] **T3.2 — agents guide:** stale "정확히 세 개" 표현을 현재 catalog 관점으로 고치고 policy와
       invocation matrix에 `deep-research`를 추가한다. Codex bare slash를 약속하지 않는다.
-- [ ] **T3.3 — workflows guide:** 언제 deep research를 쓰는지, brief confirmation, source/evidence,
+- [x] **T3.3 — workflows guide:** 언제 deep research를 쓰는지, brief confirmation, source/evidence,
       결과 구조, capability fallback, first-party 제품과 차이, Gemini/Antigravity 범위를 결론 먼저
       설명한다. 단계별 abstract tier와 설치별 binding의 책임 분리도 설명하고, 행동 정본은 canonical
       skill/reference로 링크한다.
-- [ ] **T3.4 — CHANGELOG:** 버전 번호 없이 provider-neutral Deep Research workflow의 변경 내용을
+- [x] **T3.4 — CHANGELOG:** 버전 번호 없이 provider-neutral Deep Research workflow의 변경 내용을
       상단 미릴리스 영역에 추가한다(I-11).
-- [ ] **T3.5 — docs GREEN:** Phase 1C test를 실행해 AC-14 계약이 통과하는지 확인한다. 기능과 무관한
+- [x] **T3.5 — docs GREEN:** Phase 1C test를 실행해 AC-14 계약이 통과하는지 확인한다. 기능과 무관한
       legacy timestamp·다른 문서 drift는 정리하지 않는다.
+      — 2026-07-18 루트 재실행: deep-research docs 계약 5/5 GREEN; legacy `{NNN}`
+      baseline assertion은 별도 미수정.
 
 ## Phase 4 — 통합 lifecycle·representative dogfood (main)
 > depends-on: Phase 2, Phase 3 · files: 없음

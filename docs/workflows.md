@@ -25,6 +25,60 @@
 
 ![PM 플로우](flow-pm.gif)
 
+## Deep Research — 근거 기반 심층 조사
+
+> **결론** — `deep-research`는 하나의 **공용 logical command ID**로 같은 근거 수집·교차검증·비판적
+> 검수 절차를 실행하는 Agent Skills 워크플로입니다. 명시 호출로만 시작하는 `report-only` 작업이며,
+> 기본 산출물은 외부 상태를 바꾸지 않는 결론 우선 채팅 보고입니다.
+
+### 호출과 지원 범위
+
+| 런타임 | 실제 호출 |
+|---|---|
+| Claude Code | `/deep-research <topic>` |
+| Codex | `$deep-research <topic>` |
+| Gemini CLI | auto skill 또는 생성된 `/deep-research <topic>` wrapper |
+
+논리 ID와 조사 계약은 같지만 호출 문자는 런타임 공식 문법을 따릅니다. Codex의 bare
+`/deep-research`는 공식 호출 문법이 아니므로 지원하거나 권장하지 않습니다. deprecated Custom
+Prompts와 `/prompts:deep-research` 경로도 사용하지 않습니다.
+
+이 기능은 벤더의 first-party Deep Research 제품과 **별개**입니다. 전용 backend·전용 모델·전용
+서버를 복제하거나 같은 결과를 보장하지 않습니다. Agent Skills를 로드하는 호환 runtime에서 실행하는
+워크플로이며, Agent Skills를 제공하지 않는 모델 단독 API나 모델만으로는 실행할 수 없습니다.
+
+현재 정식 대상은 Claude Code·Codex·Gemini CLI입니다. Gemini CLI는 공용 Agent Skill discovery와
+generated wrapper를 함께 제공합니다. Antigravity 전용 adapter 또는 정식 target 편입은 이번 범위
+밖이며, 향후 별도 검증이 필요한 후속 작업입니다.
+
+### 조사 흐름과 결과
+
+1. 명시 호출과 주제를 확인합니다. 주제가 없거나 실행 provenance가 불명확하면 확인부터 받고,
+   확인 전 source lookup·위임·write는 시작하지 않습니다.
+2. 질문·목적·독자·기준일·포함/제외 범위·종료 조건을 research brief로 재진술해 확인받습니다.
+3. 선행 문맥을 확인하고 T1/T2 우선 source strategy를 세운 뒤, 독립적인 질문만 read-only lane으로
+   나눕니다.
+4. claim별 evidence ledger에 URL·권위·날짜·지지/반박·확인 상태를 연결하고 상충 근거를 숨기지
+   않습니다.
+5. 모든 lane이 끝난 뒤 synthesis → final critic 순서로 검수하고, TL;DR·scope/기준일·핵심 발견·
+   근거·상충/한계·권고·Open questions·실행 투명성 순서로 보고합니다.
+
+행동과 형식의 정본은 [canonical skill](../templates/skills/deep-research/SKILL.md)과
+[research contract](../templates/skills/deep-research/references/research-contract.md)입니다.
+
+### Capability fallback과 실행 등급
+
+- live source lookup이 없거나 미지원이면 결과를 `context-only` 또는 live verification unavailable로
+  표시하고, 최신 사실은 미검증으로 남긴 채 현재 session에서 가능한 범위만 보고합니다.
+- isolated delegation 또는 isolated critic이 없거나 미지원이면 current-session fallback으로 같은
+  체크리스트를 수행하며 `not independent` 또는 비독립으로 표기합니다.
+- 역할별 추상 등급은 source scout=`economy`, research coordinator=`standard`, evidence
+  researcher=`standard`, research synthesizer=`critical-reasoning`, final critic=
+  `critical-reasoning`입니다.
+- 설치별 binding이 각 런타임에서 쓸 구체 model을 결정합니다. canonical workflow는 특정 모델명을
+  소유하지 않습니다. final critic은 가용 모델이 부족해도 조용히 silent downshift하거나 더 낮은
+  등급으로 대체하지 않으며, fallback과 실제 독립성 상태를 보고합니다.
+
 ## 페르소나/모델 바인딩 온보딩 (`localmind-binding`)
 
 > 위 표의 워크플로우들과는 성격이 다른 절입니다 — "직군별 예제"가 아니라, `goal-ready`·
