@@ -7,7 +7,7 @@
 
 ## 불변식 (I-n) — 위반 시 배리어 불통과
 
-- **I-1**: sdd-implement의 fan-out §는 기존 절 확장이 아니라 **신설**이다(→ plan F-2 — repo 정본에
+- **I-1**: goal-impl의 fan-out §는 기존 절 확장이 아니라 **신설**이다(→ plan F-2 — repo 정본에
   "phase별 서브에이전트 위임" 절 없음). "기존 절에 추가" 식 서술·편집 금지.
 - **I-2**: 신설·수정 문구는 중립성 스캔 0위반(→ plan F-6·D-6) — provider·구체 모델·런타임 전용
   도구명 금지. 역할명(worker·critic 등)·"격리 위임"·"배리어" 어휘는 허용.
@@ -32,13 +32,13 @@
 ## Phase 0 — Live-Verify 게이트 확인 (worker, 착수 시 1회)
 > depends-on: 없음 · files: 없음(확인만)
 
-- [ ] **T0.1** 이 slice 산출물이 산문 규약뿐이라 낡을 수 있는 외부 사실이 없음 + Agent Skills
+- [x] **T0.1** 이 slice 산출물이 산문 규약뿐이라 낡을 수 있는 외부 사실이 없음 + Agent Skills
       frontmatter·구조 불변경임을 확인만 하고 self-review 보고에 1줄 명시(→ plan Phase 0).
 
 ## Phase 1 — tasks-format 규약 정본 신설 (worker)
-> depends-on: 없음 · files: `templates/skills/sdd-implement/references/tasks-format.md`
+> depends-on: 없음 · files: `templates/skills/goal-impl/references/tasks-format.md`
 
-- [ ] **T1.1** `templates/skills/sdd-implement/references/tasks-format.md` **신규 작성**(→ plan
+- [x] **T1.1** `templates/skills/goal-impl/references/tasks-format.md` **신규 작성**(→ plan
       영향 모듈·F-8 관행): D-1 선언 문법(phase 헤더 직하 blockquote, `depends-on:`·`files:`,
       `[P]`는 파생 힌트, task 인라인은 선택 확장) · D-2 disjoint 판정(경로 정규화·디렉토리
       접두·글롭 보수 확장·**무선언=겹침→직렬** I-3) · D-3 worktree 1문장(명시 선택 옵션) ·
@@ -46,11 +46,11 @@
       레거시(무선언 tasks 유효, 직렬 취급). 어휘는 I-2 준수. — AC-2 정적 근거.
 
 ## Phase 2 — 구현 스킬 fan-out 절 (worker)
-> depends-on: Phase 1 · files: `templates/skills/sdd-implement/SKILL.md`
+> depends-on: Phase 1 · files: `templates/skills/goal-impl/SKILL.md`
 
 - [ ] **T2.1** I-5 분기 확인: 착수 시점 `specs/051-*` 존재·완료 여부 조회 — 미완(현행, → plan
       F-10)이면 아래 경로 그대로, 완료면 051 결과 정본으로 치환 후 보고 명시(→ plan D-4).
-- [ ] **T2.2** `templates/skills/sdd-implement/SKILL.md`에 fan-out DAG § **신설**(I-1, → plan
+- [ ] **T2.2** `templates/skills/goal-impl/SKILL.md`에 fan-out DAG § **신설**(I-1, → plan
       영향 모듈, spec FR-2): "의존 충족 + 파일 disjoint + 유의미한 크기인 노드들을 **한 메시지에
       동시 spawn**" · "배리어에서 메인 통합 검증(테스트·정합)·phase 커밋 후 다음 레이어 해금" ·
       worker 간 직접 통신 금지 · 파일 겹침→직렬 기본(worktree는 명시 선택, → plan D-3) ·
@@ -64,7 +64,7 @@
 ## Phase 3 — 문서 작성 스킬 곁가지 병렬 절 (worker)
 > depends-on: 없음 · files: `templates/skills/goal-ready/SKILL.md`
 
-- [ ] **T3.1** `templates/skills/goal-ready/SKILL.md`에 곁가지 병렬 § **신설**(→ plan 영향 모듈,
+- [x] **T3.1** `templates/skills/goal-ready/SKILL.md`에 곁가지 병렬 § **신설**(→ plan 영향 모듈,
       spec FR-3): (a) 한 슬라이스 안 — 하드 체인(goal→spec→plan→tasks) 직렬 유지 + 곁가지
       병렬(사실수집 ∥ 초안, design ∥ plan, 독립 research N개 동시 위임) + **크리틱은 항상 모든
       산출물이 모인 마지막 배리어**. (b) 슬라이스/spec 간 — 폴더 disjoint + Read 전용 저작이라
