@@ -571,7 +571,7 @@ describe("030 바이브 워크플로우 개정", () => {
   it("030 AC-3: 바이브 design.md 위치 규약 + SDD 병기", () => {
     const a = agentsMd();
     assert.ok(a.includes("projects/<project>/design.md"), "바이브 design.md 위치");
-    assert.ok(a.includes("specs/{NNN}-{slug}/design.md") || /specs\/[\s\S]{0,40}design\.md/.test(a), "SDD 위치 병기 유지");
+    assert.ok(a.includes("specs/{timestamp}-{slug}/design.md"), "SDD 위치 병기 유지(2026-07-17 timestamp 전환)");
     const cm = read(path.join(REPO_ROOT, "templates", "contracts", "context-map.template.md"));
     assert.ok(cm.includes("이 폴더의 design.md"), "context-map 바이브 포인터");
     assert.ok(/specs\/[^\s]{0,40}design\.md/.test(cm), "context-map SDD 포인터 유지(codex block 3)");
