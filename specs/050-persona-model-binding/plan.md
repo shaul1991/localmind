@@ -168,21 +168,27 @@
 
 ## 단계 (의존 순서 · 담당)
 
-- [ ] **Phase 0 — Live-Verify 게이트 확인** (아키텍트 작성분, 워커가 구현 중 준수):
+- [x] **Phase 0 — Live-Verify 게이트 확인** (아키텍트 작성분, 워커가 구현 중 준수):
       계획·스킬·템플릿에 구체 모델명 0건 — F-5 중립성 스캔이 이를 **기계 강제**하므로 별도 외부
       라이브 검증 대상 없음. 런타임별 위임 능력은 단정하지 않고 세션 capability 판정에 위임(044).
-- [ ] **Phase 1 — 바인딩 계약 모듈** (worker): `binding.ts` + `binding.test.ts` (TDD — AC 매핑
+      — 확인됨(T0.1).
+- [x] **Phase 1 — 바인딩 계약 모듈** (worker): `binding.ts` + `binding.test.ts` (TDD — AC 매핑
       테스트 먼저). D-1 스키마·D-3 resolve·D-4 부재 사유·FR-7 검증 의미를 코드로 고정.
-- [ ] **Phase 2 — 온보딩 스킬 패키지** (worker, Phase 1의 계약 확정에 의존): SKILL.md +
+      — 완료(T1.1/T1.2), self-review에서 traversal 가드(NAME_RE) 회귀 4건 보완.
+- [x] **Phase 2 — 온보딩 스킬 패키지** (worker, Phase 1의 계약 확정에 의존): SKILL.md +
       references(계약 정본·예시) + catalog 편입 + F-13 테스트 목록 갱신. 계약 문서는 Phase 1
       함수 의미와 1:1이어야 한다(드리프트 = 결함).
-- [ ] **Phase 3 — 백업 격리 배선** (worker, Phase 1·2와 독립 — 병렬 가능): gitignore 시드 +
+      — 완료(T2.1~T2.6).
+- [x] **Phase 3 — 백업 격리 배선** (worker, Phase 1·2와 독립 — 병렬 가능): gitignore 시드 +
       셸 테스트.
-- [ ] **Phase 4 — 문서** (worker, Phase 1~3 확정에 의존): docs/workflows.md·AGENTS.md 포인터.
-- [ ] **Phase 5 — 도그푸드 + self-review** (worker 실행, 최종 판정은 격리 리뷰어 — sdd-implement
+      — 완료(T3.1/T3.2), 백업 셸 31/0.
+- [x] **Phase 4 — 문서** (worker, Phase 1~3 확정에 의존): docs/workflows.md·AGENTS.md 포인터.
+      — 완료(T4.1/T4.2).
+- [x] **Phase 5 — 도그푸드 + self-review** (worker 실행, 최종 판정은 격리 리뷰어 — sdd-implement
       규약): `make skills-deploy` → 실제 온보딩 1회(AC-1) → 재실행(AC-2) → 바인딩 삭제 후 소비
       규약 시나리오(AC-3) → 가능한 런타임에서 격리(AC-5)·fallback(AC-4) 관찰. 지침 수준 행동은
       여기서만 실증 가능함을 보고에 명시.
+      — 완료(T5.1~T5.4), self-review clean.
 
 ## 테스트 전략 (AC 1:1)
 
@@ -201,6 +207,8 @@
 | AC-7 무효 페르소나 | 단위 + 정적 | `validateBinding`이 레지스트리 밖 이름을 저장 불가 오류로 반환 + 스킬의 재선택 유도 지시 정적 |
 | AC-8 빈 레지스트리 | 단위 + 정적 | 빈 `personaNames`에서 tiers 검증은 정상·roles는 건너뜀 판정 단위(F-2의 빈 레지스트리 규약 재사용) + 스킬의 건너뜀 안내 지시 정적 |
 | AC-9 추천 밖 모델 | 단위 + 도그푸드 | 자유 모델 식별자(F-12 형식 내) 저장 허용 단위 + 미검증 고지 문구 도그푸드 관찰 |
+
+**검증 결과(2026-07-17)**: 전 AC green(`npm test` 853/0) · 도그푸드(Phase 5) 완료 · self-review clean.
 
 ## 가정·리스크
 

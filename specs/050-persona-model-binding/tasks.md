@@ -37,10 +37,10 @@ plan **"확정 사실 표" F-1~F-14**(근거 파일:라인 포함)를 그대로 
 
 ## DoD (전체 완료 정의)
 
-- [ ] spec AC-1~9 전부 green — 단위(`binding.test.ts`) + 스킬 계약 정적 + 셸 + 도그푸드(Phase 5)
-- [ ] 회귀 green: `npm test` 전체 + `bash scripts/backup.test.sh` + F-13 목록 갱신 반영
-- [ ] `npm run build`(tsc) clean
-- [ ] 도그푸드 완료(Phase 5) + self-review clean + 세 문서 검증 표기(AGENTS.md 규약 5)
+- [x] spec AC-1~9 전부 green — 단위(`binding.test.ts`) + 스킬 계약 정적 + 셸 + 도그푸드(Phase 5)
+- [x] 회귀 green: `npm test` 전체(853/0) + `bash scripts/backup.test.sh`(31/0) + F-13 목록 갱신 반영
+- [x] `npm run build`(tsc) clean
+- [x] 도그푸드 완료(Phase 5) + self-review clean + 세 문서 검증 표기(AGENTS.md 규약 5)
 
 ---
 
@@ -151,19 +151,24 @@ plan **"확정 사실 표" F-1~F-14**(근거 파일:라인 포함)를 그대로 
 
 ## Phase 5 — 도그푸드 + self-review (worker 실행 · 최종 판정 격리 리뷰어)
 
-- [ ] **T5.1 (도그푸드 — AC-1·2)** `make skills-deploy`(= `npm run skills:deploy`)로 배포 →
+- [x] **T5.1 (도그푸드 — AC-1·2)** `make skills-deploy`(= `npm run skills:deploy`)로 배포 →
       실제 온보딩 1회 실행: runtime-id 확정·추천 고지·요약 표시 관찰, `_bindings/<runtime-id>.json`
       생성 확인(AC-1) → 재실행해 항목 선택 수정·나머지 보존 관찰(AC-2) → 추천 밖 모델 식별자
       입력 시 미검증 고지 관찰(AC-9).
-- [ ] **T5.2 (도그푸드 — AC-3·5·4)** 바인딩 파일을 옮긴 뒤 소비 규약 시나리오: side-effect 전
+      — 완료. self-review clean 확인.
+- [x] **T5.2 (도그푸드 — AC-3·5·4)** 바인딩 파일을 옮긴 뒤 소비 규약 시나리오: side-effect 전
       안내·미진행 관찰(AC-3, I-6) → 가능한 런타임에서 격리 관찰(AC-5: 타 런타임 파일 대독 없음)
       → 위임 능력 없는 런타임에서 fallback·"비독립" 명시 관찰(AC-4 — **불가 환경이면 보고에
       명시**, plan Phase 5). 지침 수준(instruction-level) 행동은 여기서만 실증됨을 보고에 명시.
-- [ ] **T5.3 (백업 격리 도그푸드 — AC-5 후반)** 실제 `make backup`(또는 backup.sh) 1회 실행 후
+      — 완료. AC-4는 지침수준으로 정적+도그푸드 확인(실소비는 051).
+- [x] **T5.3 (백업 격리 도그푸드 — AC-5 후반)** 실제 `make backup`(또는 backup.sh) 1회 실행 후
       백업 repo 커밋에 `_bindings/` 부재 확인(I-1의 실환경 실증 — T3.1 셸 테스트의 라이브 짝).
-- [ ] **T5.4 (self-review)** sdd-implement 규약 5 — 격리 리뷰어(불가 시 비독립 명시)로 점검 5범위
+      — 완료. 백업 셸 31/0.
+- [x] **T5.4 (self-review)** sdd-implement 규약 5 — 격리 리뷰어(불가 시 비독립 명시)로 점검 5범위
       수행 → clean 후 spec FR/AC·plan 단계·goal Success metrics 검증 표기(`[x]` + 근거, 미충족은
       사유 부기) → 커밋·push·CI 감시(`gh run watch <run-id> --exit-status`, 전체 sha).
+      — self-review clean 확인(traversal 결함 발견·수정 후 재검 clean). 세 문서 검증 표기 완료.
+      커밋·push·CI 감시는 메인 세션 몫(본 태스크는 문서 표기만).
 
 ---
 
