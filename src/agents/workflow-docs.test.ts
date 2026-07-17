@@ -175,3 +175,82 @@ describe("workflow-boundary: AC-18", () => {
     }
   });
 });
+
+describe("version-release-process: AC-1~5 (specs/053, 사후 핀 — 규약 문구 확정 후 assert 고정)", () => {
+  const agents = () => read("AGENTS.md");
+  const goalReady = () => read("templates/skills/goal-ready/SKILL.md");
+  const changelog = () => read("CHANGELOG.md");
+
+  it("AC-1: CalVer 형식 규약(형식·기준시점·MICRO 초기값·태그 접두·D-1 산정규칙)이 존재한다", () => {
+    const a = agents();
+    assert.match(a, /YYYY\.MM\.MICRO/);
+    assert.match(a, /릴리스\(PR 머지\) 시점/);
+    assert.match(a, /첫 릴리스는 MICRO = 0/);
+    assert.match(a, /`v` 접두 없이/);
+    assert.match(a, /SemVer 의미\(호환성 시그널\)는 없다/);
+    // D-1: MICRO 산정 정본 = git tag 목록 (AC-9 정적분)
+    assert.match(a, /git fetch --tags/);
+    assert.match(a, /git tag -l 'YYYY\.MM\.\*'/);
+    assert.match(a, /CHANGELOG 헤더와 어긋나면 \*\*태그가 이긴다\*\*/);
+  });
+
+  it("AC-2: 관심사 분리 규칙(내용은 작업 중 PR, 버전은 머지 직전)이 존재한다", () => {
+    const a = agents();
+    assert.match(a, /변경 내용 서술\*\*\(CHANGELOG 항목·PR 설명\)은 \*\*작업 중 PR에\*\* 누적/);
+    assert.match(a, /버전 숫자 확정\*\*\(package\.json bump \+ CHANGELOG 버전 헤더 기입 \+ tag\)은 \*\*PR 머지\n  직전\*\*에 한다/);
+  });
+
+  it("AC-3: goal-ready 정본에 '버전은 여기서 정하지 않는다' + 릴리스 규약(AGENTS.md) 참조가 존재한다", () => {
+    const g = goalReady();
+    assert.match(g, /버전은 여기서 정하지 않는다/);
+    assert.match(g, /저장소 릴리스 규약\(AGENTS\.md 버전·릴리스 절\)/);
+    // packaged 중립성 스캔 clean은 "workflow-boundary: AC-18" describe의
+    // "packaged canonical workflow는 중립성 clean(재확인)" 케이스가 templates/skills 전체
+    // (goal-ready 포함)를 이미 스캔한다 — 여기서 재확인만, 별도 assert 불필요.
+  });
+
+  it("AC-4: 릴리스 절차 5단계 순서·gh 계정 확인·머지 검증 안전장치가 존재한다", () => {
+    const a = agents();
+    const steps = ["1. **머지 준비**", "2. **PR 머지**", "3. **버전 확정 커밋 포함 확인**", "4. **태그**", "5. **릴리스 생성**"];
+    let lastIndex = -1;
+    for (const s of steps) {
+      const idx = a.indexOf(s);
+      assert.ok(idx !== -1, `절차 단계 누락: "${s}"`);
+      assert.ok(idx > lastIndex, `절차 단계 순서 어긋남: "${s}"`);
+      lastIndex = idx;
+    }
+    assert.match(a, /\(a\) gh 계정 확인/);
+    assert.match(a, /gh auth status/);
+    assert.match(a, /PR state \+ main HEAD 변화 둘 다 확인/);
+    // AC-8 정적분: 미머지 상태 tag·release 중단
+    assert.match(a, /main이 불변이면 미머지다 — \*\*tag·release를 진행하지 않는다\*\*/);
+    // AC-7 정적분: 월 경계 재확정
+    assert.match(a, /월 경계 재확정/);
+    assert.match(a, /재확정\(re-stamp\)/);
+  });
+
+  it("AC-5: CHANGELOG 새 문구 존재 + 구 문구 부재(스캔 범위: CHANGELOG.md·AGENTS.md·docs/·templates/, specs/ 제외 — I-4)", () => {
+    assert.match(changelog(), /버전은 \*\*릴리스\(PR 머지\) 시점\*\* 기준/);
+
+    // specs/는 의도적으로 스캔 범위에서 제외한다 — specs/053(이 spec) 자신이 구 문구를
+    // "정정 대상 드리프트"로 역사적으로 인용하고 있어(goal.md·plan.md·tasks.md), 전역
+    // 스캔을 걸면 자기 자신을 오탐(false positive)한다(→ spec.md AC-5·plan Phase 4·
+    // tasks.md I-4). 따라서 CHANGELOG.md·AGENTS.md·docs/·templates/ 로만 한정한다.
+    const forbidden = "문서 작성(goal-ready) 시점";
+    const scanTargets = [path.join(REPO_ROOT, "CHANGELOG.md"), path.join(REPO_ROOT, "AGENTS.md")];
+    const walk = (dir: string) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (/\.(md|json)$/.test(e.name)) scanTargets.push(p);
+      }
+    };
+    walk(path.join(REPO_ROOT, "docs"));
+    walk(path.join(REPO_ROOT, "templates"));
+
+    for (const f of scanTargets) {
+      const c = fs.readFileSync(f, "utf8");
+      assert.ok(!c.includes(forbidden), `${path.relative(REPO_ROOT, f)}에 구 문구 "${forbidden}" 잔존`);
+    }
+  });
+});

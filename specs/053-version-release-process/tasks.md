@@ -97,7 +97,7 @@ Phase 1(및 L1 전체)에 착수한다(→ plan "Open questions 해소 매핑").
 ## Phase 4 — 정적 계약 테스트 (standard)
 > depends-on: Phase 1, Phase 2, Phase 3 · files: `src/agents/workflow-docs.test.ts`
 
-- [ ] **T4.1** `workflow-docs.test.ts`에 describe 블록 추가(→ plan F-5② 배치 근거 — 이 파일이
+- [x] **T4.1** `workflow-docs.test.ts`에 describe 블록 추가(→ plan F-5② 배치 근거 — 이 파일이
       AGENTS.md 규약7 핀 선례·`read()` 헬퍼 보유. assert 스타일은 F-5① `assert.match` 계승):
       - AC-1: AGENTS.md 신설 절에 `YYYY.MM.MICRO`·"릴리스(PR 머지) 시점"·첫 릴리스 0·
         `v` 접두 없음(+ D-1 MICRO 규칙 — AC-9 정적분) assert.
@@ -117,7 +117,7 @@ Phase 1(및 L1 전체)에 착수한다(→ plan "Open questions 해소 매핑").
 
 ## L2 배리어 (메인 수행)
 
-- [ ] **B-L2** Phase 4 완료 후 메인이 전체 `npm test` green + `npm run build` clean 확인(I-6).
+- [x] **B-L2** Phase 4 완료 후 메인이 전체 `npm test` green + `npm run build` clean 확인(I-6).
       통과해야 L3 해금.
 
 ## Phase 5 — 배포·self-review·검증 표기 (worker 실행 · 최종 판정 격리 리뷰어 critical-reasoning)
