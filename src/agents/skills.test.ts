@@ -77,7 +77,7 @@ describe("skills-seed: AC-2", () => {
     const r1 = seedWorkflows({ skillsDir: dataDir });
     assert.equal(r1.problems.length, 0);
     const names = r1.items.map((i) => i.logicalId).sort();
-    assert.deepEqual(names, ["goal-ready", "localmind-rules", "sdd-implement", "sdd-self-review"]);
+    assert.deepEqual(names, ["goal-ready", "localmind-binding", "localmind-rules", "sdd-implement", "sdd-self-review"]);
     assert.ok(r1.items.every((i) => i.status === "created"));
     for (const n of names) {
       const md = read(path.join(dataDir, n, "SKILL.md"));
@@ -167,6 +167,8 @@ describe("skills-deploy-claude: AC-4", () => {
     }
     assert.match(frontmatterOf(path.join(c.skillsDir, "sdd-implement", "SKILL.md")), /disable-model-invocation:\s*true/);
     assert.doesNotMatch(frontmatterOf(path.join(c.skillsDir, "goal-ready", "SKILL.md")), /disable-model-invocation/);
+    // localmind-binding도 explicit workflow라 sdd-implement와 같은 deny-implicit 렌더를 받는다(specs/050 T2.2).
+    assert.match(frontmatterOf(path.join(c.skillsDir, "localmind-binding", "SKILL.md")), /disable-model-invocation:\s*true/);
     assert.ok(r.items.some((i) => i.logicalId === "sdd-implement" && i.invocation === "/sdd-implement"));
     const again = deployWorkflows({ skillsDir: dataDir, claudeSkillsDir: c.skillsDir, targets: ["claude-skill"] });
     assert.ok(again.items.filter((i) => i.target === "claude-skill").every((i) => i.status === "unchanged"), JSON.stringify(again.items));

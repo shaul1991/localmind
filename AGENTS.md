@@ -183,6 +183,9 @@ SDD/TDD, 최종 review 강도, evidence 체크, commit/push/CI 같은 행동 gat
 provider·model 매핑·가격·alias는 이 규약의 필수 계약이 **아니다** — 필요하면 별도 local binding
 문서(optional adapter)로 둔다.
 
+이 optional adapter는 온보딩 스킬 `localmind-binding`(설치별 `~/.localmind/_bindings/<runtime-id>.json`)
+으로 구체화됐다(specs/050) — 사용법은 [docs/workflows.md](docs/workflows.md) 참조.
+
 ## 오픈소스 대상 — 비개발자 포함, 특정 개인 아님
 
 localmind는 누구나 설치해 쓰는 오픈소스 개인 second-brain 도구다. **비개발자도 사용자다.**

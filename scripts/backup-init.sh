@@ -95,7 +95,7 @@ if ! git -C "$BACKUP_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 fi
 touch "$BACKUP_DIR/.gitignore"
 # 파생물 제외 — backup.sh의 시드 목록과 동일하게 유지(specs/015 self-review 지적)
-for p in '.brain-index.json' '.brain-index.json.tmp' '.brain-index.json.tmp-*' '.brain-index.json.lock' '.trash/' '.DS_Store'; do
+for p in '.brain-index.json' '.brain-index.json.tmp' '.brain-index.json.tmp-*' '.brain-index.json.lock' '.trash/' '.DS_Store' '_bindings/'; do
   grep -qxF "$p" "$BACKUP_DIR/.gitignore" || echo "$p" >> "$BACKUP_DIR/.gitignore"
 done
 

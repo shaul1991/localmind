@@ -7,6 +7,7 @@ import os from "node:os";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   loadSkillRegistry,
   loadManifest,
@@ -18,6 +19,8 @@ import {
   hasSkillMarker,
   hasCommandMarker,
 } from "./skill-contract.js";
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 let root: string;
 beforeEach(() => {
@@ -478,5 +481,61 @@ describe("canonical source absence (R1-03)", () => {
     const reg = loadSkillRegistry(empty);
     assert.equal(reg.problems.length, 0, "의도적 빈 폴더는 clean");
     assert.equal(reg.skills.length, 0);
+  });
+});
+
+// ── localmind-binding packaged skill 정적 AC 검증 (specs/050 T2.6) ──────────────
+describe("localmind-binding contract: AC-1/3/4/7/8/9, I-7", () => {
+  const PKG_ROOT = path.join(REPO_ROOT, "templates", "skills");
+  const skillMd = () => fs.readFileSync(path.join(PKG_ROOT, "localmind-binding", "SKILL.md"), "utf8");
+  const contractMd = () => fs.readFileSync(path.join(PKG_ROOT, "localmind-binding", "references", "binding-contract.md"), "utf8");
+
+  it("packaged 전수 스캔에 localmind-binding이 포함되고 중립성 clean이다(F-5)", () => {
+    const reg = loadSkillRegistry(PKG_ROOT, { packaged: true });
+    assert.equal(reg.problems.length, 0, JSON.stringify(reg.problems));
+    const s = reg.skills.find((x) => x.name === "localmind-binding");
+    assert.ok(s, "localmind-binding packaged skill 존재");
+    assert.equal(scanPackagedNeutrality(s!).length, 0, "중립성 위반 0건이어야 한다");
+    assert.equal(s!.policy?.activation, "explicit");
+    assert.equal(s!.policy?.sideEffects, "mutating");
+  });
+
+  it("AC-1: 추천이 낡을 수 있다는 고지·사용자 확정·저장 요약 지시가 있다", () => {
+    const md = skillMd();
+    assert.match(md, /낡을 수 있/, "추천 낡음 고지 문구 누락");
+    assert.match(md, /사용자가.*확정/, "사용자 확정 지시 누락");
+    assert.match(md, /요약해.*보여준다|요약.*표시/, "저장 요약 지시 누락");
+  });
+
+  it("AC-7: 레지스트리 밖 페르소나명은 저장하지 않고 재선택을 유도한다", () => {
+    assert.match(skillMd(), /재선택/, "재선택 유도 지시 누락");
+  });
+
+  it("AC-8: 빈 레지스트리에서는 역할 단계를 사유와 함께 건너뛰고 등급 설정은 계속한다", () => {
+    const md = skillMd();
+    assert.match(md, /레지스트리가 비어 있으면.*건너뛴다/s, "빈 레지스트리 건너뜀 안내 누락");
+  });
+
+  it("AC-9: 추천 밖 모델 식별자의 가용성을 검증하지 않는다는 고지가 있다", () => {
+    assert.match(skillMd(), /가용성.*검증하지 않는다/, "모델 가용성 미검증 고지 누락");
+  });
+
+  it("AC-3/D-4: 계약 문서에 부재 시 안내 후 미진행·명시적 '이번만' 예외가 서술돼 있다", () => {
+    const md = contractMd();
+    assert.match(md, /side-effect도.*일으키기 전에/, "side-effect 전 안내 서술 누락");
+    assert.match(md, /기본적으로 진행하지 않는다/, "기본 미진행 서술 누락");
+    assert.match(md, /이번만 바인딩 없이 진행/, "명시적 '이번만' 예외 서술 누락");
+  });
+
+  it("AC-4/FR-5: 계약 문서에 페르소나 대행이 비독립(fallback)임을 명시하고 중단시키지 않는다는 서술이 있다", () => {
+    const md = contractMd();
+    assert.match(md, /비독립\(fallback\)/, "비독립(fallback) 명시 서술 누락");
+    assert.match(md, /워크플로를 중단시키지 않는다/, "중단 금지 서술 누락");
+  });
+
+  it("I-7: 계약 문서가 페르소나 정의의 model 값이 바인딩 tiers보다 우선한다고 명문화한다", () => {
+    const md = contractMd();
+    assert.match(md, /페르소나 정의.*model 값/s, "페르소나 정의 model 우선 서술 누락");
+    assert.match(md, /tiers보다 우선한다/, "tiers 대비 우선순위 서술 누락");
   });
 });
