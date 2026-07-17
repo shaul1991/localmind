@@ -159,6 +159,27 @@ describe("scaffold-runtime-bridges: AC-16", () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  // scaffold 산출물이 timestamp 규약을 가르치는지 실제 생성물로 확인한다 — 정본(root AGENTS.md)만
+  // 고치고 scaffold 템플릿을 놓치면 새 프로젝트가 구 충돌 규칙을 물려받는다(2026-07-17 PR #26 드리프트).
+  it("scaffold된 AGENTS.md는 timestamp 프리픽스 + 배타적 생성 규약을 가르친다(구 NNN/max+1 부재)", () => {
+    const dir = tmpDir();
+    try {
+      scaffoldSdd(dir);
+      const agents = fs.readFileSync(path.join(dir, "AGENTS.md"), "utf8");
+      const flat = agents.replace(/\s+/g, " "); // 줄바꿈 무관하게 규칙 문구를 핀한다
+      assert.match(agents, /specs\/\{timestamp\}-\{feature-slug\}\//, "timestamp 폴더 규약");
+      assert.ok(flat.includes("`mkdir`(`-p` 금지)"), "배타적 생성");
+      assert.ok(flat.includes("현재 시각을 다시 읽어"), "재시도 종료성(시각 재독)");
+      assert.ok(flat.includes("프리픽스는 유일하지 않을 수 있다"), "프리픽스 모호성 표기");
+      assert.ok(flat.includes("어느 spec인지 사용자에게 묻는다"), "모호 프리픽스 → 사용자에게 질의 가드");
+      assert.ok(!/최댓값 \+ 1/.test(agents), "구 max+1 규칙 부재");
+      assert.ok(!/specs\/\{NNN\}-/.test(agents), "구 NNN 폴더 규약 부재");
+      assert.ok(!/원인자가 정확히 3자리 숫자일 때/.test(agents), "구 3자리 전용 활성화 규칙 부재");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("scaffold dangling-symlink safety (R4-04)", () => {

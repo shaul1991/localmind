@@ -54,14 +54,16 @@ export function enforcementFor(target: WorkflowTargetId, policy: WorkflowPolicy)
 
 // ── execution grant 판정(goal-impl activation contract) ────────────────
 
-const NNN_RE = /^[0-9]{3}$/;
+// spec 폴더 프리픽스: 생성 시점 timestamp `YYYYMMDDHHmm`(12자리, 같은 분 충돌 시 초까지 확장해
+// 14자리) 또는 레거시 3자리 일련번호. 그 사이/바깥 자릿수는 프리픽스가 아니다(2026-07-17 전환).
+const PREFIX_RE = /^(?:[0-9]{3}|[0-9]{12}|[0-9]{14})$/;
 
 /**
- * raw arguments **전체가** 정확히 3자리 숫자일 때만 grant syntax가 valid하다. 앞뒤 공백/개행은
- * trim하지 않는다 — `" 044 "`처럼 둘러싼 공백은 exact match가 아니므로 grant가 아니다(R1-10).
+ * raw arguments **전체가** 정확히 spec 폴더 프리픽스일 때만 grant syntax가 valid하다. 앞뒤 공백/
+ * 개행은 trim하지 않는다 — `" 044 "`처럼 둘러싼 공백은 exact match가 아니므로 grant가 아니다(R1-10).
  */
 export function validNnn(rawArgs: string): string | null {
-  return NNN_RE.test(rawArgs) ? rawArgs : null;
+  return PREFIX_RE.test(rawArgs) ? rawArgs : null;
 }
 
 export interface Challenge {
@@ -101,7 +103,7 @@ export function expectedConfirmation(challenge: Challenge): string {
 
 /**
  * 실행 권한을 판정한다. 두 grant branch만 인정한다:
- * (a) runtime-attested explicit + exact 3자리 NNN, (b) 바로 앞 턴에 발급된, 아직 소비되지 않은
+ * (a) runtime-attested explicit + exact spec 폴더 프리픽스, (b) 바로 앞 턴에 발급된, 아직 소비되지 않은
  * challenge에 대한 fresh exact confirmation. 그 외(인용·부정·설명/리뷰 전용·추가/복수 인자·앞뒤 공백·
  * 낡은(immediately-previous 아님)/재사용(consumed) 확인·일반 자연어)는 grant하지 않는다.
  *
@@ -131,10 +133,10 @@ export function evaluateActivation(input: ActivationInput): ActivationDecision {
 
   if (input.attestedExplicit) {
     if (nnn) return { grant: true, branch: "runtime-attested", nnn };
-    return { grant: false, action: "reject", reason: "명시 호출이 보증됐지만 원인자가 정확한 3자리 spec 번호가 아님" };
+    return { grant: false, action: "reject", reason: "명시 호출이 보증됐지만 원인자가 정확한 spec 폴더 프리픽스가 아님" };
   }
 
   // provenance 부재 + 확인 응답 없음 → 첫 턴: 유효 번호면 challenge만 발급(side effect 금지)
   if (nnn) return { grant: false, action: "issue-challenge", nnn, challengeTurn: input.currentTurn ?? 0 };
-  return { grant: false, action: "reject", reason: "실행 권한 없음(provenance 부재 + 유효한 3자리 번호 없음)" };
+  return { grant: false, action: "reject", reason: "실행 권한 없음(provenance 부재 + 유효한 spec 폴더 프리픽스 없음)" };
 }
