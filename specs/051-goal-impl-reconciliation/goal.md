@@ -49,14 +49,14 @@ goal-impl(122줄 구조)의 오케스트레이션 강점을 base로, 044의 두 
 
 ## Success metrics — 성공 지표
 
-- [ ] 저장소 활성 표면(코드·테스트·catalog·AGENTS.md·docs·templates)에 `sdd-implement`
+- [x] 저장소 활성 표면(코드·테스트·catalog·AGENTS.md·docs·templates)에 `sdd-implement`
       참조 0건 — 역사 기록(과거 specs 문서·개정 이력)은 제외.
-- [ ] packaged `goal-impl` 스킬이 중립성 스캔에서 결함 0으로 통과한다.
-- [ ] `goal-impl`이 지원 3개 런타임 타깃 전부에 배포되고, 배포 표면에서 `sdd-implement`가
+- [x] packaged `goal-impl` 스킬이 중립성 스캔에서 결함 0으로 통과한다.
+- [x] `goal-impl`이 지원 3개 런타임 타깃 전부에 배포되고, 배포 표면에서 `sdd-implement`가
       제거(은퇴)된다.
-- [ ] goal-impl 본문에 commit/push/CI·self-review 완료 규칙의 자체 서술이 없고 AGENTS.md
+- [x] goal-impl 본문에 commit/push/CI·self-review 완료 규칙의 자체 서술이 없고 AGENTS.md
       참조만 존재한다(단일 SSoT).
-- [ ] 기존 전체 테스트 green(회귀 0) + 개명·중립화·게이트에 대한 신규 테스트 green.
+- [x] 기존 전체 테스트 green(회귀 0) + 개명·중립화·게이트에 대한 신규 테스트 green.
 
 ## Non-goals — 비목표
 

@@ -136,19 +136,19 @@
 - depends-on: P4 · 담당: 현재 세션(조율) + 독립 리뷰(critical-reasoning — 다운시프트 금지)
 - files: `specs/051-goal-impl-reconciliation/{goal,spec,plan,tasks}.md`(검증 표기)
 
-- [ ] **T5.1 실배포 관찰** — `make update`(seed+deploy) 실행 → 각 런타임 타깃에 goal-impl
+- [x] **T5.1 실배포 관찰** — `make update`(seed+deploy) 실행 → 각 런타임 타깃에 goal-impl
       배포 관찰(**AC-9**). **환경 실측(→ plan F-19)**: (a) `sdd-implement` 잔재가 3타깃 모두
       부재하므로 "은퇴 관찰"은 T4.4 lifecycle 합성 시나리오가 정본 증거 — 도그푸드에서 실잔재가
       없으면 "정리 대상 0(이미 부재)"로 보고. (b) `~/.gemini/commands` 부재 → gemini 타깃은
       `skipped-unavailable`로 보고됨이 정상(3타깃 중 실배포는 가용 타깃 한정). 관찰 결과를 그대로 보고.
-- [ ] **T5.2 데이터 폴더 분기 관찰** — 이 세션 사본은 **managed 확정(→ plan F-19)** → 백업
+- [x] **T5.2 데이터 폴더 분기 관찰** — 이 세션 사본은 **managed 확정(→ plan F-19)** → 백업
       스왑 갱신(→ plan F-7) 관찰, **덮어쓰기 0**(I-3). unmanaged 분기(reserved-fork 보고·rename
       안내, F-6)는 **이 환경에 없어 도그푸드 생략** — AC-11 증거는 P1 단위(T1.1 ②)가 담당(생략 사유 보고에 명시).
-- [ ] **T5.3 바인딩 분기 관찰** — `~/.localmind/_bindings` **부재(→ plan F-19)** → 미설정
+- [x] **T5.3 바인딩 분기 관찰** — `~/.localmind/_bindings` **부재(→ plan F-19)** → 미설정
       환경만 자연 관찰 가능: 스킬 §7(등급·역할) 도달 시 안내→기본 미진행·비독립 fallback 명시(→ plan F-13)
       표명을 관찰(**AC-10** 미설정 분기). 설정 분기는 임시 바인딩을 깔아 관찰하거나(선택),
       바인딩 계약 단위 검증으로 대체하고 도그푸드 생략을 명시.
-- [ ] **T5.4 검증 표기 + self-review + 완료** — 관찰 evidence로 spec FR·AC / plan 단계 /
+- [x] **T5.4 검증 표기 + self-review + 완료** — 관찰 evidence로 spec FR·AC / plan 단계 /
       goal Success metrics 체크 표기(미충족은 미체크 + 사유 부기). 독립 self-review clean까지
       반복 후 커밋·push·CI 감시 — **완료 규칙은 AGENTS.md 규약 7이 정본**(이 문서는 재서술하지
       않는다, I-5 자기적용).

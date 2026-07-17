@@ -224,3 +224,9 @@ source-absence 정리.
 - 관찰(범위 밖, 언급만): Gemini wrapper absence sweep 부재(F-5b)는 051 이전부터 있던 잠재
   비대칭 — D-2②가 이를 함께 닫지만, 과거 버전이 남긴 임의 stale wrapper 정리는 동일
   메커니즘으로 자연 해소된다.
+
+## 구현 완료 (2026-07-17)
+
+- **단계 P1~P5 전부 완료** — P1(은퇴 sweep)·P2(신 정본 병합·중립화)·P3(개명 전파+규약7 PR게이트 D-6)·P4(가드·특성화 테스트)·P5(도그푸드·검증표기·self-review).
+- **테스트 전략(AC→레벨) 전부 충족** — 정적/단위(AC-1~8) + 통합(AC-9 lifecycle) + 도그푸드(AC-9·10·11 실배포 관찰). unmanaged fork(AC-11)는 환경 부재로 P1 단위가 증거(F-19).
+- **self-review clean**: Claude critic(치명·중대 0) + codex 교차(blocking 해소, verdict advise). 전체 `npm test` 867 green. 근거·커밋 매핑은 spec 「검증 결과」 절 참조.
