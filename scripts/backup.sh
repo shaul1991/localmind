@@ -30,7 +30,7 @@ if ! git -C "$BACKUP_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 fi
 
 # ── 3) 파생물 제외(.gitignore 시드) ─────────────────────────────
-for p in '.brain-index.json' '.brain-index.json.tmp' '.brain-index.json.tmp-*' '.brain-index.json.lock' '.brain-index.json.vec-*' '.trash/' 'query-log.jsonl'; do
+for p in '.brain-index.json' '.brain-index.json.tmp' '.brain-index.json.tmp-*' '.brain-index.json.lock' '.brain-index.json.vec-*' '.trash/' 'query-log.jsonl' '_bindings/'; do
   grep -qxF "$p" "$BACKUP_DIR/.gitignore" 2>/dev/null || echo "$p" >> "$BACKUP_DIR/.gitignore"
 done
 

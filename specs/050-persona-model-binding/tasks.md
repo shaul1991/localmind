@@ -46,14 +46,14 @@ plan **"확정 사실 표" F-1~F-14**(근거 파일:라인 포함)를 그대로 
 
 ## Phase 0 — Live-Verify 게이트 확인 (worker, 착수 시 1회)
 
-- [ ] **T0.1** 확인만(코드 없음): 이 slice의 "낡을 수 있는 사실" = 구체 모델명인데, 산출물에는
+- [x] **T0.1** 확인만(코드 없음): 이 slice의 "낡을 수 있는 사실" = 구체 모델명인데, 산출물에는
       모델명이 0건이어야 하며 F-5 스캔이 이를 기계 강제함을 확인한다. 런타임별 위임 능력은
       단정하지 않고 세션 capability 판정에 위임. → plan Phase 0 · D-2
       외부 라이브 검증 태스크 없음 — 이 확인을 self-review 보고에 1줄 명시.
 
 ## Phase 1 — 바인딩 계약 모듈 (worker) — TDD
 
-- [ ] **T1.1 (RED)** `src/agents/binding.test.ts` 신규 — 아래 케이스를 먼저 작성.
+- [x] **T1.1 (RED)** `src/agents/binding.test.ts` 신규 — 아래 케이스를 먼저 작성.
       **RED 기대**: `binding.ts` 부재로 import 단계에서 전 케이스 실패(`ERR_MODULE_NOT_FOUND` 류).
       검증: `node --import tsx/esm --test src/agents/binding.test.ts` → 전부 fail 확인.
       케이스(AC 1:1 — plan "테스트 전략" 표):
@@ -71,7 +71,7 @@ plan **"확정 사실 표" F-1~F-14**(근거 파일:라인 포함)를 그대로 
       - AC-9: 추천 밖 자유 모델 식별자(F-12 형식 내) 저장 허용 + F-12 형식 위반 문자는 거부
       - I-8: 미지 tier 키(`"ultra"` 등) → 오류 / 임의 role 키는 허용
       - D-3: `resolveRole` 결과가 `{persona, tier}` 경유로 `tiers[tier].model`을 해석
-- [ ] **T1.2 (GREEN)** `src/agents/binding.ts` 신규 — plan "영향 모듈" 표의 심볼 그대로:
+- [x] **T1.2 (GREEN)** `src/agents/binding.ts` 신규 — plan "영향 모듈" 표의 심볼 그대로:
       zod 스키마(plan D-1 스키마 블록: `schemaVersion`·`runtime`·`updatedAt`·`tiers`·`roles`) ·
       `bindingsDir()`(F-1 데이터 폴더 아래 `_bindings/`) · `loadBinding(runtimeId)` ·
       `validateBinding(raw, personaNames)` · `resolveTier`/`resolveRole` · `mergeBinding`.
@@ -125,12 +125,12 @@ plan **"확정 사실 표" F-1~F-14**(근거 파일:라인 포함)를 그대로 
 
 ## Phase 3 — 백업 격리 배선 (worker) `[P]` — Phase 1·2와 독립, 병렬 가능
 
-- [ ] **T3.1 (RED — 회귀 핀)** `scripts/backup.test.sh`에 케이스 추가: 백업 대상 폴더에
+- [x] **T3.1 (RED — 회귀 핀)** `scripts/backup.test.sh`에 케이스 추가: 백업 대상 폴더에
       `_bindings/test.json`을 만들어 backup 실행 → 커밋에 `_bindings/`가 포함되지 않아야 성공.
       **RED 기대**: 시드 추가 전에는 `_bindings/test.json`이 커밋에 들어가 이 케이스가 실패해야
       한다(실패하지 않으면 핀이 아무것도 안 잡는 것 — 진행 금지).
       검증: `bash scripts/backup.test.sh` → 신규 케이스 fail 확인.
-- [ ] **T3.2 (GREEN)** gitignore 시드 목록에 `'_bindings/'` 추가 — **두 곳 모두**(I-1):
+- [x] **T3.2 (GREEN)** gitignore 시드 목록에 `'_bindings/'` 추가 — **두 곳 모두**(I-1):
       `scripts/backup.sh:33`의 for 목록 + `scripts/backup-init.sh:98`의 for 목록. → plan F-8 · D-1
       ⚠️ 주의: 두 목록은 "동일 유지가 규약"이나 **현재 이미 다르다**(backup.sh에만
       `.brain-index.json.vec-*`·`query-log.jsonl`, backup-init.sh에만 `.DS_Store`) — 기존 차이를

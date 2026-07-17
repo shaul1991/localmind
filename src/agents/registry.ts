@@ -70,8 +70,9 @@ export function firstNotesDir(): string {
 
 const NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 // model은 산출물(YAML/TOML)에 삽입되므로 형식을 깨는 문자(따옴표·공백·제어문자)를 막는다.
-const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._/:\[\]-]*$/;
-const MODEL_MSG = "model에는 영문·숫자·._/:[]-만 쓸 수 있습니다";
+// export: specs/050 binding.ts가 바인딩의 모델 식별자에 같은 형식 규칙을 재사용한다(F-12, 복제 금지).
+export const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._/:\[\]-]*$/;
+export const MODEL_MSG = "model에는 영문·숫자·._/:[]-만 쓸 수 있습니다";
 
 const claudeTargetSchema = z.object({
   model: z.string().min(1, "targets.claude.model이 비어 있습니다").regex(MODEL_RE, MODEL_MSG),
