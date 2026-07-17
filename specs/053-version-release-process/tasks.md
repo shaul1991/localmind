@@ -1,6 +1,6 @@
 # Tasks: 버전/릴리스 프로세스 규약 (CalVer)
 
-> 모델 이력 — 작성: Fable 5 · 검토: Fable 5(critic) · 구현(예상): 미정
+> 모델 이력 — 작성: Fable 5 · 검토: Fable 5(critic) · 구현: Opus 4.8(fan-out worker 위임)
 
 <!-- 근거 정본은 plan(F-1~8·D-1~3·영향 모듈·테스트 전략) — 재조사 금지, 백포인터로 인용만.
      상위: [goal](goal.md) · [spec](spec.md) · [plan](plan.md). 형식은 specs/052 tasks 규약
@@ -123,17 +123,17 @@ Phase 1(및 L1 전체)에 착수한다(→ plan "Open questions 해소 매핑").
 ## Phase 5 — 배포·self-review·검증 표기 (worker 실행 · 최종 판정 격리 리뷰어 critical-reasoning)
 > depends-on: Phase 0, Phase 1, Phase 2, Phase 3, Phase 4 · files: `specs/053-version-release-process/goal.md`, `specs/053-version-release-process/spec.md`, `specs/053-version-release-process/plan.md`, `specs/053-version-release-process/tasks.md`
 
-- [ ] **T5.1** `make skills-deploy`(goal-ready 정본 전파 — → plan Phase 5). 배포 성공이
+- [x] **T5.1** `make skills-deploy`(goal-ready 정본 전파 — → plan Phase 5). 배포 성공이
       중립성 clean(I-3)의 이중 확인.
-- [ ] **T5.2** self-review(격리 리뷰어, 점검 5범위 — AGENTS.md 규약 5) clean까지 반복 —
+- [x] **T5.2** self-review(격리 리뷰어, 점검 5범위 — AGENTS.md 규약 5) clean까지 반복 —
       특히 규약7 비약화(I-1)·이중 서술 슬립(I-2·I-5)·F-7 미검증분(Phase 0 결과) 처리를 점검.
       기계적 수정은 모아서 1라운드 배칭.
-- [ ] **T5.3** spec OQ-1~3 취소선 + plan D-1~3 포인터(AGENTS.md OQ 해결 표기 규약) + 결정
+- [x] **T5.3** spec OQ-1~3 취소선 + plan D-1~3 포인터(AGENTS.md OQ 해결 표기 규약) + 결정
       노트 적재(`tags: ["decision"]`)는 사용자 확정 시점 기준으로 메인과 부기 정합 확인.
-- [ ] **T5.4** 검증 표기: spec FR-1~7·AC-1~5 `[x]`+근거, plan 단계·테스트 전략 체크, goal
+- [x] **T5.4** 검증 표기: spec FR-1~7·AC-1~5 `[x]`+근거, plan 단계·테스트 전략 체크, goal
       Success metrics 표기. **AC-6~9 도그푸드는 후속 릴리스 관찰로 승계** — 체크하지 않고
       spec 검증 결과에 미발생·승계를 정직 명시(은폐 금지, → plan 테스트 전략).
-- [ ] **T5.5** 커밋(self-review 요약 포함)·push·PR 생성·CI 감시
+- [x] **T5.5** 커밋(self-review 요약 포함)·push·PR 생성·CI 감시
       `gh run watch <run-id> --exit-status`(전체 sha 사용 — 규약7).
 
 ## AC 매핑 요약 (→ plan 테스트 전략 표가 정본)
