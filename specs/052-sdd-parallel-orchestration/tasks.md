@@ -48,15 +48,15 @@
 ## Phase 2 — 구현 스킬 fan-out 절 (worker)
 > depends-on: Phase 1 · files: `templates/skills/goal-impl/SKILL.md`
 
-- [ ] **T2.1** I-5 분기 확인: 착수 시점 `specs/051-*` 존재·완료 여부 조회 — 미완(현행, → plan
+- [x] **T2.1** I-5 분기 확인: 착수 시점 `specs/051-*` 존재·완료 여부 조회 — 미완(현행, → plan
       F-10)이면 아래 경로 그대로, 완료면 051 결과 정본으로 치환 후 보고 명시(→ plan D-4).
-- [ ] **T2.2** `templates/skills/goal-impl/SKILL.md`에 fan-out DAG § **신설**(I-1, → plan
+- [x] **T2.2** `templates/skills/goal-impl/SKILL.md`에 fan-out DAG § **신설**(I-1, → plan
       영향 모듈, spec FR-2): "의존 충족 + 파일 disjoint + 유의미한 크기인 노드들을 **한 메시지에
       동시 spawn**" · "배리어에서 메인 통합 검증(테스트·정합)·phase 커밋 후 다음 레이어 해금" ·
       worker 간 직접 통신 금지 · 파일 겹침→직렬 기본(worktree는 명시 선택, → plan D-3) ·
       의존 미충족 노드 보류 · "병렬 여지 없으면 직렬 완주(병렬 강제 아님)"(spec FR-5) ·
       `references/tasks-format.md` 지시. — AC-1·(AC-5·6·7 정적 문안) 근거.
-- [ ] **T2.3** 같은 §에 위상 명문(→ plan D-7, spec FR-6): 메인 = 유일 오케스트레이터(hub) ·
+- [x] **T2.3** 같은 §에 위상 명문(→ plan D-7, spec FR-6): 메인 = 유일 오케스트레이터(hub) ·
       서브에이전트 = leaf(작업만) · A(무거운 작업 fan-out)/B(값싼 조회 메인 직접)를 노드 크기로
       가름 · 잔task = B 또는 단일 worker 묶음 · **C(중첩)는 사용자 명시 허용 시에만 1단계**(I-4).
       — AC-9 정적 근거. Phase 1 확정 문법 참조(내용 의존)라 L2 배치 — AC-6 시연점.
