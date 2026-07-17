@@ -53,9 +53,9 @@ describe("execution-policy-neutrality: AC-19", () => {
     assert.match(a, /capture_note/);
   });
 
-  it("scaffold AGENTS.md도 sdd-implement를 쓰고 old /goal 구현 표면을 약화하지 않는다", () => {
+  it("scaffold AGENTS.md도 goal-impl를 쓰고 old /goal 구현 표면을 약화하지 않는다", () => {
     const s = scaffoldAgents();
-    assert.match(s, /sdd-implement/);
+    assert.match(s, /goal-impl/);
     assert.ok(!/## `\/goal \{NNN\}` 처리 방법/.test(s), "old /goal 구현 표면 없음");
     assert.ok(!s.includes("WebFetch") && !s.includes("WebSearch"), "scaffold도 runtime tool 중립");
   });

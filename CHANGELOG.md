@@ -2,6 +2,29 @@
 
 localmind의 주요 변경 이력. 최신이 위.
 
+> 버전 체계: **CalVer `YYYY.MM.MICRO`** — 버전은 릴리스 시점이 아니라 **문서 작성(goal-ready) 시점** 기준으로 부여한다.
+
+## 2026.07.0 — 2026-07-17 — SDD 워크플로 자산 정합 (specs 044·050·051·052)
+
+첫 CalVer 릴리스. SDD 구현 워크플로를 **공급자 중립 패키지 스킬**로 통일하고, 실행 등급→모델·역할→페르소나 **바인딩**을 도입했다. 그동안 CHANGELOG에 미기록이던 044·050을 이 릴리스에 함께 정리한다.
+
+### 공급자 중립 워크플로 자산 (specs/044)
+- **Claude·Codex·Gemini 3타깃 배포** — 워크플로 자산(스킬·명령)을 provider-neutral 정본으로 시드하고 세 런타임에 배포. **중립성 스캔**이 provider명·구체 모델 ID·런타임 도구명 하드코딩을 기계적으로 차단한다.
+- **활성화 게이트(execution grant)** — side effect 전 실행 권한 판정(런타임 provenance + 정확히 3자리 인자, 또는 일회용 확인 문구).
+
+### 페르소나·모델 바인딩 (specs/050)
+- **실행 등급·역할 추상 → 로컬 바인딩** — 설치별 `~/.localmind/_bindings/<runtime>.json`으로 실행 등급(critical-reasoning/standard/economy)→모델, 역할→페르소나를 매핑. 온보딩 스킬 `localmind-binding`.
+- **바인딩 미설정 fallback** — side effect 전 안내 후 기본 미진행, 명시 동의 시 임시 진행(비독립 표기).
+
+### SDD 구현 스킬 goal-impl 정합 (specs/051)
+- **`sdd-implement` → `goal-impl` 단일 정본 통일** — 갈라진 두 정본(중립 게이트본·특화 오케본)을 병합해 한 본문에 활성화 게이트 + 풍부한 오케스트레이션 + 완전 중립화(중립성 스캔 통과)를 담았다. 지원 3타깃 배포, 구명(`sdd-implement`) 은퇴(source-absence 정리).
+- **완료 규칙 SSoT 일원화** — commit/push/CI·**PR 게이트를 AGENTS.md 규약7로 위임·명문화**(main 직접 push 금지 → PR 생성, 머지는 사람). 스킬 본문과의 이중 서술 제거.
+
+### SDD 병렬 오케스트레이션 규약 (specs/052)
+- **fan-out DAG** — tasks의 phase 헤더에 `depends-on`·`files`를 선언하면, 구현 스킬이 의존 완료 + 파일 disjoint + 유의미한 크기인 노드를 **한 메시지에 동시 spawn**하고 배리어에서 메인이 통합 검증·phase 커밋한다. `goal-impl` §4A + `references/tasks-format.md` 신설.
+- **위상 hub-and-spoke** — 메인 = 유일 조율자, 서브에이전트 = leaf. 무거운 작업은 fan-out(A), 값싼 독립 조회는 메인이 도구 직접 병렬(B), 중첩 위임(C)은 사용자 명시 허용 시만 1단계.
+- **goal-ready 곁가지 병렬** — 하드 체인(goal→spec→plan→tasks)은 직렬, 곁가지(사실수집·디자인·독립 리서치)는 병렬, 크리틱은 최종 배리어. 독립 슬라이스는 폴더 disjoint + Read 전용 저작이라 기본 병렬 안전.
+
 ## 2026-07-03 — 정확성·공급망·신뢰성 하드닝 (specs 013~015, 전수 리뷰 후속)
 
 2026-07-03 전수 리뷰(코드·인프라·문서)에서 발견된 결함을 스펙 3개로 수정했다.

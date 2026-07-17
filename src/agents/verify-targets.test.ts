@@ -69,10 +69,10 @@ describe("verifyDeployedTargets (R4-05)", () => {
     assert.ok(targetOf(r, "claude-skill").failures.some((f) => f.includes("sdd-self-review")));
   });
 
-  it("시나리오2b: Claude sdd-implement의 deny-implicit 정책 metadata가 없으면 failed", () => {
+  it("시나리오2b: Claude goal-impl의 deny-implicit 정책 metadata가 없으면 failed", () => {
     deployAll();
     // marker는 남기고 disable-model-invocation 줄만 제거한다(정책 metadata 누락)
-    const md = path.join(claudeSkills, "sdd-implement", "SKILL.md");
+    const md = path.join(claudeSkills, "goal-impl", "SKILL.md");
     const stripped = fs.readFileSync(md, "utf8").replace(/^disable-model-invocation\s*:.*\n/m, "");
     fs.writeFileSync(md, stripped);
     const r = verify();

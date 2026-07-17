@@ -6,7 +6,7 @@
  *   git diff | localmind-review            사람이 읽는 마크다운 보고
  *   ... | localmind-review --json          구조화 결과(JSON) — 스킬·도구가 파싱
  *
- * 항상 exit 0 — 검증 도구가 sdd-implement 흐름을 실패시키지 않는다(비차단, FR-7).
+ * 항상 exit 0 — 검증 도구가 goal-impl 흐름을 실패시키지 않는다(비차단, FR-7).
  * 이 binary는 sdd-self-review workflow의 optional additional review capability(adapter/reference
  * layer)로만 쓰인다 — canonical SKILL.md는 이 구체 이름을 전제하지 않는다(specs/044).
  * 실패·미설치·시간 초과는 출력의 "생략(사유)"로 드러난다.

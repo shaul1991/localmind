@@ -28,7 +28,7 @@
 ## 페르소나/모델 바인딩 온보딩 (`localmind-binding`)
 
 > 위 표의 워크플로우들과는 성격이 다른 절입니다 — "직군별 예제"가 아니라, `goal-ready`·
-> `sdd-implement`·`sdd-self-review` 같은 localmind의 AI 워크플로 스킬이 **실행 등급별로 어떤
+> `goal-impl`·`sdd-self-review` 같은 localmind의 AI 워크플로 스킬이 **실행 등급별로 어떤
 > 모델을, 역할별로 어떤 페르소나를 쓸지**를 이 설치(런타임)에 맞게 정하는 온보딩 절차입니다
 > (배포·스킬 전반은 [agents.md](agents.md) §5 참고).
 
@@ -85,3 +85,73 @@ worker 등)별로 위임할 페르소나를 확정하는 **온보딩·재설정 
 
 위 표에 없는 런타임(향후 추가되는 Agent Skills 호환 도구 등)은 제품명을 소문자 kebab-case로
 바꾼 값을 그대로 씁니다. 애매하면 세션이 추측하지 않고 사용자에게 직접 물어 확정합니다.
+
+## SDD 병렬 오케스트레이션 — tasks 하나로 여러 worker 동시에 (specs/052)
+
+> `goal-impl`은 `tasks.md`의 phase 선언을 읽어 **의존 DAG**를 세우고, 조건이 맞으면 여러
+> worker를 **한 메시지에 동시에** 띄웁니다. `goal-ready`(문서 작성)도 자기만의 병렬 규칙이
+> 있는데, 코드 구현과는 다른 체제입니다. 이 절은 이 두 체제를 사람이 읽고 이해하기 위한
+> 설명이며, 행동 정본은 `templates/skills/goal-impl/SKILL.md` §4A와
+> `templates/skills/goal-impl/references/tasks-format.md`입니다.
+
+### 선언 문법 — phase 헤더 바로 아래 한 줄
+
+`tasks.md`의 각 phase 헤더 아래에 `depends-on:`·`files:` 선언을 blockquote로 둡니다:
+
+```markdown
+## Phase 1 — tasks-format 규약 정본 신설 (worker)
+> depends-on: 없음 · files: `templates/skills/goal-impl/references/tasks-format.md`
+
+## Phase 3 — 문서 작성 스킬 곁가지 병렬 절 (worker)
+> depends-on: 없음 · files: `templates/skills/goal-ready/SKILL.md`
+
+## Phase 2 — 구현 스킬 fan-out 절 (worker)
+> depends-on: Phase 1 · files: `templates/skills/goal-impl/SKILL.md`
+```
+
+`depends-on`은 선행 phase를, `files`는 그 phase가 건드릴 저장소 상대 경로를 선언합니다.
+선언이 없는 phase(레거시 tasks 문서)는 자동으로 "모든 노드와 겹침"으로 취급돼 직렬로
+돌아갑니다 — 안전 쪽으로 기본값이 잡혀 있습니다.
+
+### fan-out 레이어 — 의존 DAG를 배리어로 나누기
+
+메인은 선언을 읽어 **의존이 모두 끝났고, 파일이 서로 겹치지 않고(disjoint), 각자 유의미한
+크기인 노드**만 골라 같은 레이어로 묶어 동시에 spawn합니다. 이 저장소 자신의 052 구현이
+실제 예시입니다:
+
+| 레이어 | 내용 | 왜 이렇게 묶였나 |
+|---|---|---|
+| L1 | Phase 1 ∥ Phase 3 | 둘 다 의존 없음 + 편집 파일이 완전히 다름(disjoint) |
+| L2 | Phase 2 | Phase 1이 확정한 문법을 참조 — Phase 1 배리어를 통과할 때까지 대기 |
+| L3 | Phase 4 ∥ Phase 5 | 둘 다 Phase 1~3에 의존하지만 서로는 disjoint(`skill-contract.test.ts` vs `AGENTS.md`+`docs/workflows.md`) |
+| L4 | Phase 6 | 나머지 전부에 의존, 곁가지 없이 직렬로 완주 |
+
+레이어가 끝나면(**배리어**) 메인이 전체 테스트·빌드로 통합 검증하고 커밋한 뒤에야 다음
+레이어를 풉니다. worker끼리는 서로 직접 통신하지 않습니다 — 결과는 항상 메인을 거칩니다.
+
+**잔task는 묶어서 하나로**: Phase 5처럼 각각은 유의미한 크기에 못 미치는 작업(`AGENTS.md`
+포인터 1~2줄 + `docs/workflows.md` 예시 하나)이 여럿 있으면, 개별 병렬 spawn 대신 **단일
+worker 하나가 묶어서** 처리합니다 — worker 결과가 메인 컨텍스트로 돌아오는 고정 비용이
+작업 자체보다 커지는 것을 막기 위해서입니다.
+
+### 두 체제 — 코드 구현(`goal-impl`)과 문서 작성(`goal-ready`)는 다르다
+
+| | `goal-impl`(코드 구현) | `goal-ready`(goal/spec/plan 작성) |
+|---|---|---|
+| 병렬 단위 | tasks의 phase(위 선언 문법) | 슬라이스 안 곁가지, 슬라이스 간 문서 |
+| 충돌 판정 | files 선언의 disjoint 여부 | 대체로 불필요 — 저작이 Read 전용이라 파일을 직접 안 씀 |
+| 병렬 한계 | 파일 겹침 → 직렬(worktree는 명시 선택 시만) | 내용·결정 의존만(예: 뒤 슬라이스가 앞 결정을 전제하면 대기) |
+| 항상 직렬인 구간 | 없음(단 disjoint **+ 유의미한 크기 + 의존 충족**이어야 병렬 후보 — 잔task는 묶음) | 한 슬라이스 안 goal→spec→plan→tasks 하드 체인 |
+| 마지막 배리어 | 메인의 통합 검증(테스트·빌드) | 크리틱 — 모든 곁가지 산출물이 모인 뒤에만 |
+
+코드 구현 쪽은 여러 worker가 **같은 코드트리를 공유**하기 때문에 파일 충돌 판정이 핵심이고,
+문서 작성 쪽은 저작이 읽기 전용이라 그 절차가 대체로 필요 없습니다 — 대신 "이 결정이 저
+결정을 전제하는가"만 따집니다.
+
+### 위상 — 메인이 유일한 오케스트레이터(hub-and-spoke)
+
+메인이 **hub**, 서브에이전트(worker)는 **leaf**입니다. worker는 자기가 맡은 phase의 파일만
+고치고, 다른 worker를 spawn하거나 서로 통신하지 않습니다. 무거운 작업은 worker에게
+넘기고(새 컨텍스트로 오프로드), 값싼 조회·검증은 메인이 직접 도구를 병렬 실행합니다.
+worker가 또 다른 worker를 spawn하는 중첩 위임은 기본적으로 막혀 있고, 사용자가 특정
+사안에 명시적으로 허락했을 때만 한 단계까지 예외를 둡니다.

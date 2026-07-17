@@ -148,12 +148,12 @@ describe("scaffold-runtime-bridges: AC-16", () => {
     }
   });
 
-  it("새 scaffold SDD 실행 규약은 sdd-implement를 쓴다(built-in /goal shadow 아님)", () => {
+  it("새 scaffold SDD 실행 규약은 goal-impl를 쓴다(built-in /goal shadow 아님)", () => {
     const dir = tmpDir();
     try {
       scaffoldSdd(dir);
       const agents = fs.readFileSync(path.join(dir, "AGENTS.md"), "utf8");
-      assert.match(agents, /sdd-implement/);
+      assert.match(agents, /goal-impl/);
       assert.ok(!/## `\/goal \{NNN\}` 처리 방법/.test(agents), "old /goal 구현 표면 없음");
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });

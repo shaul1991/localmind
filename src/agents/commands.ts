@@ -373,6 +373,8 @@ export interface GeminiSyncOptions {
   ineligibleReason: (logicalId: string) => string;
   commandsDir: string;
   available: boolean;
+  /** 정본 문제로 source-absence 정리를 보류할지(skill-dir target sweep과 동일 조건, F-18). */
+  pruneSuppressed?: boolean;
   ops?: FsOps;
   workspace?: WorkspaceContext;
   /** R4-02: command mutation 직전 runtime parent/root 신원 재검(위반 시 problem). */
@@ -386,6 +388,19 @@ const cmdOwnedBy = (name: string) => (file: string) => {
     return false;
   }
 };
+
+/** commandsDir의 이름 결합 managed `.toml` 파일 이름(확장자 제외) 목록. */
+function managedTomlNames(dir: string): string[] {
+  try {
+    return fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isFile() && e.name.endsWith(".toml") && !e.name.startsWith("."))
+      .map((e) => e.name.slice(0, -".toml".length))
+      .filter((name) => cmdOwnedBy(name)(path.join(dir, `${name}.toml`)));
+  } catch {
+    return [];
+  }
+}
 
 /**
  * 문자열 s를 **정확히 하나의 유효하게 종료된 TOML basic string**으로 decode한다(닫는 따옴표 뒤
@@ -590,6 +605,18 @@ export function syncGeminiCommands(o: GeminiSyncOptions): GeminiSyncItem[] {
       item.resolution = "unverified";
     }
     items.push(item);
+  }
+
+  // source-absence 정리(D-2②): template 집합에 없는 이름의 managed wrapper를 은퇴시킨다.
+  // skill-dir target sweep과 동일 조건(available && !pruneSuppressed) — 정본 문제 시 보류(F-18).
+  if (o.available && !o.pruneSuppressed) {
+    const templateNames = new Set(o.templates.map((t) => t.name));
+    for (const entry of managedTomlNames(o.commandsDir)) {
+      if (templateNames.has(entry)) continue;
+      const pr = pruneManagedFile({ parent: o.commandsDir, fileName: `${entry}.toml`, ownedBy: cmdOwnedBy(entry), ops, guard: o.guard });
+      if (pr.status === "pruned") items.push({ logicalId: entry, status: "pruned", reason: "packaged 정본에서 은퇴됨", invocation: `/${entry}` });
+      else if (pr.status === "problem") items.push({ logicalId: entry, status: "problem", reason: pr.reason, invocation: `/${entry}` });
+    }
   }
   return items;
 }

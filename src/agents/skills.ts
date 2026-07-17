@@ -513,6 +513,20 @@ export function seedWorkflows(opts: { templatesDir?: string; skillsDir?: string;
     });
     items.push({ logicalId: tpl.name, target: "canonical-seed", artifactKind: "skill-directory", status: r.status, reason: r.reason });
   }
+
+  // source-absence 정리(D-2①): 이 지점은 위 registry-clean 조기 반환 아래에서만 실행된다(F-18) —
+  // template 집합에 없는 이름의 managed(마커 결합) 디렉토리를 은퇴시킨다. 이름 무관(generic),
+  // unmanaged(마커 없음)는 managedDirNames가 애초에 걸러 보존한다(I-3).
+  const templateNames = new Set(templateReg.skills.map((t) => t.name));
+  for (const entry of managedDirNames(dataDir)) {
+    if (templateNames.has(entry)) continue;
+    const pr = pruneManagedDirectory({ parent: dataDir, name: entry, ownedBy: skillOwnedBy(entry), ops });
+    if (pr.status === "pruned") {
+      items.push({ logicalId: entry, target: "canonical-seed", artifactKind: "skill-directory", status: "pruned", reason: "packaged 정본에서 은퇴됨" });
+    } else if (pr.status === "problem") {
+      items.push({ logicalId: entry, target: "canonical-seed", artifactKind: "skill-directory", status: "problem", reason: pr.reason });
+    }
+  }
   return { items, problems: [] };
 }
 
@@ -586,7 +600,7 @@ export function deployWorkflows(opts: DeployOptions = {}): WorkflowDeployResult 
     items.push(...deploySkillDirTarget("agent-skill", root, path.dirname(root), cls, pruneSuppressed, ops ?? defaultFsOps, flags, agentExplicit, opts.workspace));
   }
   if (enabled.has("gemini-command")) {
-    items.push(...deployGeminiTarget(opts, templateReg.skills, cls, reservedIds, dataReg, flags));
+    items.push(...deployGeminiTarget(opts, templateReg.skills, cls, reservedIds, dataReg, flags, pruneSuppressed));
   }
 
   // 집계
@@ -605,6 +619,7 @@ function deployGeminiTarget(
   reservedIds: Set<string>,
   dataReg: { skills: SkillPackage[] },
   flags: TargetDeployOutcomeFlags,
+  pruneSuppressed: boolean,
 ): WorkflowSyncItem[] {
   const root = opts.geminiCommandsDir ?? geminiCommandsDir();
   const parent = path.dirname(root);
@@ -641,6 +656,7 @@ function deployGeminiTarget(
     ineligibleReason,
     commandsDir: root,
     available,
+    pruneSuppressed,
     ops: opts.ops,
     workspace: opts.workspace,
     guard,

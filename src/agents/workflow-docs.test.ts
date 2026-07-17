@@ -67,11 +67,11 @@ describe("workflow-doc-contract: AC-21", () => {
     assert.match(line, /Claude·공용|Gemini/);
   });
 
-  it("sdd-implement migration과 Claude built-in /goal 차이를 안내한다", () => {
+  it("goal-impl migration과 Claude built-in /goal 차이를 안내한다", () => {
     const a = agents();
     assert.match(a, /Claude built-in `\/goal`/);
     assert.match(a, /session completion condition/);
-    assert.match(a, /sdd-implement/);
+    assert.match(a, /goal-impl/);
   });
 
   it("active docs/templates/source에 old LocalMind /goal workflow pointer가 0건이다(migration 설명 제외)", () => {
@@ -80,7 +80,7 @@ describe("workflow-doc-contract: AC-21", () => {
       "templates/sdd/AGENTS.md",
       "templates/sdd/spec.template.md",
       "templates/skills/goal-ready/SKILL.md",
-      "templates/skills/sdd-implement/SKILL.md",
+      "templates/skills/goal-impl/SKILL.md",
       "templates/skills/sdd-self-review/SKILL.md",
       "docs/agents.md",
     ];
@@ -91,6 +91,53 @@ describe("workflow-doc-contract: AC-21", () => {
         assert.ok(!c.includes(pat), `${f}에 old /goal pointer "${pat}" 잔존`);
       }
     }
+  });
+});
+
+describe("goal-impl-completion-delegation: AC-4 (specs/051 I-5, D-6)", () => {
+  const rootAgents = () => read("AGENTS.md");
+  const skillBody = () => read("templates/skills/goal-impl/SKILL.md");
+
+  it("AGENTS.md 절 제목·호출 문법이 goal-impl이다", () => {
+    const a = rootAgents();
+    assert.match(a, /## `goal-impl \{NNN\}` 처리 방법/);
+    assert.match(a, /`\/goal-impl \{NNN\}`/);
+    assert.match(a, /\$goal-impl \{NNN\}/);
+  });
+
+  it("goal-impl 본문에 commit/push/CI 완료 규칙 자체 정의가 없고 AGENTS.md 참조만 있다", () => {
+    const s = skillBody();
+    // PR 게이트 문구의 자체 서술 금지 (AGENTS.md 규약7이 정본)
+    for (const literal of ["main 직접 push는 금지", "PR을 생성한다", "머지는 사람이 한다"]) {
+      assert.ok(!s.includes(literal), `본문에 PR 게이트 자체 서술 잔존: "${literal}"`);
+    }
+    // codex 교차 검증(specs/051 self-review) 후속: commit/push/PR을 "완료"로 자체 서술하는
+    // 구조 패턴 금지 — phase 커밋(끊김방어)이 아니라 완료 규칙 복제를 잡는다(회귀핀 확장).
+    // 위임 문장("완료 정의는 DoD를 모두 채우는 것…AGENTS.md가 정본")은 "…까지가 완료" 형태가
+    // 아니므로 걸리지 않는다. 위험 재유입: base §6 원본의 "커밋·push까지가 완료 정의" 등.
+    for (const re of [
+      /(커밋|commit)[^\n]{0,24}push[^\n]{0,24}완료 정의/,
+      /(커밋·push|push|PR 생성|PR)까지가[^\n]{0,6}완료/,
+      /clean[^\n]{0,20}(커밋|push)[^\n]{0,10}완료/,
+    ]) {
+      assert.doesNotMatch(s, re, `본문이 commit/push/PR을 완료로 자체 서술함 — AGENTS.md 위임 위반: ${re}`);
+    }
+    // phase 커밋(I-2)은 완료 규칙과 명시적으로 구분돼야 한다(codex blocking 해소 핀).
+    assert.match(
+      s,
+      /완료 규칙이 아니다/,
+      "phase 커밋이 완료 규칙과 구분되지 않음 — 완료 커밋과 혼동 소지",
+    );
+    // 완료는 AGENTS.md 위임 참조만
+    assert.match(s, /AGENTS\.md 규약대로/);
+    assert.match(s, /AGENTS\.md가 정본이다/);
+  });
+
+  it("AGENTS.md 규약7에 PR 게이트(main 직접 push 금지 → PR 생성, 머지는 사람)가 명문으로 존재한다(D-6)", () => {
+    const a = rootAgents();
+    assert.match(a, /main 직접 push는 금지/);
+    assert.match(a, /PR을 생성한다/);
+    assert.match(a, /머지는 사람이 한다/);
   });
 });
 

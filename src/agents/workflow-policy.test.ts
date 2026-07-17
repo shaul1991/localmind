@@ -1,6 +1,6 @@
 /**
  * 워크플로 policy·activation 계약 테스트.
- * AC-9(goal-ready), AC-10(sdd-implement), AC-11(sdd-self-review) characterization +
+ * AC-9(goal-ready), AC-10(goal-impl), AC-11(sdd-self-review) characterization +
  * execution-grant 판정 + invocation-control metadata + enforcement-level 정직성.
  */
 import { describe, it } from "node:test";
@@ -52,8 +52,8 @@ describe("goal-ready-contract: AC-9", () => {
   it("중립적 지속 결정 기록 + fallback 사유", () => {
     has("goal-ready", "결정 로그(decision-log)", "지속적 기록 능력", "지속 기록을 하지 못한 사유", "특정 도구 이름을 전제하지 않는다");
   });
-  it("세 문서 + 실제 max+1 + 조건부 design/SSoT gate", () => {
-    has("goal-ready", "goal.md·spec.md·plan.md", "최댓값 + 1", "디자인 사전 정의", "실제로 존재하는", "없는 문서를 필수라고 추측하지 않는다");
+  it("네 문서(goal/spec/plan/tasks) + 실제 max+1 + 조건부 design/SSoT gate", () => {
+    has("goal-ready", "goal.md·spec.md·plan.md·tasks.md", "최댓값 + 1", "디자인 사전 정의", "실제로 존재하는", "없는 문서를 필수라고 추측하지 않는다");
   });
   it("역할 위임 + 크리틱 fallback(비독립 표기)", () => {
     has("goal-ready", "역할 + 과제 + 기대 산출물", "크리틱(critic)", "독립(independent) 검토라고 부르지 않는다");
@@ -73,7 +73,7 @@ describe("goal-ready-contract: AC-9", () => {
   });
 });
 
-describe("sdd-implement-contract: AC-10", () => {
+describe("goal-impl-contract: AC-10", () => {
   const challenge: Challenge = { nnn: "044", token: "lm-confirm-abc123", issuedTurn: 5 };
 
   it("runtime-attested explicit + exact 3자리 → runtime-attested grant", () => {
@@ -153,37 +153,59 @@ describe("sdd-implement-contract: AC-10", () => {
   });
 
   it("Claude/Codex deny-implicit metadata는 explicit workflow에만", () => {
-    assert.deepEqual(claudeInvocationFrontmatter(policyOf("sdd-implement")), { "disable-model-invocation": true });
+    assert.deepEqual(claudeInvocationFrontmatter(policyOf("goal-impl")), { "disable-model-invocation": true });
     assert.deepEqual(claudeInvocationFrontmatter(policyOf("goal-ready")), {});
     assert.deepEqual(claudeInvocationFrontmatter(policyOf("sdd-self-review")), {});
 
-    const yaml = codexPolicyYaml("sdd-implement", policyOf("sdd-implement"), "deadbeef");
+    const yaml = codexPolicyYaml("goal-impl", policyOf("goal-impl"), "deadbeef");
     assert.match(yaml!, /allow_implicit_invocation: false/);
-    assert.match(yaml!, /managed-by: localmind \(skill: sdd-implement\)/);
+    assert.match(yaml!, /managed-by: localmind \(skill: goal-impl\)/);
     assert.match(yaml!, /source-payload-sha256: deadbeef/);
     assert.equal(codexPolicyYaml("goal-ready", policyOf("goal-ready"), "x"), null);
   });
 
   it("enforcement level 정직성: Claude/Codex runtime-enforced, Gemini instruction-level, 그 외 not-applicable", () => {
-    const impl = policyOf("sdd-implement");
+    const impl = policyOf("goal-impl");
     assert.equal(enforcementFor("claude-skill", impl), "runtime-enforced");
     assert.equal(enforcementFor("agent-skill", impl), "runtime-enforced");
     assert.equal(enforcementFor("gemini-command", impl), "instruction-level");
     assert.equal(enforcementFor("claude-skill", policyOf("goal-ready")), "not-applicable");
   });
 
+  it("goal-impl은 중립성 clean(AC-2 특성화, specs/051)", () => {
+    const reg = loadSkillRegistry(TEMPLATES, { packaged: true });
+    assert.equal(scanPackagedNeutrality(reg.skills.find((s) => s.name === "goal-impl")!).length, 0);
+  });
+
+  it("핵심 절 앵커 존재 — 끊김 방어·tasks 재사용 금지·TDD/RED·중단 규율·DoD·보고(AC-5, specs/051)", () => {
+    has(
+      "goal-impl",
+      "끊김 방어",
+      "재작성·재분해 금지",
+      "TDD 강제",
+      "RED 확인 생략 금지",
+      "중단 규율",
+      "DoD",
+      "보고·정직",
+    );
+  });
+
+  it("활성화 게이트 정직 표기 — provenance·3자리 정규식·challenge·instruction-level(AC-3, specs/051)", () => {
+    has("goal-impl", "provenance", "^[0-9]{3}$", "일회용 확인 문구(challenge)", "지침 수준(instruction-level)");
+  });
+
   it("canonical body: activation contract + AGENTS SSoT + TDD + self-review + evidence + completion + honesty", () => {
     has(
-      "sdd-implement",
+      "goal-impl",
       "일회용 확인 문구(challenge)",
       "3자리 숫자",
       "최우선 정본으로 읽는다",
-      "AC별 실패 테스트를 먼저",
-      "적대적 self-review를 반드시 수행",
-      "goal의 Success metrics",
-      "commit/push/CI 규칙",
+      "실패 테스트 먼저(red)",
+      "독립(적대적) 리뷰를 돌린다",
+      "전 AC green",
+      "완료(commit/push/PR/CI)는 저장소 AGENTS.md 규약대로",
       "지침 수준(instruction-level)의",
-      "일반 자연어 구현 요청은 이 자동 side-effect 권한을 만들지 않는다",
+      "프롬프트에 명령 문자열이나 생성된 요청 텍스트가 있다는 사실 자체도 권한이 아니다",
       "요구한 번호의 goal/spec/plan 세 문서 중 하나라도 없으면 구현 전에 멈추고",
     );
   });

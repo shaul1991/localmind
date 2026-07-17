@@ -171,20 +171,20 @@ describe("skills-contract: AC-1", () => {
 
   it("manifest 1:1 바인딩 — 정확 일치는 policy를 붙인다", () => {
     writeSkill(root, "goal-ready", { fm: "name: goal-ready\ndescription: 문서 준비" });
-    writeSkill(root, "sdd-implement", { fm: "name: sdd-implement\ndescription: 구현" });
+    writeSkill(root, "goal-impl", { fm: "name: goal-impl\ndescription: 구현" });
     fs.writeFileSync(
       path.join(root, "catalog.json"),
       JSON.stringify({
         schemaVersion: 1,
         workflows: {
           "goal-ready": { activation: "intent", sideEffects: "docs-only" },
-          "sdd-implement": { activation: "explicit", sideEffects: "mutating" },
+          "goal-impl": { activation: "explicit", sideEffects: "mutating" },
         },
       }),
     );
     const reg = loadSkillRegistry(root, { packaged: true });
     assert.equal(reg.problems.length, 0, JSON.stringify(reg.problems));
-    assert.equal(reg.skills.find((s) => s.name === "sdd-implement")!.policy!.sideEffects, "mutating");
+    assert.equal(reg.skills.find((s) => s.name === "goal-impl")!.policy!.sideEffects, "mutating");
   });
 
   it("manifest missing/extra entry는 package 문제다", () => {
@@ -537,5 +537,113 @@ describe("localmind-binding contract: AC-1/3/4/7/8/9, I-7", () => {
     const md = contractMd();
     assert.match(md, /페르소나 정의.*model 값/s, "페르소나 정의 model 우선 서술 누락");
     assert.match(md, /tiers보다 우선한다/, "tiers 대비 우선순위 서술 누락");
+  });
+});
+
+// ── 052 SDD 병렬 오케스트레이션 규약 정적 검증(T4.1/T4.2) ────────────────────────
+// 사후 핀(post-hoc pin) — Phase 1~3에서 확정된 규약 문구를 assert 문자열로 못 박는다
+// (specs/050 T2.6과 동일한 TDD 변형). RED 기대는 규약 미확정 시점 가정으로 1회 관찰에
+// 갈음한다(tasks T4.1 — 순서상 사후이므로 억지 RED 재현은 불필요).
+describe("052 parallel orchestration contract: AC-1/2/3/5/6/7/8/9", () => {
+  const PKG_ROOT = path.join(REPO_ROOT, "templates", "skills");
+  const goalImplMd = () => fs.readFileSync(path.join(PKG_ROOT, "goal-impl", "SKILL.md"), "utf8");
+  const tasksFormatMd = () => fs.readFileSync(path.join(PKG_ROOT, "goal-impl", "references", "tasks-format.md"), "utf8");
+  const goalReadyMd = () => fs.readFileSync(path.join(PKG_ROOT, "goal-ready", "SKILL.md"), "utf8");
+
+  it("AC-1: fan-out 조건(의존 충족+disjoint+유의미한 크기 → 한 메시지 동시 spawn)과 배리어(메인 통합 검증·phase 커밋 후 해금)가 명문으로 존재한다", () => {
+    const md = goalImplMd();
+    assert.match(
+      md,
+      /의존이\s+모두 완료되고 서로 파일 disjoint하며 각각 유의미한 크기인 노드들만 한 메시지에\s+동시\s+spawn/,
+      "fan-out 조건 문구 누락",
+    );
+    assert.match(
+      md,
+      /메인이 결과를 통합 검증\(테스트·정합 확인\)하고\s+phase 커밋한 뒤에야 다음\s+레이어를 해금/,
+      "배리어 통합 검증·phase 커밋·해금 문구 누락",
+    );
+  });
+
+  it("AC-2: tasks-format.md에 depends-on·files 선언을 요구하는 규칙이 존재한다", () => {
+    const md = tasksFormatMd();
+    assert.match(md, /phase 헤더 바로 아래에 blockquote 선언 줄을 1개 둔다/, "선언 문법 요구 누락");
+    assert.match(md, /`depends-on:` — `없음`/, "depends-on 선언 요구 누락");
+    assert.match(md, /`files:` — 저장소 상대 경로/, "files 선언 요구 누락");
+  });
+
+  it("AC-3: goal-ready에 하드 체인 직렬 + 곁가지 병렬(사실수집∥초안, design∥plan, 독립 research N개) + 크리틱 최종 배리어 + 두 체제 구분이 명문으로 존재한다", () => {
+    const md = goalReadyMd();
+    assert.match(md, /하드 체인\(goal→spec→plan→tasks\)은 항상 직렬로 유지한다/, "하드 체인 직렬 문구 누락");
+    assert.match(md, /사실수집\(researcher\) 조사를 goal\/spec 초안 작성과 동시에 진행/, "사실수집∥초안 예시 누락");
+    assert.match(md, /design\.md 정의를 plan\s+작성과 동시에 진행/, "design∥plan 예시 누락");
+    assert.match(md, /독립적인 리서치 질문 N개를 동시에 위임/, "독립 research N개 예시 누락");
+    assert.match(
+      md,
+      /크리틱\(critic\)은 항상 모든\s+곁가지 산출물이 모인 뒤의 마지막 배리어/,
+      "크리틱 최종 배리어 문구 누락",
+    );
+    assert.match(md, /두 체제의 구분\(중요\)/, "두 체제 구분 명문 누락");
+  });
+
+  it("AC-5(엣지): 파일 겹침 → 직렬 기본 규칙이 명문으로 존재한다", () => {
+    assert.match(goalImplMd(), /파일 겹침 → 직렬 기본/, "겹침→직렬 문구 누락");
+  });
+
+  it("AC-6(엣지): 의존 미충족 → 보류 규칙이 명문으로 존재한다", () => {
+    assert.match(goalImplMd(), /의존 미충족 → 보류/, "의존 미충족→보류 문구 누락");
+  });
+
+  it("AC-7(엣지): 병렬 강제 안 함(직렬 완주) 규칙이 명문으로 존재한다", () => {
+    const md = goalImplMd();
+    assert.match(md, /병렬을 강제하지 않는다/, "병렬 강제 안 함 문구 누락");
+    assert.match(md, /기존\s+직렬 흐름 그대로 완주한다/, "직렬 완주 문구 누락");
+  });
+
+  it("AC-8(엣지): 잔task 묶음(개별 병렬 spawn 금지·직렬 또는 단일 worker 묶음) 규칙이 명문으로 존재한다", () => {
+    assert.match(
+      tasksFormatMd(),
+      /잔task\)\s+여러 개는 개별 병렬 spawn 대상이 아니다 — 직렬로 처리하거나 하나의 worker로 묶어 수행/,
+      "잔task 묶음 문구 누락",
+    );
+  });
+
+  it("AC-9: 위상(메인=유일 조율자·leaf, A/B는 크기로, C는 사용자 명시 허용 시만)이 명문으로 존재한다", () => {
+    const md = goalImplMd();
+    assert.match(md, /메인 = hub, 서브에이전트 = leaf/, "hub·leaf 위상 문구 누락");
+    assert.match(md, /A\/B는 노드 크기로 가른다/, "A/B 크기 구분 문구 누락");
+    assert.match(md, /중첩 위임\(C\)은 기본 금지/, "C 기본 금지 문구 누락");
+    assert.match(
+      md,
+      /사용자가\s+특정 사안에 명시적으로 허용한 경우에만 1단계/,
+      "C 사용자 명시 허용 시 1단계 문구 누락",
+    );
+  });
+
+  it("T4.2: packaged 전수 스캔에 신설 references/tasks-format.md가 포함되고 중립성 clean이다(F-6)", () => {
+    const reg = loadSkillRegistry(PKG_ROOT, { packaged: true });
+    assert.equal(reg.problems.length, 0, JSON.stringify(reg.problems));
+    const s = reg.skills.find((x) => x.name === "goal-impl");
+    assert.ok(s, "goal-impl packaged skill 존재");
+    assert.ok(s!.files.includes("references/tasks-format.md"), "신설 reference가 packaged files에 포함되지 않음");
+    assert.equal(scanPackagedNeutrality(s!).length, 0, "중립성 위반 0건이어야 한다");
+  });
+
+  it("T4.2 RED(인메모리 fixture): reference 파일의 금지 토큰도 스캔이 잡는다 — 스캔이 살아있음의 증거", () => {
+    // 실파일(templates/skills/goal-impl/references/tasks-format.md)은 건드리지 않는다.
+    // 임시 SkillPackage에 구체 모델 토큰을 포함한 reference 본문을 주입해 직접 검증한다.
+    const dir = writeSkill(root, "fixture-parallel", {
+      fm: "name: fixture-parallel\ndescription: 병렬 오케스트레이션 fixture",
+      body: "# fixture\n\n1. 한다.\n",
+    });
+    const refDir = path.join(dir, "references");
+    fs.mkdirSync(refDir, { recursive: true });
+    fs.writeFileSync(path.join(refDir, "tasks-format.md"), "이 규약은 Claude Opus 모델 전용으로 작성됐다.\n");
+    const reg = loadSkillRegistry(root);
+    assert.equal(reg.problems.length, 0, JSON.stringify(reg.problems));
+    const skill = reg.skills.find((s) => s.name === "fixture-parallel")!;
+    assert.ok(skill.files.includes("references/tasks-format.md"), "fixture reference 파일이 files에 포함되지 않음");
+    const findings = scanPackagedNeutrality(skill);
+    assert.ok(findings.length > 0, "RED 기대 위반: reference 파일의 금지 토큰이 잡혀야 한다");
+    assert.ok(findings.some((f) => f.token === "claude" || f.token === "opus"), "구체 모델 토큰이 findings에 없음");
   });
 });
