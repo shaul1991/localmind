@@ -52,7 +52,7 @@ export function enforcementFor(target: WorkflowTargetId, policy: WorkflowPolicy)
   }
 }
 
-// ── execution grant 판정(sdd-implement activation contract) ────────────────
+// ── execution grant 판정(goal-impl activation contract) ────────────────
 
 const NNN_RE = /^[0-9]{3}$/;
 

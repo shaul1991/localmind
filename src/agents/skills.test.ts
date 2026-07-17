@@ -77,7 +77,7 @@ describe("skills-seed: AC-2", () => {
     const r1 = seedWorkflows({ skillsDir: dataDir });
     assert.equal(r1.problems.length, 0);
     const names = r1.items.map((i) => i.logicalId).sort();
-    assert.deepEqual(names, ["goal-ready", "localmind-binding", "localmind-rules", "sdd-implement", "sdd-self-review"]);
+    assert.deepEqual(names, ["goal-impl", "goal-ready", "localmind-binding", "localmind-rules", "sdd-self-review"]);
     assert.ok(r1.items.every((i) => i.status === "created"));
     for (const n of names) {
       const md = read(path.join(dataDir, n, "SKILL.md"));
@@ -113,8 +113,8 @@ describe("skills-seed: AC-3", () => {
     const selfMd = path.join(dataDir, "sdd-self-review", "SKILL.md");
     const forked = read(selfMd).replace(/<!-- managed-by[^\n]*-->\n/, "") + "\n내 커스텀";
     fs.writeFileSync(selfMd, forked);
-    // reserved-ID non-equivalent markerless fork(sdd-implement)
-    const implMd = path.join(dataDir, "sdd-implement", "SKILL.md");
+    // reserved-ID non-equivalent markerless fork(goal-impl)
+    const implMd = path.join(dataDir, "goal-impl", "SKILL.md");
     const implFork = read(implMd).replace(/<!-- managed-by[^\n]*-->\n/, "") + "\n내가 바꾼 구현 규칙";
     fs.writeFileSync(implMd, implFork);
 
@@ -123,16 +123,16 @@ describe("skills-seed: AC-3", () => {
     assert.ok(!read(goalMd).includes("구버전 흔적"), "정본 복원");
     assert.ok(r.items.some((i) => i.logicalId === "sdd-self-review" && i.status === "skipped-unmanaged"), "markerless fork 보존");
     assert.equal(read(selfMd), forked, "fork byte 보존");
-    assert.ok(r.items.some((i) => i.logicalId === "sdd-implement" && i.status === "skipped-unmanaged"), "reserved fork 보존");
+    assert.ok(r.items.some((i) => i.logicalId === "goal-impl" && i.status === "skipped-unmanaged"), "reserved fork 보존");
     assert.equal(read(implMd), implFork, "reserved fork byte 보존");
 
     // deploy: reserved fork는 어느 runtime에도 노출되지 않는다
     const c = claudeHome();
     const dep = deployWorkflows({ skillsDir: dataDir, claudeSkillsDir: c.skillsDir, targets: ["claude-skill"] });
-    const implItem = dep.items.find((i) => i.logicalId === "sdd-implement");
+    const implItem = dep.items.find((i) => i.logicalId === "goal-impl");
     assert.ok(implItem && (implItem.status === "skipped-dependency"), `reserved fork exposure 차단: ${JSON.stringify(implItem)}`);
     assert.match(implItem!.reason!, /reserved-id-fork/);
-    assert.ok(!fs.existsSync(path.join(c.skillsDir, "sdd-implement")), "reserved fork runtime 노출 0");
+    assert.ok(!fs.existsSync(path.join(c.skillsDir, "goal-impl")), "reserved fork runtime 노출 0");
     assert.equal(read(implMd), implFork, "deploy가 source를 건드리지 않음");
     assert.equal(dep.outcome, "partial");
   });
@@ -214,21 +214,21 @@ describe("skills-seed retirement sweep (P1 D-2①)", () => {
 
 // ── AC-4: Claude skill target ────────────────────────────────────────────────
 describe("skills-deploy-claude: AC-4", () => {
-  it("세 skill 생성 + sdd-implement에만 disable-model-invocation, 재실행 unchanged", () => {
+  it("세 skill 생성 + goal-impl에만 disable-model-invocation, 재실행 unchanged", () => {
     seedWorkflows({ skillsDir: dataDir });
     const c = claudeHome();
     const r = deployWorkflows({ skillsDir: dataDir, claudeSkillsDir: c.skillsDir, targets: ["claude-skill"] });
     assert.equal(r.outcome, "success");
     assert.equal(r.exitCode, 0);
-    for (const n of ["goal-ready", "sdd-implement", "sdd-self-review"]) {
+    for (const n of ["goal-ready", "goal-impl", "sdd-self-review"]) {
       assert.ok(fs.existsSync(path.join(c.skillsDir, n, "SKILL.md")), `${n} 배포됨`);
       assert.ok(read(path.join(c.skillsDir, n, "SKILL.md")).includes(`managed-by: localmind (skill: ${n})`));
     }
-    assert.match(frontmatterOf(path.join(c.skillsDir, "sdd-implement", "SKILL.md")), /disable-model-invocation:\s*true/);
+    assert.match(frontmatterOf(path.join(c.skillsDir, "goal-impl", "SKILL.md")), /disable-model-invocation:\s*true/);
     assert.doesNotMatch(frontmatterOf(path.join(c.skillsDir, "goal-ready", "SKILL.md")), /disable-model-invocation/);
-    // localmind-binding도 explicit workflow라 sdd-implement와 같은 deny-implicit 렌더를 받는다(specs/050 T2.2).
+    // localmind-binding도 explicit workflow라 goal-impl와 같은 deny-implicit 렌더를 받는다(specs/050 T2.2).
     assert.match(frontmatterOf(path.join(c.skillsDir, "localmind-binding", "SKILL.md")), /disable-model-invocation:\s*true/);
-    assert.ok(r.items.some((i) => i.logicalId === "sdd-implement" && i.invocation === "/sdd-implement"));
+    assert.ok(r.items.some((i) => i.logicalId === "goal-impl" && i.invocation === "/goal-impl"));
     const again = deployWorkflows({ skillsDir: dataDir, claudeSkillsDir: c.skillsDir, targets: ["claude-skill"] });
     assert.ok(again.items.filter((i) => i.target === "claude-skill").every((i) => i.status === "unchanged"), JSON.stringify(again.items));
   });
@@ -250,49 +250,49 @@ describe("skills-deploy-claude: AC-4", () => {
 
   it("reserved fork에 retire할 managed target이 없으면 skipped-dependency/reserved-id-fork", () => {
     seedWorkflows({ skillsDir: dataDir });
-    const implMd = path.join(dataDir, "sdd-implement", "SKILL.md");
+    const implMd = path.join(dataDir, "goal-impl", "SKILL.md");
     fs.writeFileSync(implMd, read(implMd).replace(/<!-- managed-by[^\n]*-->\n/, "") + "\n포크");
     const c = claudeHome();
     const r = deployWorkflows({ skillsDir: dataDir, claudeSkillsDir: c.skillsDir, targets: ["claude-skill"] });
-    const it = r.items.find((i) => i.logicalId === "sdd-implement" && i.target === "claude-skill")!;
+    const it = r.items.find((i) => i.logicalId === "goal-impl" && i.target === "claude-skill")!;
     assert.equal(it.status, "skipped-dependency");
     assert.match(it.reason!, /reserved-id-fork/);
-    assert.ok(!fs.existsSync(path.join(c.skillsDir, "sdd-implement")));
+    assert.ok(!fs.existsSync(path.join(c.skillsDir, "goal-impl")));
   });
 
   it("reserved fork는 기존 managed target을 retire한다", () => {
     seedWorkflows({ skillsDir: dataDir });
     const c = claudeHome();
     deployWorkflows({ skillsDir: dataDir, claudeSkillsDir: c.skillsDir, targets: ["claude-skill"] });
-    assert.ok(fs.existsSync(path.join(c.skillsDir, "sdd-implement")), "먼저 배포됨");
-    const implMd = path.join(dataDir, "sdd-implement", "SKILL.md");
+    assert.ok(fs.existsSync(path.join(c.skillsDir, "goal-impl")), "먼저 배포됨");
+    const implMd = path.join(dataDir, "goal-impl", "SKILL.md");
     fs.writeFileSync(implMd, read(implMd).replace(/<!-- managed-by[^\n]*-->\n/, "") + "\n포크");
     const r = deployWorkflows({ skillsDir: dataDir, claudeSkillsDir: c.skillsDir, targets: ["claude-skill"] });
-    const it = r.items.find((i) => i.logicalId === "sdd-implement" && i.target === "claude-skill")!;
+    const it = r.items.find((i) => i.logicalId === "goal-impl" && i.target === "claude-skill")!;
     assert.equal(it.status, "pruned");
-    assert.ok(!fs.existsSync(path.join(c.skillsDir, "sdd-implement")), "managed target retire됨");
+    assert.ok(!fs.existsSync(path.join(c.skillsDir, "goal-impl")), "managed target retire됨");
   });
 });
 
 // ── AC-5: shared Agent Skills target ─────────────────────────────────────────
 describe("skills-deploy-shared: AC-5", () => {
-  it("세 skill + sdd-implement openai.yaml deny-implicit/fingerprint + Claude와 hash 동일", () => {
+  it("세 skill + goal-impl openai.yaml deny-implicit/fingerprint + Claude와 hash 동일", () => {
     seedWorkflows({ skillsDir: dataDir });
     const a = agentHome();
     const c = claudeHome();
     const r = deployWorkflows({ skillsDir: dataDir, agentSkillsDir: a.skillsDir, claudeSkillsDir: c.skillsDir, targets: ["agent-skill", "claude-skill"] });
     assert.equal(r.outcome, "success");
-    for (const n of ["goal-ready", "sdd-implement", "sdd-self-review"]) {
+    for (const n of ["goal-ready", "goal-impl", "sdd-self-review"]) {
       assert.ok(fs.existsSync(path.join(a.skillsDir, n, "SKILL.md")));
     }
-    const yamlPath = path.join(a.skillsDir, "sdd-implement", "agents", "openai.yaml");
+    const yamlPath = path.join(a.skillsDir, "goal-impl", "agents", "openai.yaml");
     const yaml = read(yamlPath);
     assert.match(yaml, /allow_implicit_invocation: false/);
-    assert.match(yaml, /managed-by: localmind \(skill: sdd-implement\)/);
+    assert.match(yaml, /managed-by: localmind \(skill: goal-impl\)/);
     assert.match(yaml, /source-payload-sha256: [0-9a-f]{64}/);
     assert.ok(!fs.existsSync(path.join(a.skillsDir, "goal-ready", "agents", "openai.yaml")), "docs-only는 policy 없음");
     // normalized canonical hash: Claude target == shared target
-    for (const n of ["goal-ready", "sdd-implement", "sdd-self-review"]) {
+    for (const n of ["goal-ready", "goal-impl", "sdd-self-review"]) {
       const h1 = inspectSkillDir(path.join(c.skillsDir, n));
       const h2 = inspectSkillDir(path.join(a.skillsDir, n));
       assert.ok(!("error" in h1) && !("error" in h2));
@@ -323,7 +323,7 @@ describe("skills-deploy-shared: AC-5", () => {
     const r = deployWorkflows({ skillsDir: dataDir, agentSkillsDir: a.skillsDir, targets: ["agent-skill"], workspace: { cwd, repoRoot: repo } });
     const goal = r.items.find((i) => i.logicalId === "goal-ready" && i.target === "agent-skill")!;
     const self = r.items.find((i) => i.logicalId === "sdd-self-review" && i.target === "agent-skill")!;
-    const impl = r.items.find((i) => i.logicalId === "sdd-implement" && i.target === "agent-skill")!;
+    const impl = r.items.find((i) => i.logicalId === "goal-impl" && i.target === "agent-skill")!;
     assert.equal(goal.resolution, "equivalent-shadow");
     assert.equal(self.resolution, "ambiguous-shadow");
     assert.equal(impl.resolution, "resolved", "충돌 없으면 resolved");
@@ -338,13 +338,13 @@ describe("skills-deploy-shared: AC-5", () => {
     const repo = path.join(root, "ws-repo2");
     const cwd = path.join(repo, "x");
     fs.mkdirSync(cwd, { recursive: true });
-    // 배포된 sdd-implement를 복사하되 생성된 agents/openai.yaml을 제거(정책 없는 위조 equivalent)
-    const dst = path.join(repo, ".agents", "skills", "sdd-implement");
+    // 배포된 goal-impl를 복사하되 생성된 agents/openai.yaml을 제거(정책 없는 위조 equivalent)
+    const dst = path.join(repo, ".agents", "skills", "goal-impl");
     fs.mkdirSync(path.dirname(dst), { recursive: true });
-    fs.cpSync(path.join(a.skillsDir, "sdd-implement"), dst, { recursive: true });
+    fs.cpSync(path.join(a.skillsDir, "goal-impl"), dst, { recursive: true });
     fs.rmSync(path.join(dst, "agents"), { recursive: true, force: true });
     const r = deployWorkflows({ skillsDir: dataDir, agentSkillsDir: a.skillsDir, targets: ["agent-skill"], workspace: { cwd, repoRoot: repo } });
-    const impl = r.items.find((i) => i.logicalId === "sdd-implement" && i.target === "agent-skill")!;
+    const impl = r.items.find((i) => i.logicalId === "goal-impl" && i.target === "agent-skill")!;
     assert.equal(impl.resolution, "ambiguous-shadow", "deny-implicit policy 누락은 exact equivalent가 아님");
   });
 
@@ -370,7 +370,7 @@ describe("skills-deploy-shared: AC-5", () => {
     const outside = path.join(root, "outside2");
     fs.mkdirSync(outside, { recursive: true });
     const r = deployWorkflows({ skillsDir: dataDir, agentSkillsDir: a.skillsDir, targets: ["agent-skill"], workspace: { cwd: outside, repoRoot: repo } });
-    const impl = r.items.find((i) => i.logicalId === "sdd-implement" && i.target === "agent-skill")!;
+    const impl = r.items.find((i) => i.logicalId === "goal-impl" && i.target === "agent-skill")!;
     assert.equal(impl.resolution, "unverified", "repo 밖 cwd → 스캔 없이 unverified");
   });
 });
@@ -553,23 +553,23 @@ describe("invalid reserved source retirement (R1-06)", () => {
     const g = geminiHome();
     const targets = ["claude-skill", "agent-skill", "gemini-command"] as const;
     deployWorkflows({ skillsDir: dataDir, claudeSkillsDir: c.skillsDir, agentSkillsDir: a.skillsDir, geminiCommandsDir: g.commandsDir, targets: [...targets] });
-    assert.ok(fs.existsSync(path.join(c.skillsDir, "sdd-implement")), "claude 먼저 배포됨");
-    assert.ok(fs.existsSync(path.join(a.skillsDir, "sdd-implement")), "agent 먼저 배포됨");
-    assert.ok(fs.existsSync(path.join(g.commandsDir, "sdd-implement.toml")), "gemini wrapper 먼저 배포됨");
-    // sdd-implement 정본을 손상(invalid source)
-    fs.writeFileSync(path.join(dataDir, "sdd-implement", "SKILL.md"), "---\nname: sdd-implement\n닫힘 없는 깨진 frontmatter\n");
+    assert.ok(fs.existsSync(path.join(c.skillsDir, "goal-impl")), "claude 먼저 배포됨");
+    assert.ok(fs.existsSync(path.join(a.skillsDir, "goal-impl")), "agent 먼저 배포됨");
+    assert.ok(fs.existsSync(path.join(g.commandsDir, "goal-impl.toml")), "gemini wrapper 먼저 배포됨");
+    // goal-impl 정본을 손상(invalid source)
+    fs.writeFileSync(path.join(dataDir, "goal-impl", "SKILL.md"), "---\nname: goal-impl\n닫힘 없는 깨진 frontmatter\n");
     const r = deployWorkflows({ skillsDir: dataDir, claudeSkillsDir: c.skillsDir, agentSkillsDir: a.skillsDir, geminiCommandsDir: g.commandsDir, targets: [...targets] });
     assert.equal(r.outcome, "failed");
     assert.ok(r.pruneSuppressed, "source problem → 부재 기반 prune 보류");
     for (const t of ["claude-skill", "agent-skill"]) {
-      const it = r.items.find((i) => i.logicalId === "sdd-implement" && i.target === t);
+      const it = r.items.find((i) => i.logicalId === "goal-impl" && i.target === t);
       assert.ok(it && it.status === "pruned", `${t} invalid reserved retire: ${JSON.stringify(it)}`);
     }
-    const gi = r.items.find((i) => i.logicalId === "sdd-implement" && i.target === "gemini-command");
+    const gi = r.items.find((i) => i.logicalId === "goal-impl" && i.target === "gemini-command");
     assert.ok(gi && gi.status === "pruned", `gemini invalid reserved wrapper retire: ${JSON.stringify(gi)}`);
-    assert.ok(!fs.existsSync(path.join(c.skillsDir, "sdd-implement")), "claude stale 제거");
-    assert.ok(!fs.existsSync(path.join(a.skillsDir, "sdd-implement")), "agent stale 제거");
-    assert.ok(!fs.existsSync(path.join(g.commandsDir, "sdd-implement.toml")), "gemini stale wrapper 제거");
+    assert.ok(!fs.existsSync(path.join(c.skillsDir, "goal-impl")), "claude stale 제거");
+    assert.ok(!fs.existsSync(path.join(a.skillsDir, "goal-impl")), "agent stale 제거");
+    assert.ok(!fs.existsSync(path.join(g.commandsDir, "goal-impl.toml")), "gemini stale wrapper 제거");
   });
 
   it("invalid non-reserved custom source는 managed target을 retire하지 않는다(prune 보류)", () => {
@@ -590,27 +590,27 @@ describe("invalid reserved source retirement (R1-06)", () => {
 
 // ── R1-02: 정본 metadata로 execution guard를 무력화할 수 없다 ──────────────────
 describe("canonical metadata cannot disable guard (R1-02 deploy)", () => {
-  it("managed sdd-implement에 disable-model-invocation:false를 넣으면 reserved fork로 차단(false 노출 0)", () => {
+  it("managed goal-impl에 disable-model-invocation:false를 넣으면 reserved fork로 차단(false 노출 0)", () => {
     seedWorkflows({ skillsDir: dataDir });
     const c = claudeHome();
     deployWorkflows({ skillsDir: dataDir, claudeSkillsDir: c.skillsDir, targets: ["claude-skill"] });
-    const implMd = path.join(dataDir, "sdd-implement", "SKILL.md");
+    const implMd = path.join(dataDir, "goal-impl", "SKILL.md");
     // frontmatter 닫힘 직전에 disable-model-invocation:false를 주입(marker 유지 → managed).
     fs.writeFileSync(implMd, read(implMd).replace("\n---\n", "\ndisable-model-invocation: false\n---\n"));
     assert.match(read(implMd), /disable-model-invocation: false/, "주입 확인");
     const r = deployWorkflows({ skillsDir: dataDir, claudeSkillsDir: c.skillsDir, targets: ["claude-skill"] });
-    const impl = r.items.find((i) => i.logicalId === "sdd-implement" && i.target === "claude-skill")!;
+    const impl = r.items.find((i) => i.logicalId === "goal-impl" && i.target === "claude-skill")!;
     assert.equal(impl.status, "pruned", "non-equivalent reserved fork → fail-closed retire");
     assert.match(impl.reason!, /reserved-id-fork/);
-    assert.ok(!fs.existsSync(path.join(c.skillsDir, "sdd-implement")), "false를 담은 Claude target 노출 0");
+    assert.ok(!fs.existsSync(path.join(c.skillsDir, "goal-impl")), "false를 담은 Claude target 노출 0");
     assert.equal(r.outcome, "partial");
   });
 
-  it("정상 sdd-implement Claude target은 정확히 true를 렌더한다(false/중복 키 없음)", () => {
+  it("정상 goal-impl Claude target은 정확히 true를 렌더한다(false/중복 키 없음)", () => {
     seedWorkflows({ skillsDir: dataDir });
     const c = claudeHome();
     deployWorkflows({ skillsDir: dataDir, claudeSkillsDir: c.skillsDir, targets: ["claude-skill"] });
-    const fm = frontmatterOf(path.join(c.skillsDir, "sdd-implement", "SKILL.md"));
+    const fm = frontmatterOf(path.join(c.skillsDir, "goal-impl", "SKILL.md"));
     assert.match(fm, /disable-model-invocation:\s*true/);
     assert.doesNotMatch(fm, /disable-model-invocation:\s*false/);
     assert.equal((fm.match(/disable-model-invocation/g) || []).length, 1, "중복 키 없음");
@@ -701,7 +701,7 @@ describe("custom resource preservation (R1-12)", () => {
 describe("packaged trust failure zero-write gate (R4-01)", () => {
   const THREE: PkgSpec[] = [
     { name: "goal-ready", activation: "intent", sideEffects: "docs-only" },
-    { name: "sdd-implement", activation: "explicit", sideEffects: "mutating" },
+    { name: "goal-impl", activation: "explicit", sideEffects: "mutating" },
     { name: "sdd-self-review", activation: "delegated-or-explicit", sideEffects: "report-only" },
   ];
   const putManaged = (dir: string, name: string, body: string) => {
@@ -722,10 +722,10 @@ describe("packaged trust failure zero-write gate (R4-01)", () => {
     const c = claudeHome();
     const a = agentHome();
     const g = geminiHome();
-    putManaged(path.join(a.skillsDir, "sdd-implement"), "sdd-implement", "# 옛 버전\n\n1. 옛것.");
+    putManaged(path.join(a.skillsDir, "goal-impl"), "goal-impl", "# 옛 버전\n\n1. 옛것.");
     putUnmanaged(path.join(a.skillsDir, "mine"), "mine");
-    const managedBefore = fs.readFileSync(path.join(a.skillsDir, "sdd-implement", "SKILL.md"));
-    const managedModeBefore = fs.statSync(path.join(a.skillsDir, "sdd-implement", "SKILL.md")).mode;
+    const managedBefore = fs.readFileSync(path.join(a.skillsDir, "goal-impl", "SKILL.md"));
+    const managedModeBefore = fs.statSync(path.join(a.skillsDir, "goal-impl", "SKILL.md")).mode;
     const unmanagedBefore = fs.readFileSync(path.join(a.skillsDir, "mine", "SKILL.md"));
     const r = deployWorkflows({ templatesDir: pkg, skillsDir: dataDir, claudeSkillsDir: c.skillsDir, agentSkillsDir: a.skillsDir, geminiCommandsDir: g.commandsDir, targets: ["claude-skill", "agent-skill", "gemini-command"] });
     assert.equal(r.outcome, "failed");
@@ -734,8 +734,8 @@ describe("packaged trust failure zero-write gate (R4-01)", () => {
     assert.equal(runtimeItem(r).length, 0, "zero runtime write");
     assert.ok(!fs.existsSync(path.join(c.skillsDir, "goal-ready")), "claude 미생성");
     assert.ok(!fs.existsSync(path.join(g.commandsDir, "goal-ready.toml")), "gemini 미생성");
-    assert.ok(fs.readFileSync(path.join(a.skillsDir, "sdd-implement", "SKILL.md")).equals(managedBefore), "기존 managed byte 불변");
-    assert.equal(fs.statSync(path.join(a.skillsDir, "sdd-implement", "SKILL.md")).mode, managedModeBefore, "기존 managed mode 불변");
+    assert.ok(fs.readFileSync(path.join(a.skillsDir, "goal-impl", "SKILL.md")).equals(managedBefore), "기존 managed byte 불변");
+    assert.equal(fs.statSync(path.join(a.skillsDir, "goal-impl", "SKILL.md")).mode, managedModeBefore, "기존 managed mode 불변");
     assert.ok(fs.readFileSync(path.join(a.skillsDir, "mine", "SKILL.md")).equals(unmanagedBefore), "unmanaged collision 불변");
     // gemini commands 폴더 자체가 생성되지 않았거나(zero-write) 생겼어도 고아 0.
     const gOrphans = fs.existsSync(g.commandsDir) ? fs.readdirSync(g.commandsDir).filter((x) => x.startsWith(".localmind-")) : [];
@@ -910,9 +910,9 @@ describe("result enforcement level (R1-14)", () => {
     const g = geminiHome();
     const r = deployWorkflows({ skillsDir: dataDir, claudeSkillsDir: c.skillsDir, agentSkillsDir: a.skillsDir, geminiCommandsDir: g.commandsDir, targets: ["claude-skill", "agent-skill", "gemini-command"] });
     const find = (id: string, t: string) => r.items.find((i) => i.logicalId === id && i.target === t)!;
-    assert.equal(find("sdd-implement", "claude-skill").enforcement, "runtime-enforced");
-    assert.equal(find("sdd-implement", "agent-skill").enforcement, "runtime-enforced");
-    assert.equal(find("sdd-implement", "gemini-command").enforcement, "instruction-level");
+    assert.equal(find("goal-impl", "claude-skill").enforcement, "runtime-enforced");
+    assert.equal(find("goal-impl", "agent-skill").enforcement, "runtime-enforced");
+    assert.equal(find("goal-impl", "gemini-command").enforcement, "instruction-level");
     // intent workflow는 runtime-enforced로 표시하지 않는다
     assert.notEqual(find("goal-ready", "claude-skill").enforcement, "runtime-enforced");
     assert.notEqual(find("goal-ready", "gemini-command").enforcement, "runtime-enforced");

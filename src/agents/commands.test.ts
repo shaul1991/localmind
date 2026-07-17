@@ -47,15 +47,15 @@ describe("commands-gemini: AC-6", () => {
     const g = geminiHome();
     const r = deployWorkflows({ skillsDir: dataDir, geminiCommandsDir: g, targets: ["gemini-command"] });
     assert.equal(r.outcome, "success");
-    for (const n of ["goal-ready", "sdd-implement", "sdd-self-review"]) {
+    for (const n of ["goal-ready", "goal-impl", "sdd-self-review"]) {
       assert.ok(fs.existsSync(path.join(g, `${n}.toml`)), `${n}.toml 생성`);
     }
-    const toml = read(path.join(g, "sdd-implement.toml"));
+    const toml = read(path.join(g, "goal-impl.toml"));
     // 고정 순서: marker → source-hash → description → prompt
-    assert.match(toml, /^# managed-by: localmind \(command: sdd-implement\)\n# source-payload-sha256: [0-9a-f]{64}\ndescription = "/);
+    assert.match(toml, /^# managed-by: localmind \(command: goal-impl\)\n# source-payload-sha256: [0-9a-f]{64}\ndescription = "/);
     // logical-id → raw-args → workflow boundary
     const promptIdx = toml.indexOf("prompt =");
-    const li = toml.indexOf("logical-id=sdd-implement", promptIdx);
+    const li = toml.indexOf("logical-id=goal-impl", promptIdx);
     const ra = toml.indexOf("raw-args={{args}}", promptIdx);
     const begin = toml.indexOf("BEGIN LOCALMIND GENERATED WORKFLOW", promptIdx);
     assert.ok(li > 0 && ra > li && begin > ra, "고정 순서");
@@ -103,18 +103,18 @@ describe("commands-gemini: AC-6", () => {
     seedWorkflows({ skillsDir: dataDir });
     const g = geminiHome();
     deployWorkflows({ skillsDir: dataDir, geminiCommandsDir: g, targets: ["gemini-command"] });
-    assert.ok(fs.existsSync(path.join(g, "sdd-implement.toml")));
+    assert.ok(fs.existsSync(path.join(g, "goal-impl.toml")));
     // fork
-    const implMd = path.join(dataDir, "sdd-implement", "SKILL.md");
+    const implMd = path.join(dataDir, "goal-impl", "SKILL.md");
     fs.writeFileSync(implMd, read(implMd).replace(/<!-- managed-by[^\n]*-->\n/, "") + "\n포크");
     const r = deployWorkflows({ skillsDir: dataDir, geminiCommandsDir: g, targets: ["gemini-command"] });
-    const it = r.items.find((i) => i.logicalId === "sdd-implement")!;
+    const it = r.items.find((i) => i.logicalId === "goal-impl")!;
     assert.equal(it.status, "pruned");
     assert.match(it.reason!, /reserved-id-fork/);
-    assert.ok(!fs.existsSync(path.join(g, "sdd-implement.toml")), "managed wrapper retire됨");
+    assert.ok(!fs.existsSync(path.join(g, "goal-impl.toml")), "managed wrapper retire됨");
     // 없는 상태에서 다시 → skipped-dependency
     const r2 = deployWorkflows({ skillsDir: dataDir, geminiCommandsDir: g, targets: ["gemini-command"] });
-    assert.equal(r2.items.find((i) => i.logicalId === "sdd-implement")!.status, "skipped-dependency");
+    assert.equal(r2.items.find((i) => i.logicalId === "goal-impl")!.status, "skipped-dependency");
   });
 
   it("unmanaged 동명 wrapper는 보존한다", () => {
@@ -519,29 +519,29 @@ describe("gemini wrapper generated-envelope validation (R3-02)", () => {
 
 describe("workflow-invocation: AC-7", () => {
   it("invocation matrix: Claude /name, Codex $name, Gemini auto/·wrapper — Codex bare slash 없음", () => {
-    const inv = invocationsFor("sdd-implement", "<NNN>");
-    assert.equal(inv.claude, "/sdd-implement <NNN>");
-    assert.equal(inv.codex, "$sdd-implement <NNN>");
-    assert.match(inv.gemini, /auto skill 또는 \/sdd-implement <NNN> wrapper/);
+    const inv = invocationsFor("goal-impl", "<NNN>");
+    assert.equal(inv.claude, "/goal-impl <NNN>");
+    assert.equal(inv.codex, "$goal-impl <NNN>");
+    assert.match(inv.gemini, /auto skill 또는 \/goal-impl <NNN> wrapper/);
     assert.ok(!inv.codex.startsWith("/"), "Codex는 bare /name을 약속하지 않는다");
   });
 
   it("invocationReport enforcement 정직성 + /goal 없음(built-in 충돌 0)", () => {
     const rows = invocationReport(tpl().skills);
-    const impl = rows.find((r) => r.logicalId === "sdd-implement")!;
+    const impl = rows.find((r) => r.logicalId === "goal-impl")!;
     assert.equal(impl.enforcement["claude-skill"], "runtime-enforced");
     assert.equal(impl.enforcement["agent-skill"], "runtime-enforced");
     assert.equal(impl.enforcement["gemini-command"], "instruction-level");
     const goalReady = rows.find((r) => r.logicalId === "goal-ready")!;
     assert.equal(goalReady.enforcement["claude-skill"], "not-applicable");
-    // localmind-binding도 sdd-implement와 같은 explicit·mutating enforcement matrix를 가진다(F-6, specs/050 T2.2).
+    // localmind-binding도 goal-impl와 같은 explicit·mutating enforcement matrix를 가진다(F-6, specs/050 T2.2).
     const binding = rows.find((r) => r.logicalId === "localmind-binding")!;
     assert.equal(binding.enforcement["claude-skill"], "runtime-enforced");
     assert.equal(binding.enforcement["agent-skill"], "runtime-enforced");
     assert.equal(binding.enforcement["gemini-command"], "instruction-level");
-    // 예약 이름은 sdd-implement/goal-ready/sdd-self-review — built-in `/goal`과 이름이 다르다
+    // 예약 이름은 goal-impl/goal-ready/sdd-self-review — built-in `/goal`과 이름이 다르다
     assert.ok(!rows.some((r) => r.logicalId === "goal"));
-    assert.deepEqual(rows.map((r) => r.logicalId), ["goal-ready", "localmind-binding", "localmind-rules", "sdd-implement", "sdd-self-review"]);
+    assert.deepEqual(rows.map((r) => r.logicalId), ["goal-impl", "goal-ready", "localmind-binding", "localmind-rules", "sdd-self-review"]);
   });
 
   it("summary는 target/status/invocation/resolution을 평이한 한국어로 표시하고 Codex /name·LocalMind /goal을 주장하지 않는다", () => {
@@ -550,7 +550,7 @@ describe("workflow-invocation: AC-7", () => {
     const r = deployWorkflows({ skillsDir: dataDir, geminiCommandsDir: g, targets: ["gemini-command"] });
     const text = formatDeployResult(r);
     assert.match(text, /Gemini 명령/);
-    assert.match(text, /\$sdd-implement|\/sdd-implement/); // 논리 ID 노출
+    assert.match(text, /\$goal-impl|\/goal-impl/); // 논리 ID 노출
     assert.ok(!/\/goal(?![-\w])/.test(text), "bare LocalMind /goal 매핑 없음(/goal-ready는 별개)");
     // machine result: 각 item에 target/status/invocation
     assert.ok(r.items.every((i) => i.target && i.status && i.invocation));

@@ -67,11 +67,11 @@ describe("workflow-doc-contract: AC-21", () => {
     assert.match(line, /Claude·공용|Gemini/);
   });
 
-  it("sdd-implement migration과 Claude built-in /goal 차이를 안내한다", () => {
+  it("goal-impl migration과 Claude built-in /goal 차이를 안내한다", () => {
     const a = agents();
     assert.match(a, /Claude built-in `\/goal`/);
     assert.match(a, /session completion condition/);
-    assert.match(a, /sdd-implement/);
+    assert.match(a, /goal-impl/);
   });
 
   it("active docs/templates/source에 old LocalMind /goal workflow pointer가 0건이다(migration 설명 제외)", () => {
@@ -80,7 +80,7 @@ describe("workflow-doc-contract: AC-21", () => {
       "templates/sdd/AGENTS.md",
       "templates/sdd/spec.template.md",
       "templates/skills/goal-ready/SKILL.md",
-      "templates/skills/sdd-implement/SKILL.md",
+      "templates/skills/goal-impl/SKILL.md",
       "templates/skills/sdd-self-review/SKILL.md",
       "docs/agents.md",
     ];

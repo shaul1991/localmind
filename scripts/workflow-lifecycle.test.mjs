@@ -45,7 +45,7 @@ function runDeployCli(env = deployEnv()) {
   return execFileSync("node", ["--import", "tsx/esm", "scripts/skills-deploy.ts"], { cwd: REPO_ROOT, encoding: "utf8", env });
 }
 const read = (p) => fs.readFileSync(p, "utf8");
-const WORKFLOWS = ["goal-ready", "sdd-implement", "sdd-self-review"];
+const WORKFLOWS = ["goal-ready", "goal-impl", "sdd-self-review"];
 
 function assertAllTargetsReproduced() {
   for (const n of WORKFLOWS) {
@@ -54,8 +54,8 @@ function assertAllTargetsReproduced() {
     assert.ok(read(path.join(agentSkills, n, "SKILL.md")).includes(`managed-by: localmind (skill: ${n})`), `agent ${n} marker`);
     assert.ok(fs.existsSync(path.join(geminiCmds, `${n}.toml`)), `gemini ${n}.toml`);
   }
-  assert.match(read(path.join(claudeSkills, "sdd-implement", "SKILL.md")).split("\n---")[0], /disable-model-invocation:\s*true/);
-  assert.match(read(path.join(agentSkills, "sdd-implement", "agents", "openai.yaml")), /allow_implicit_invocation: false/);
+  assert.match(read(path.join(claudeSkills, "goal-impl", "SKILL.md")).split("\n---")[0], /disable-model-invocation:\s*true/);
+  assert.match(read(path.join(agentSkills, "goal-impl", "agents", "openai.yaml")), /allow_implicit_invocation: false/);
 }
 
 describe("workflow-lifecycle: AC-17", () => {
@@ -116,9 +116,9 @@ describe("workflow-lifecycle E2E entry points: AC-17 (R4-05)", () => {
     for (const n of WORKFLOWS) assert.ok(fs.existsSync(path.join(mirror, n, "SKILL.md")), `정본 ${n} 미러`);
     assert.ok(fs.existsSync(path.join(mirror, ".localmind-mirror")), "미러 마커");
     // 생성 target 전용 산출물은 정본 미러에 없다(정본은 generated openai.yaml / .toml / deny frontmatter 미포함)
-    assert.ok(!fs.existsSync(path.join(mirror, "sdd-implement", "agents", "openai.yaml")), "생성 openai.yaml 제외");
+    assert.ok(!fs.existsSync(path.join(mirror, "goal-impl", "agents", "openai.yaml")), "생성 openai.yaml 제외");
     assert.ok(!fs.existsSync(path.join(mirror, "goal-ready.toml")), "생성 Gemini wrapper 제외");
-    assert.ok(!/disable-model-invocation/.test(fs.readFileSync(path.join(mirror, "sdd-implement", "SKILL.md"), "utf8")), "생성 Claude frontmatter 제외");
+    assert.ok(!/disable-model-invocation/.test(fs.readFileSync(path.join(mirror, "goal-impl", "SKILL.md"), "utf8")), "생성 Claude frontmatter 제외");
   });
 
   it("restore 진입점: 정본 복원 후 전 target 재생성 + 정확한 marker/정책", () => {
@@ -134,7 +134,7 @@ describe("workflow-lifecycle E2E entry points: AC-17 (R4-05)", () => {
     fs.writeFileSync(envFile, `NOTES_DIR=notes=${path.join(home, ".localmind")}\n`);
     runShell("scripts/restore-assets.sh", { ...deployEnv(), BACKUP_DIR: backupDir, LOCALMIND_ENV_FILE: envFile, RESTORE_CONTEXT: "restore" });
     assertAllTargetsReproduced();
-    assert.ok(isDeny(path.join(agentSkills, "sdd-implement", "agents", "openai.yaml")), "공용 deny-implicit 정책 재생성");
+    assert.ok(isDeny(path.join(agentSkills, "goal-impl", "agents", "openai.yaml")), "공용 deny-implicit 정책 재생성");
   });
 
   it("recover(미러 아님): 즉시 seed + 전 target 배포", () => {

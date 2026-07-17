@@ -28,7 +28,7 @@
 ## 페르소나/모델 바인딩 온보딩 (`localmind-binding`)
 
 > 위 표의 워크플로우들과는 성격이 다른 절입니다 — "직군별 예제"가 아니라, `goal-ready`·
-> `sdd-implement`·`sdd-self-review` 같은 localmind의 AI 워크플로 스킬이 **실행 등급별로 어떤
+> `goal-impl`·`sdd-self-review` 같은 localmind의 AI 워크플로 스킬이 **실행 등급별로 어떤
 > 모델을, 역할별로 어떤 페르소나를 쓸지**를 이 설치(런타임)에 맞게 정하는 온보딩 절차입니다
 > (배포·스킬 전반은 [agents.md](agents.md) §5 참고).
 

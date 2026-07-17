@@ -41,7 +41,7 @@
 - depends-on: 없음 · **[P] P2와 병렬 가**(파일 배타) · 담당: 쓰기 실행 역할(standard)
 - files: `src/agents/skills.ts` · `src/agents/commands.ts` · `src/agents/skills.test.ts` · `src/agents/commands.test.ts`
 
-- [ ] **T1.1 (RED) seed sweep 테스트** — `src/agents/skills.test.ts`에 추가: ① 데이터 폴더에
+- [x] **T1.1 (RED) seed sweep 테스트** — `src/agents/skills.test.ts`에 추가: ① 데이터 폴더에
       마커 결합(managed) 디렉토리가 있고 template 집합에 그 이름이 없으면 → seed 후 pruned
       (reason "packaged 정본에서 은퇴됨"), ② 마커 없는(unmanaged) 동조건 디렉토리 → 보존 + 보고,
       ③ template registry problem 시 → sweep 미실행(어떤 삭제도 없음, F-18 가드).
@@ -49,12 +49,12 @@
       잔존하므로 "pruned" 단언이 깨진다. ②·③은 현행에서도 green일 수 있는 **경계 핀**이다 —
       T1.3 구현 후에도 green 유지가 "과잉 삭제 없음"을 잡는다(구현이 이름 무관 삭제를 넓히면 실패).
       검증: `node --import tsx/esm --test src/agents/skills.test.ts` → AC-11(단위면), AC-9 전제
-- [ ] **T1.2 (RED) Gemini wrapper sweep 테스트** — `src/agents/commands.test.ts`에 추가:
+- [x] **T1.2 (RED) Gemini wrapper sweep 테스트** — `src/agents/commands.test.ts`에 추가:
       ① commandsDir의 이름 결합 managed `.toml` 중 template 집합에 없는 이름 → pruned,
       ② unmanaged `.toml` → 보존, ③ `pruneSuppressed`(타깃 불가용 등) 시 → 보류(삭제 없음).
       **RED 기대**: ①이 실패해야 한다 — 현행 `syncGeminiCommands`는 absence sweep이 없다(→ plan F-5b).
       검증: `node --import tsx/esm --test src/agents/commands.test.ts`
-- [ ] **T1.3 구현 (D-2①②)** — depends on T1.1, T1.2. ① `seedWorkflows`(`src/agents/skills.ts`)에
+- [x] **T1.3 구현 (D-2①②)** — depends on T1.1, T1.2. ① `seedWorkflows`(`src/agents/skills.ts`)에
       마커 결합 source-absence 정리 추가 — `pruneManagedDirectory` 재사용(→ plan F-8), 기존
       registry-clean early return 아래에서만(→ plan F-18), reason "packaged 정본에서 은퇴됨"(→ plan D-5a).
       ② `syncGeminiCommands`(`src/agents/commands.ts`)에 동일 규율의 `pruneManagedFile` sweep 추가 —
@@ -68,14 +68,14 @@
 - depends-on: 없음 · **[P] P1과 병렬 가** · 담당: 쓰기 실행 역할(critical-reasoning — 신규 본문 판단)
 - files: `templates/skills/goal-impl/SKILL.md`(신규) · `templates/skills/sdd-implement/`(삭제) · `templates/skills/catalog.json`
 
-- [ ] **T2.1 신 SKILL.md 작성** — `templates/skills/goal-impl/SKILL.md` 신규, 마커 `skill: goal-impl`.
+- [x] **T2.1 신 SKILL.md 작성** — `templates/skills/goal-impl/SKILL.md` 신규, 마커 `skill: goal-impl`.
       구성은 **plan "본문 병합 매핑" 표를 절 단위로 그대로 따른다**(§1 게이트 이식 = AC-3,
       §7 등급·바인딩 참조 + F-13 소비 규약 = AC-10 전제, §8-4 삭제·AGENTS.md 위임 = AC-4/I-5,
       §0 삭제 + 중립 잔존 1줄 = plan D-1, base 핵심 절 규율 보존 = AC-5). I-6 준수.
       구 template 디렉토리 `templates/skills/sdd-implement/`는 삭제한다(FR-2 표면 정리).
-- [ ] **T2.2 catalog 키 개명** — `templates/skills/catalog.json`: 키를 `goal-impl`로,
+- [x] **T2.2 catalog 키 개명** — `templates/skills/catalog.json`: 키를 `goal-impl`로,
       `activation: explicit`·`sideEffects: mutating` 유지(→ plan F-2). `retired` 필드류 추가 금지(→ plan F-17, D-2 기각 대안).
-- [ ] **T2.3 중립성 자가 검증** — depends on T2.1. `scanPackagedNeutrality`
+- [x] **T2.3 중립성 자가 검증** — depends on T2.1. `scanPackagedNeutrality`
       (`src/agents/skill-contract.ts` — 시그니처는 소스가 정본)를 신 본문에 대해 로컬 실행
       (스크래치 tsx 호출 또는 P4 T4.2 특성화 테스트 초안 선작성) → **위반 0건**(AC-2).
       1건이라도 나오면 T2.1로 돌아가 해당 토큰 제거 — 스캔 목록 완화 금지.
@@ -85,25 +85,25 @@
 - depends-on: P1, P2(테스트 파일 공유 + 산출물 경로 참조) · 담당: 쓰기 실행 역할(standard — 기계적 치환)
 - files: `AGENTS.md` · `templates/sdd/AGENTS.md` · `templates/sdd/spec.template.md` · `docs/agents.md` · `docs/workflows.md` · `README.md` · `src/agents/workflow-policy.ts` · `src/agents/cross-review-cli.ts` · F-16의 테스트 9파일
 
-- [ ] **T3.1 (RED-first) 테스트 개명** — plan F-16이 열거한 9파일(skills.test.ts ·
+- [x] **T3.1 (RED-first) 테스트 개명** — plan F-16이 열거한 9파일(skills.test.ts ·
       commands.test.ts · workflow-policy.test.ts · skill-contract.test.ts · verify-targets.test.ts ·
       workflow-docs.test.ts · scaffold.test.ts · execution-policy.test.ts ·
       scripts/workflow-lifecycle.test.mjs)의 픽스처·단언·이름 목록·template 경로 하드코딩
       (workflow-docs.test.ts:83류)을 `goal-impl` 기대로 치환.
       **RED 기대**: P2 산출물 적용 전 트리에서는 이 테스트들이 실패한다(구명 template·catalog 기대) —
       P2와 합류해야 green. I-1에 따라 P2와 같은 커밋 그룹.
-- [ ] **T3.2 규범 문서 개명 + §0 이관** — ① plan F-15의 행들: `AGENTS.md`(절 제목·호출 문법·
+- [x] **T3.2 규범 문서 개명 + §0 이관** — ① plan F-15의 행들: `AGENTS.md`(절 제목·호출 문법·
       규약 7·구현 규율), `templates/sdd/AGENTS.md`, `templates/sdd/spec.template.md`,
       `docs/agents.md`, `docs/workflows.md`, `README.md` — 현재형 규범 서술 전부 `goal-impl`로
       (D-3 경계: specs/044·050 불가침 = I-7, AGENTS.md의 "specs/044" 포인터 문장은 구명 리터럴이
       없으므로 유지). ② `docs/agents.md`에 base §0의 런타임 특화 주의(내장 명령 구분·겹쳐 쓰기)
       이관 — 기존 :167-172 갱신(→ plan D-1, F-9: docs는 스캔 대상 아님) + 구명 없는 051 포인터(→ plan D-5d, I-4).
       ③ 코드 주석 2건: `src/agents/workflow-policy.ts:55` · `src/agents/cross-review-cli.ts:9`(→ plan F-1).
-- [ ] **T3.2b AGENTS.md 규약7 PR 게이트 명문화** — `AGENTS.md` 규약7(:56)의 "self-review clean이면
+- [x] **T3.2b AGENTS.md 규약7 PR 게이트 명문화** — `AGENTS.md` 규약7(:56)의 "self-review clean이면
       커밋·push까지가 완료 정의"를 **"feature 브랜치 커밋·push + PR 생성까지가 완료(main 직접 push
       금지, 머지는 사람)"로 정합**(→ plan D-6). `templates/sdd/AGENTS.md`도 동조. 이로써 F-12 상충
       해소 + base PR 규율이 SSoT에 살아있음(**AC-4**, I-5). CI 감시 등 나머지 완료 규칙 문면은 유지.
-- [ ] **T3.3 전체 스위트 green** — depends on T3.1, T3.2, P2. 검증: `npm test` — 기존 테스트
+- [x] **T3.3 전체 스위트 green** — depends on T3.1, T3.2, P2. 검증: `npm test` — 기존 테스트
       전부 green, 개명 기인 실패 0(**AC-8**). green 확인 후 P2+P3을 한 커밋(C2)으로 닫는다(I-1).
 
 ## P4 — 가드·특성화 테스트 (AC-1~7 정적 잠금)

@@ -171,20 +171,20 @@ describe("skills-contract: AC-1", () => {
 
   it("manifest 1:1 바인딩 — 정확 일치는 policy를 붙인다", () => {
     writeSkill(root, "goal-ready", { fm: "name: goal-ready\ndescription: 문서 준비" });
-    writeSkill(root, "sdd-implement", { fm: "name: sdd-implement\ndescription: 구현" });
+    writeSkill(root, "goal-impl", { fm: "name: goal-impl\ndescription: 구현" });
     fs.writeFileSync(
       path.join(root, "catalog.json"),
       JSON.stringify({
         schemaVersion: 1,
         workflows: {
           "goal-ready": { activation: "intent", sideEffects: "docs-only" },
-          "sdd-implement": { activation: "explicit", sideEffects: "mutating" },
+          "goal-impl": { activation: "explicit", sideEffects: "mutating" },
         },
       }),
     );
     const reg = loadSkillRegistry(root, { packaged: true });
     assert.equal(reg.problems.length, 0, JSON.stringify(reg.problems));
-    assert.equal(reg.skills.find((s) => s.name === "sdd-implement")!.policy!.sideEffects, "mutating");
+    assert.equal(reg.skills.find((s) => s.name === "goal-impl")!.policy!.sideEffects, "mutating");
   });
 
   it("manifest missing/extra entry는 package 문제다", () => {
