@@ -4,6 +4,15 @@ localmind의 주요 변경 이력. 최신이 위.
 
 > 버전 체계: **CalVer `YYYY.MM.MICRO`** — 버전은 **릴리스(PR 머지) 시점** 기준. 확정 규칙은 `AGENTS.md`의 버전·릴리스 절이 정본이다.
 
+## 2026.07.1 — 2026-07-17 — 버전/릴리스 프로세스 규약 (specs/053)
+
+첫 CalVer 릴리스(`2026.07.0`)를 dogfood하며 합의한 버전/릴리스 프로세스를 성문 규약으로 정착시켰다.
+
+- **버전·릴리스 규약** — AGENTS.md에 「버전·릴리스 — 규약7 이후 (CalVer)」 절 신설. 버전 = 릴리스(PR 머지) 시점 기준, **버전 숫자 확정은 PR 머지 직전**(package.json + CHANGELOG), **git tag는 머지 후 verified main**에. 변경 내용 서술은 작업 중 PR에 누적(관심사 분리).
+- **MICRO 산정** — `git fetch --tags` 후 `git tag -l 'YYYY.MM.*' --sort=-v:refname` 수치 +1(태그 우선). hotfix·같은 날 복수 릴리스도 동일 취급(MICRO+1, 채널 없음).
+- **릴리스 절차·안전장치** — `git tag <ver> origin/main`(stale HEAD 오태그 방지) · `gh release create --verify-tag`(자동 태그 생성 방지) · gh 계정 확인 · 머지 검증(PR state MERGED + main HEAD 이동).
+- goal-ready 스킬에 "버전은 여기서 정하지 않는다" 참조 편입, CHANGELOG 상단 모순 주석 정정.
+
 ## 2026.07.0 — 2026-07-17 — SDD 워크플로 자산 정합 (specs 044·050·051·052)
 
 첫 CalVer 릴리스. SDD 구현 워크플로를 **공급자 중립 패키지 스킬**로 통일하고, 실행 등급→모델·역할→페르소나 **바인딩**을 도입했다. 그동안 CHANGELOG에 미기록이던 044·050을 이 릴리스에 함께 정리한다.
