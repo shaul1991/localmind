@@ -15,12 +15,14 @@ export const MIN_QUERIES = 10;
 export interface CommitAggregate {
   total: number;
   byType: Record<string, number>; // conventional prefix(feat/fix/docs…) — 미매칭은 "기타"
-  specCadence: Record<string, number>; // 스펙 번호(3자리) → 언급 커밋 수
+  specCadence: Record<string, number>; // spec 식별자(경로형은 폴더 식별자 전체, 레거시 바레는 3자리) → 언급 커밋 수
   patterns: { pattern: string; count: number }[]; // type(scope) 반복 — 자동화 후보 원천
 }
 
-/** 커밋 제목 목록(git log --format=%s)을 집계한다. 스펙 참조는 실측 3형식(032 D1):
- *  ① `specs/NNN` ② 제목 말미 `(NNN)` ③ docs(spec): 나열형의 절 시작 3자리(그 외는 spec 토큰 인접만). */
+/** 커밋 제목 목록(git log --format=%s)을 집계한다. 스펙 참조는 실측 형식:
+ *  ① `specs/{식별자}` 경로형 — 폴더 식별자 전체(레거시 3자리·timestamp 12/14자리 프리픽스 + 슬러그)
+ *  ② 제목 말미 `(NNN)` ③ docs(spec): 나열형의 절 시작 3자리(그 외는 spec 토큰 인접만).
+ *  ②③과 인접형은 레거시 3자리 전용 — timestamp는 ①(specs/ 경로형)으로만 인정(OQ-1). */
 export function parseCommits(gitLogText: string): CommitAggregate {
   const subjects = gitLogText.split("\n").filter((l) => l.trim().length > 0);
   const byType: Record<string, number> = {};
@@ -37,16 +39,21 @@ export function parseCommits(gitLogText: string): CommitAggregate {
     patternCount[pattern] = (patternCount[pattern] ?? 0) + 1;
 
     const specs = new Set<string>();
-    for (const g of subj.matchAll(/\bspecs\/(\d{3})\b/g)) specs.add(g[1]);
+    // `specs/{식별자}` 경로형: 폴더 식별자 전체(프리픽스 3+자리 + 선택 슬러그)를 키로 잡는다 —
+    // 레거시 3자리(`specs/031`, `specs/041-slug`)와 timestamp(`specs/202607180014-slug`)를 한 규칙으로
+    // 인식하고, 같은 프리픽스라도 슬러그로 disambiguate한다(specs/202607180014-retro-analysis-timestamp-prefix).
+    // collectDecisionNotes의 캡처와 동일 규칙. timestamp는 이 경로형으로만 인정한다(바레/나열/인접은 레거시 3자리 전용).
+    for (const g of subj.matchAll(/\bspecs\/(\d{3}[\w-]*)/g)) specs.add(g[1]);
     for (const g of subj.matchAll(/\((\d{3})\)/g)) specs.add(g[1]);
     // 베어 3자리(R6 + codex 재적발 — "docs(spec): 031 cap 100 chars"의 100 오집계 방지):
     // docs(spec): 나열형 커밋은 "절 시작 위치"(콜론/쉼표 뒤)의 3자리만 스펙 번호로 인정
     // ("022 a, 023 b, 024 c" 전부 집계, 절 중간의 "cap 100"은 제외). 그 외 커밋은
-    // spec 토큰 인접(12자 이내)만.
+    // spec 토큰 인접(12자 이내)만 — 단 `specs/` 경로형은 위 line 46이 폴더 식별자로 이미 잡으므로
+    // 인접형이 다시 발화해 바레 `NNN` 키를 중복 생성하지 않게 제외한다(`(?!\/)`).
     if (/^docs\(spec\):/i.test(subj)) {
       for (const g of subj.matchAll(/(?::|,)\s*(\d{3})\b/g)) specs.add(g[1]);
     } else {
-      for (const g of subj.matchAll(/\bspecs?\b\W{0,12}(\d{3})\b/gi)) specs.add(g[1]);
+      for (const g of subj.matchAll(/\bspecs?\b(?!\/)\W{0,12}(\d{3})\b/gi)) specs.add(g[1]);
     }
     for (const n of specs) specCadence[n] = (specCadence[n] ?? 0) + 1;
   }
