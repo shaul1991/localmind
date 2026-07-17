@@ -55,11 +55,14 @@ Non-goals).
       병합한다 — 실행 권한 없이는 side effect 0, provenance/3자리/새-확인 challenge 판정,
       지침 수준(instruction-level) 가드임의 정직한 표기 포함.
       → goal: Objective / Expected outcome(한 본문에 두 강점)
-- [ ] **FR-4 (완료 규칙 AGENTS.md 위임)**: goal-impl 본문은 commit/push/CI·self-review 완료
-      규칙을 자체 서술하지 않고 저장소 AGENTS.md를 최종 정본으로 참조한다. 본문은
-      오케스트레이션 지침(끊김 방어·TDD·DoD 흐름)에 집중한다. 스킬이 AGENTS.md보다 약하거나
-      강한 완료 규칙을 따로 두지 않는다.
-      → goal: Constraint(AGENTS.md = SSoT)
+- [ ] **FR-4 (완료 규칙 AGENTS.md 위임 + PR 게이트 명문화)**: goal-impl 본문은 commit/push/
+      CI·self-review 완료 규칙을 자체 서술하지 않고 저장소 AGENTS.md를 최종 정본으로 참조한다.
+      본문은 오케스트레이션 지침(끊김 방어·TDD·DoD 흐름)에 집중한다. 스킬이 AGENTS.md보다
+      약하거나 강한 완료 규칙을 따로 두지 않는다. **단, base 본문의 PR 게이트 규율(main 직접
+      push 금지 → PR 생성, 머지는 사람)이 위임으로 소멸하지 않도록, 그 규율을 AGENTS.md
+      규약7에 명문화한다** — 규약7의 "커밋·push까지가 완료"를 "feature 브랜치 커밋·push +
+      PR 생성까지가 완료(main 직접 push 금지)"로 정합해 F-12 상충을 해소한다.
+      → goal: Constraint(AGENTS.md = SSoT) / Non-goals(PR 게이트 명문화 예외)
 - [ ] **FR-5 (완전 중립화 — 050 바인딩 참조)**: 본문의 하드코딩 — 페르소나 고유명(architect·
       worker·critic 등), 구체 모델명, provider 토큰, 특정 벤더 문서 URL, 내장 명령과의
       런타임 특화 구분 서술 — 을 "실행 등급·역할" 서술로 대체하고, 구체 해석(모델·페르소나)은
@@ -88,10 +91,11 @@ Non-goals).
 - [ ] **AC-3 (활성화 게이트)**: Given 런타임 provenance 보증 + 정확히 3자리 인자, When
       goal-impl이 호출되면, Then 실행 권한으로 판정된다. Given provenance 부재 또는 3자리가
       아닌 인자, When 호출되면, Then side effect 없이 challenge만 발화하고 멈춘다.
-- [ ] **AC-4 (AGENTS.md 위임 정합)**: Given goal-impl 본문과 AGENTS.md, When 완료 규칙
-      서술을 비교하면, Then 본문에는 commit/push/CI·self-review 완료 규칙의 자체 정의가
-      없고 AGENTS.md 참조만 있으며, AGENTS.md 규약 절 제목·호출 문법이 goal-impl로 갱신돼
-      있다.
+- [ ] **AC-4 (AGENTS.md 위임 정합 + PR 게이트 명문화)**: Given goal-impl 본문과 AGENTS.md,
+      When 완료 규칙 서술을 비교하면, Then 본문에는 commit/push/CI·self-review 완료 규칙의
+      자체 정의가 없고 AGENTS.md 참조만 있으며, AGENTS.md 규약 절 제목·호출 문법이 goal-impl로
+      갱신돼 있다. **또한 AGENTS.md 규약7에 PR 게이트(main 직접 push 금지 → PR 생성, 머지는
+      사람)가 명문으로 존재한다** — base 본문의 규율이 위임 후에도 SSoT에 살아 있음이 검증된다.
 - [ ] **AC-5 (본문 강점 보존)**: Given 신 goal-impl 본문, When base 본문의 핵심 절(끊김
       방어, tasks 재사용·재분해 금지, TDD/RED 확인, 중단 규율, DoD 순서, 보고)과 대조하면,
       Then 각 절의 규율이 중립 표현으로 보존돼 있다(누락 없음).
@@ -120,17 +124,15 @@ Non-goals).
 
 ## Open questions
 
-- **OQ-1 (§0 내장 명령 구분의 중립화 방식)**: base 본문 §0(내장 `/goal`과의 구분 —
-  "이 절을 지우지 마라" 명시)은 특정 런타임 문서 URL·내장 명령 서술이라 스캔을 통과하지
-  못한다. "런타임 내장 기능과의 일반화된 구분 서술"로 재작성할지, packaged 본문에서
-  삭제하고 런타임별 주의는 다른 채널(governance/바인딩 문서)에 둘지 미결.
-- **OQ-2 (은퇴 기제 상세)**: catalog에서 `sdd-implement` 항목을 제거하면 기존 reconcile이
-  배포본을 자동 retire하는지, 아니면 명시적 은퇴 목록/마이그레이션 단계가 필요한지 —
-  plan에서 044 retirement 경로를 실측해 확정한다.
-- **OQ-3 (AGENTS.md 절 개명 범위)**: AGENTS.md의 "`sdd-implement {NNN}` 처리 방법" 절
-  제목·논리 command ID 서술 외에, 044 결정을 서술한 문장("044가 sdd-implement를 신설")류를
-  역사 기록으로 보존할지 함께 갱신할지의 경계.
-- **OQ-4 (052 문서 정합)**: specs/052(SDD 병렬 규약) 문서가 sdd-implement 이름을 전제로
-  쓰였다면, 그 갱신을 051이 개명의 일부로 수행하는지 052 착수 시점에 맡기는지 미결.
-- **OQ-5 (배포본 대체 안내)**: FR-6 대체 시 기존 사용자에게 변경 사실(특화 본문 → 중립
-  본문, 백업 위치)을 어떤 표면(배포 로그·보고 문구)으로 알릴지 세부 미결.
+> 5건 모두 plan의 OQ 해소 결정(D-1~D-5)에서 확정됐다 — 취소선 = 결정적 해결 신호(AGENTS.md 규약).
+
+- ~~**OQ-1 (§0 내장 명령 구분의 중립화 방식)**: "일반화된 구분 서술 재작성" vs "packaged에서 삭제하고 다른 채널로 이관" 미결.~~
+  → **해소(plan D-1)**: packaged 본문에서 §0 삭제 + 중립 규율 1줄만 잔존, 런타임 특화 주의는 `docs/agents.md`로 이관.
+- ~~**OQ-2 (은퇴 기제 상세)**: catalog에서 이름 제거만으로 자동 retire되는지, 명시적 은퇴 단계가 필요한지 미결.~~
+  → **해소(plan D-2, 실측)**: 자동 아님 — seed·gemini wrapper 2곳에 마커 결합 source-absence 정리를 기존 prune primitive로 보완(이름 무관, tombstone 불요).
+- ~~**OQ-3 (AGENTS.md 절 개명 범위)**: 044 결정 서술류를 역사로 보존할지 함께 갱신할지의 경계.~~
+  → **해소(plan D-3)**: 현재형 규범 서술 = 개명, `specs/044·050` 내부 = 불가침, 활성 표면엔 구명 리터럴 없는 포인터만.
+- ~~**OQ-4 (052 문서 정합)**: 052 문서 갱신을 051이 수행할지 052 착수 시점에 맡길지 미결.~~
+  → **해소(plan D-4)**: 051 범위 밖 — `specs/052-*`는 main에 없고(F-14), 052 착수(rebase) 시점에 052가 자기 문서를 치환한다.
+- ~~**OQ-5 (배포본 대체 안내)**: 변경 사실을 어떤 표면으로 알릴지 세부 미결.~~
+  → **해소(plan D-5)**: 신규 표면 없음 — 기존 배포 결과 보고(`formatSeedResult`/`formatDeployResult` + reserved-fork 안내 + reconcile 백업)가 담당.

@@ -1,6 +1,6 @@
 # Plan: SDD 구현 스킬 정합 — goal-impl 통일
 
-> 모델 이력 — 작성: Fable 5 · 검토: 미정 · 구현(예상): 미정
+> 모델 이력 — 작성: Fable 5 · 검토: Fable 5(critic) · 구현(예상): 미정(하위 모델 위임 가능)
 
 <!-- 어떻게(how) 만드는가. 상위: [goal](goal.md) · [spec](spec.md). audience: both —
      사람 검토용 결론 먼저, /goal-impl(=이 spec이 확립하는 워크플로)이 결정적으로 소화. -->
@@ -16,7 +16,7 @@
 > 051 범위 밖(D-4). 단계는 P1(은퇴 기제) ∥ P2(신 정본) → P3(개명 전파) → P4(가드 테스트)
 > → P5(도그푸드).
 
-## OQ 해소 결정 (D-1 ~ D-5)
+## OQ 해소 결정 (D-1 ~ D-6)
 
 - **D-1 (OQ-1 해소 — §0은 packaged에서 삭제, 이관 + 중립 잔존 1줄)**: base §0(내장 `/goal`
   구분)은 특정 런타임 URL(`code.claude.com` ×2 — F-10)과 내장 명령 계층 서술로 스캔 통과
@@ -66,8 +66,17 @@
   F-6)가 rename 지시를 출력한다. (c) 백업: managed 대체는 reconcile의 swap backup 경로
   (F-7·F-8)가 담당 — 신규 백업 기제 없음. (d) `docs/agents.md` 워크플로 표를 goal-impl로
   갱신하며 "(구명은 specs/051 참조)" 포인터를 단다(D-3 경계 준수).
+- **D-6 (사용자 결정 2026-07-17 — PR 게이트 유지: 규약7에 명문화)**: base 본문의 PR 게이트
+  (main 직접 push 금지 → feature 브랜치 → PR 생성, 머지는 사람)는 **소멸시키지 않고 유지한다**
+  (사용자 명시). FR-4의 SSoT 일원화와 양립시키려면 규율이 SKILL이 아니라 **AGENTS.md 쪽에
+  살아 있어야** 하므로, 규약7의 "self-review clean이면 커밋·push까지가 완료 정의"를 **"feature
+  브랜치 커밋·push + PR 생성까지가 완료(main 직접 push 금지, 머지는 사람)"로 정합**한다. 이로써
+  F-12 상충(base PR 규칙 ↔ 규약7 push-완료)이 실제로 해소되고, SKILL 본문은 자체 서술 없이
+  규약7을 참조한다(FR-4 유지). 이 편집은 goal Non-goals의 "AGENTS.md 완료 규칙 불변"에 대한
+  명시 예외다(goal Non-goals·Constraint 갱신 반영). 기각 대안: (1) PR 게이트 소멸 수용 —
+  사용자가 거부. (2) SKILL에 규율 잔존 — F-12 상충·FR-4 위반이 그대로 남음.
 
-## 확정 사실 표 (F-1 ~ F-18, 확인일 2026-07-17)
+## 확정 사실 표 (F-1 ~ F-19, 확인일 2026-07-17)
 
 | # | 사실 | 근거(파일:행) |
 |---|---|---|
@@ -82,13 +91,14 @@
 | F-9 | 중립성 스캔: 금지 토큰 목록(provider명·모델·runtime 도구·placeholder) + `Agent tool/type` 정규식. packaged 로드 시 강제(위반 = source problem → 배포 전역 실패). **adapter·docs는 스캔 대상 아님** | src/agents/skill-contract.ts:485-515, 518, 556-575, 728-734 |
 | F-10 | 배포 goal-impl 122줄의 스캔 위반 실측 **2토큰**: `claude`(§0의 code.claude.com URL — SKILL.md:22,26) · `sonnet`(§5 "Sonnet 5" — :87). 페르소나 고유명(§1 I-3 :46-51)·`pkpk /changelog`(:112)는 스캔 토큰이 아니나 FR-5·오픈소스 규약으로 제거 대상 | ~/.claude/skills/goal-impl/SKILL.md(배포본) ↔ skill-contract.ts:485-515 대조 |
 | F-11 | 044 sdd-implement 69줄 구조: §1 활성화 게이트(provenance·3자리·challenge·instruction-level 정직 표기) · §2 AGENTS.md 정본 · §7 완료 규칙 위임 · §8 지속 목표 기능 선택. template에 마커 포함(seed 시 verbatim 전파 → 데이터 사본 managed) | templates/skills/sdd-implement/SKILL.md:5,16-31,33-36,56-61,63-65 |
-| F-12 | base §6-4("PR 생성 — 머지는 사람, main 직접 push 금지")와 AGENTS.md 규약 7("커밋·push까지가 완료 정의")이 **상충** — FR-4 위임(자체 서술 삭제)이 해소 | 배포본 SKILL.md:103-104 ↔ AGENTS.md:56 |
+| F-12 | base §6-4("PR 생성 — 머지는 사람, main 직접 push 금지")와 AGENTS.md 규약 7("커밋·push까지가 완료 정의")이 **상충**. 해소 = SKILL 자체 서술 삭제 **+ PR 게이트를 규약7에 명문화**(D-6) — 단순 위임만으로는 규율이 소멸하므로 SSoT 쪽에 살린다 | 배포본 SKILL.md:10,103-104 ↔ AGENTS.md:56 |
 | F-13 | 050 바인딩 소비 규약: 부재 시 side-effect 전 안내 + 기본 미진행, 그 자리 명시 동의 시만 임시 진행(보고에 명시), 격리 위임 불가 시 현재 세션 대행 + **비독립 fallback 명시**, 위임 성사 시 페르소나 정의 model이 tiers보다 우선 | templates/skills/localmind-binding/references/binding-contract.md:42-66 |
 | F-14 | `specs/052*`는 main 작업 트리에 부재(0건) — feat/052 브랜치 전용 | Glob specs/052*/** → 없음 |
 | F-15 | AGENTS.md 개명 대상 행: 16(절 제목)·18-20(ID·호출 문법)·56(규약 7)·83(구현 규율). templates/sdd/AGENTS.md:16-19 · templates/sdd/spec.template.md:7 · docs/agents.md:134,138,149,157,167,170-172,211 · docs/workflows.md:31 · README.md:109 | Grep -n |
 | F-16 | 테스트 회귀 지점: skills.test.ts(54건 — :80 이름 목록, :645 manifest 픽스처 등), commands.test.ts(18건 — :50,461-464 호출 문법, :483 예약 목록), workflow-policy.test.ts(:76 AC-10 블록, :156-177), skill-contract.test.ts(:174-187 픽스처), verify-targets.test.ts(:72-75), workflow-docs.test.ts(:70-83 — :83 template 경로 하드코딩), scaffold.test.ts(:151-156), execution-policy.test.ts(:56-58), workflow-lifecycle.test.mjs(:48 WORKFLOWS 배열, :57-58,119-137) | Grep -n |
 | F-17 | manifest 스키마는 `.strict()`(workflows만) — `retired` 필드 추가는 스키마 개정 필요(D-2 기각 대안의 근거) | src/agents/skill-contract.ts:379-392 |
 | F-18 | template registry problem 시 seed는 어떤 write도 전에 early return, deploy는 전역 failed — 은퇴 sweep도 이 가드 아래에서만 실행됨(부재 기반 오삭제 방지) | src/agents/skills.ts:493-496, 556-564 |
+| F-19 | 이 세션 데이터 폴더 `goal-impl` 사본은 **managed 마커 보유**(`<!-- managed-by: localmind (skill: goal-impl) -->`) → FR-6 대체는 F-7 백업 스왑(managed 분기)로 자연 발생. 도그푸드 환경 실측: `sdd-implement` 배포 잔재 3타깃 모두 부재 · `~/.gemini/commands` 부재(skipped-unavailable) · `~/.localmind/_bindings` 부재 | `~/.localmind/skills/goal-impl/SKILL.md:5` 라이브 2026-07-17 |
 
 ## DDD 경계 · 영향 모듈
 
@@ -107,7 +117,7 @@ source-absence 정리.
 | `src/agents/skills.ts` | seed source-absence 정리 추가(D-2①) |
 | `src/agents/commands.ts` | Gemini wrapper source-absence 정리 추가(D-2②) |
 | `src/agents/workflow-policy.ts` · `cross-review-cli.ts` | 주석 개명(F-1) |
-| `AGENTS.md` · `templates/sdd/AGENTS.md` · `templates/sdd/spec.template.md` | 규범 절 개명(F-15, D-3 경계) |
+| `AGENTS.md` · `templates/sdd/AGENTS.md` · `templates/sdd/spec.template.md` | 규범 절 개명(F-15, D-3 경계) + **규약7에 PR 게이트 명문화(D-6, 완료 정의 정합)** |
 | `docs/agents.md` · `docs/workflows.md` · `README.md` | 개명 + §0 런타임 특화 서술 이관(D-1) + 구명 없는 051 포인터(D-5d) |
 | 테스트 8파일 + `scripts/workflow-lifecycle.test.mjs` | 개명·신규 시나리오(F-16) |
 | `specs/052-*` | **불변**(D-4) · `specs/044·050` **불가침**(D-3) |
@@ -124,7 +134,7 @@ source-absence 정리.
 | §5 구현 규율 | base §3 + 044 §3·§4 | TDD/RED 확인·회귀 핀·DB 패리티·외과적 변경·로컬 인프라 유지(전부 중립) |
 | §6 중단 규율 | base §4 | 유지(추측 금지·spec-first·3회 실패 중단) |
 | §7 실행 등급·역할 | base §5 재작성 | "Sonnet 5" 삭제(F-10). critical-reasoning/standard 등급 언어 + 바인딩 참조 + 부재 시 F-13 소비 규약(안내→기본 미진행→명시 동의 시 임시 진행·비독립 fallback 명시)(AC-10) |
-| §8 DoD | base §6 | 1(전 AC green)·2(도그푸드)·3(self-review — sdd-self-review 이름 유지, Non-goals) 유지. **4(PR/push 자체 규칙) 삭제** → "완료(commit/push/CI)는 AGENTS.md 규약대로" 위임 — F-12 상충 해소(AC-4) |
+| §8 DoD | base §6 | 1(전 AC green)·2(도그푸드)·3(self-review — sdd-self-review 이름 유지, Non-goals) 유지. **4(PR/push 자체 규칙) 삭제** → "완료(commit/push/PR/CI)는 AGENTS.md 규약대로" 위임 — 단 PR 게이트 규율은 규약7에 명문화돼 살아 있음(D-6). F-12 상충 해소(AC-4) |
 | §9 보고·정직 | base §7 + 044 정직 보고 | 병합. `pkpk /changelog` 예시 삭제(오픈소스 규약) |
 | §10 이름·지속 실행(선택) | 044 §8 + D-1 잔존 1줄 | 내장 명령 비충돌 개명 금지 + 지속 실행 기능은 선택 전제 |
 | (삭제) base §0·관련 링크 | — | D-1: docs/agents.md 이관 |
@@ -154,8 +164,10 @@ source-absence 정리.
   `docs/agents.md`, `docs/workflows.md`, `README.md`, `src/agents/workflow-policy.ts`,
   `src/agents/cross-review-cli.ts`, F-16의 테스트 9파일
 - T3.1 F-15 규범 서술 개명(specs/044·050 불가침). T3.2 docs/agents.md에 §0 런타임 특화 서술
-  이관 + 구명 없는 051 포인터(D-1·D-5d). T3.3 F-16 테스트 픽스처·단언 개명 → 전체 스위트
-  green(AC-8).
+  이관 + 구명 없는 051 포인터(D-1·D-5d). **T3.2b AGENTS.md 규약7에 PR 게이트 명문화(D-6)** —
+  "커밋·push까지가 완료"를 "feature 브랜치 커밋·push + PR 생성까지가 완료(main 직접 push 금지,
+  머지는 사람)"로 정합(templates/sdd/AGENTS.md 동조). T3.3 F-16 테스트 픽스처·단언 개명 →
+  전체 스위트 green(AC-8).
 
 **P4 — 가드·특성화 테스트(AC-1~7 정적 잠금)** · depends-on: P3 · 담당: 쓰기 실행
 역할(standard)
@@ -167,7 +179,8 @@ source-absence 정리.
   특성화: goal-impl `scanPackagedNeutrality` == [](AC-2; 재유입은 기존 packaged 강제가
   전역 실패시킴 — AC-7). T4.3 게이트·위임·강점 특성화: 본문에 게이트 문구(provenance·
   `^[0-9]{3}$`·challenge·instruction-level) 존재(AC-3), AGENTS.md 절 제목·호출 문법 goal-impl
-  + 본문에 commit/push/CI 자체 규칙 부재·AGENTS.md 참조 존재(AC-4), 핵심 절 앵커(끊김 방어·
+  + 본문에 commit/push/CI 자체 규칙 부재·AGENTS.md 참조 존재 + **AGENTS.md 규약7에 PR 게이트
+  (main 직접 push 금지 → PR 생성) 명문 존재**(AC-4), 핵심 절 앵커(끊김 방어·
   tasks 재사용 금지·RED·중단 규율·DoD·보고) 존재(AC-5). T4.4 lifecycle 시나리오에 은퇴 관찰
   추가(WORKFLOWS 배열 개명 + 구 sdd-implement 잔재 정리 확인).
 
@@ -198,9 +211,11 @@ source-absence 정리.
 
 ## 가정 · 리스크
 
-- **가정 1**: 설치별 데이터 폴더 goal-impl의 마커 유무는 미확정(배포 타깃에서만 실측 —
-  마커는 배포 시 주입되므로 데이터 소스는 markerless custom일 개연성이 높다). 어느 분기든
-  F-6/F-7 기존 경로가 처리하며 P5-T5.2가 관찰·보고한다.
+- **가정 1 (실측으로 확정 — F-19)**: 이 세션 데이터 폴더 goal-impl 사본은 managed 마커를
+  보유한다 → **managed 분기**(F-7 백업 스왑)로 대체가 자연 발생한다. 따라서 P5-T5.2는 managed
+  경로를 관찰한다. **단, AC-11(unmanaged fork 도그푸드)은 이 환경에서 자연 관찰 불가** — 증거는
+  P1 단위 테스트(T1.1 ②)가 담당하고, 도그푸드는 unmanaged 환경 부재 시 생략을 명시한다. (설치
+  일반은 여전히 양분기 가능하며 F-6/F-7이 모두 처리한다.)
 - **가정 2**: `sdd-self-review`·`goal-ready` 등 다른 스킬은 불변(goal Non-goals) — 신 본문의
   §8-3 참조 이름 유지.
 - 리스크: seed sweep은 "마커 결합 + template 부재 = prune"이라는 계약 강화다 — 배포 타깃
