@@ -40,7 +40,7 @@ Phase 1(및 L1 전체)에 착수한다(→ plan "Open questions 해소 매핑").
 ## Phase 0 — Live-Verify 게이트 (standard, 착수 시 1회)
 > depends-on: 없음 · files: 없음(확인만)
 
-- [ ] **T0.1** F-7의 세션 보고 사실 재확인(→ plan Phase 0·가정 1): `gh release view 2026.07.0`
+- [x] **T0.1** F-7의 세션 보고 사실 재확인(→ plan Phase 0·가정 1): `gh release view 2026.07.0`
       (release 실존) · `git tag -l '2026.07.*'`(태그 실존·`v` 접두 없음 — F-6 대조) · 현재
       gh 인증 계정 1줄 확인. 결과를 self-review 보고에 1줄 명시. 실패(예: release 부재) 시
       규약 문안의 해당 실증 서술을 수정하고 사용자에게 보고.
@@ -54,7 +54,7 @@ Phase 1(및 L1 전체)에 착수한다(→ plan "Open questions 해소 매핑").
 
 규약 문안은 이후 모든 릴리스의 정본 — 파장 큼(→ plan Phase 1 등급).
 
-- [ ] **T1.1** F-2 위치(규약7 끝과 "구현 규율" 사이)에 절 신설, 제목은 plan 고정값
+- [x] **T1.1** F-2 위치(규약7 끝과 "구현 규율" 사이)에 절 신설, 제목은 plan 고정값
       `## 버전·릴리스 — 규약7 이후 (CalVer)`(→ plan DDD 경계). 내용은 영향 모듈 표대로:
       - FR-1 형식: `YYYY.MM.MICRO` · "릴리스(PR 머지) 시점"의 연·월 · 첫 릴리스 MICRO=0 ·
         `v` 접두 없음 · SemVer 의미 없음 — AC-1 문안.
@@ -71,13 +71,13 @@ Phase 1(및 L1 전체)에 착수한다(→ plan "Open questions 해소 매핑").
         없으면 0, CHANGELOG와 어긋나면 태그 우선) · D-2(같은 날·hotfix 동일 취급 MICRO+1) · D-3(버전 확정 커밋 = 머지 대상 PR의
         마지막 chore(release) 커밋, 묶음 전부 머지 후엔 경량 릴리스 PR) · 월 경계 재확정
         (stamp 후 월이 바뀌면 머지 전 re-stamp — AC-7 문안). 전부 이 절 한 곳에(I-5).
-- [ ] **T1.2** 규약7 비재서술 자기 점검(I-1, FR-3): 신설 절에 규약7 문장의 복제·변형이
+- [x] **T1.2** 규약7 비재서술 자기 점검(I-1, FR-3): 신설 절에 규약7 문장의 복제·변형이
       없는지 확인 — diff가 규약7 원문(56-66행대)을 건드리지 않아야 한다.
 
 ## Phase 2 — goal-ready "버전 미정" 편입 (standard)
 > depends-on: 없음 · files: `templates/skills/goal-ready/SKILL.md`
 
-- [ ] **T2.1** §6(네 문서 작성 — → plan F-4 지점)에 1~2줄 편입(FR-4): "버전은 여기서 정하지
+- [x] **T2.1** §6(네 문서 작성 — → plan F-4 지점)에 1~2줄 편입(FR-4): "버전은 여기서 정하지
       않는다 — 저장소 릴리스 규약(AGENTS.md 버전·릴리스 절) 참조. 작업 시작 시점에는 변경
       내용 서술만 누적한다." 규칙 본문 없이 참조만(I-2). 편집 어휘는 I-3 준수 — 편집 후
       중립성 스캔 clean 확인. `make skills-deploy` 전파는 Phase 5에서 일괄. — AC-3 문안.
@@ -85,13 +85,13 @@ Phase 1(및 L1 전체)에 착수한다(→ plan "Open questions 해소 매핑").
 ## Phase 3 — CHANGELOG 모순 주석 정정 (standard)
 > depends-on: 없음 · files: `CHANGELOG.md`
 
-- [ ] **T3.1** 5행 blockquote(→ plan F-3)를 교체(FR-7): "문서 작성(goal-ready) 시점 기준"
+- [x] **T3.1** 5행 blockquote(→ plan F-3)를 교체(FR-7): "문서 작성(goal-ready) 시점 기준"
       구 서술 삭제 → "버전은 **릴리스(PR 머지) 시점** 기준 — 확정 규칙은 AGENTS.md
       버전·릴리스 절이 정본" 요약+참조만(I-2). — AC-5의 "새 문구 존재 + 구 문구 부재" 근거.
 
 ## L1 배리어 (메인 수행)
 
-- [ ] **B-L1** Phase 1∥2∥3 완료 후 메인이 전체 `npm test` green + `npm run build` clean 확인
+- [x] **B-L1** Phase 1∥2∥3 완료 후 메인이 전체 `npm test` green + `npm run build` clean 확인
       (I-6 — 기존 AGENTS.md·goal-ready 핀 케이스 포함 전수). 통과해야 L2 해금.
 
 ## Phase 4 — 정적 계약 테스트 (standard)
