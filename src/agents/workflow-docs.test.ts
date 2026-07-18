@@ -94,6 +94,95 @@ describe("workflow-doc-contract: AC-21", () => {
   });
 });
 
+describe("deep-research discoverability docs: AC-2·14·16 (specs/202607172313)", () => {
+  const userDocs = ["README.md", "docs/agents.md", "docs/workflows.md"] as const;
+  const docs = () => new Map(userDocs.map((rel) => [rel, read(rel)]));
+  const workflowSection = () => {
+    const body = read("docs/workflows.md");
+    const lines = body.split("\n");
+    const start = lines.findIndex((line) => /^#{2,4}\s+.*(?:deep-research|Deep Research)/i.test(line));
+    assert.ok(start !== -1, "docs/workflows.md에 Deep Research 전용 절 없음");
+    const level = /^#+/.exec(lines[start])![0].length;
+    const end = lines.findIndex((line, index) => index > start && new RegExp(`^#{1,${level}}\\s+`).test(line));
+    return lines.slice(start, end === -1 ? undefined : end).join("\n");
+  };
+
+  it("README·agents·workflows가 공용 logical ID와 runtime별 실제 호출을 설명한다", () => {
+    for (const [rel, body] of docs()) {
+      const content = flat(body);
+      assert.match(content, /(?:logical|논리(?:적)?) (?:command )?ID.{0,160}`deep-research`|`deep-research`.{0,160}(?:logical|논리(?:적)?) (?:command )?ID/i, `${rel}: deep-research logical ID 설명 누락`);
+      assert.match(content, /Claude(?: Code)?.{0,160}`\/deep-research(?: [^`]+)?`/i, `${rel}: Claude /deep-research 호출 누락`);
+      assert.match(content, /Codex.{0,160}`\$deep-research(?: [^`]+)?`/i, `${rel}: Codex $deep-research 호출 누락`);
+      assert.match(
+        content,
+        /Gemini(?: CLI)?.{0,220}(?:(?:auto|자동) (?:skill|스킬)|(?:generated|생성(?:된)?) `\/deep-research(?: [^`]+)?` (?:wrapper|래퍼)|`\/deep-research(?: [^`]+)?` (?:wrapper|래퍼))/i,
+        `${rel}: Gemini auto skill 또는 generated /deep-research wrapper 호출 누락`,
+      );
+    }
+  });
+
+  it("Codex bare slash와 deprecated Custom Prompts를 호출법으로 권장하지 않는다", () => {
+    const all = flat([...docs().values()].join("\n"));
+    assert.match(
+      all,
+      /Codex.{0,180}(?:bare )?`\/deep-research`.{0,180}(?:지원하지 않|권장하지 않|사용하지 않|공식 (?:문법|계약)이 아니)|(?:지원하지 않|권장하지 않|사용하지 않|공식 (?:문법|계약)이 아니).{0,180}Codex.{0,180}(?:bare )?`\/deep-research`/i,
+      "Codex bare /deep-research 비권장 설명 누락",
+    );
+    assert.match(
+      all,
+      /Custom Prompts?.{0,120}(?:deprecated|폐기|사용 중단|더 이상 권장하지 않)|(?:deprecated|폐기|사용 중단|더 이상 권장하지 않).{0,120}Custom Prompts?/i,
+      "Codex Custom Prompts deprecated 설명 누락",
+    );
+
+    for (const [rel, body] of docs()) {
+      for (const line of body.split("\n")) {
+        const codexBareSlash =
+          /Codex(?:(?!Claude|Gemini|\$deep-research).){0,100}`\/deep-research(?: [^`]*)?`|`\/deep-research(?: [^`]*)?`(?:(?!Claude|Gemini|\$deep-research).){0,100}Codex/i;
+        if (codexBareSlash.test(line)) {
+          assert.match(line, /지원하지 않|권장하지 않|사용하지 않|금지|아니|없|deprecated|폐기/i, `${rel}: Codex bare slash를 긍정 호출법으로 안내함: ${line}`);
+        }
+        if (/`\/prompts:deep-research(?: [^`]*)?`/.test(line)) {
+          assert.match(line, /지원하지 않|권장하지 않|사용하지 않|금지|deprecated|폐기/i, `${rel}: deprecated prompt를 긍정 호출법으로 안내함: ${line}`);
+        }
+      }
+    }
+  });
+
+  it("first-party 제품과의 차이 및 Agent Skills runtime 범위를 설명한다", () => {
+    const section = flat(workflowSection());
+    assert.match(section, /(?:first-party|벤더(?:의)?|공급자(?:의)?).{0,100}Deep Research/i, "first-party Deep Research 비교 설명 누락");
+    assert.match(section, /(?:동일하지 않|복제하지 않|대체하지 않|보장하지 않|별개)/, "LocalMind workflow와 first-party 제품의 차이 누락");
+    assert.match(section, /(?:backend|백엔드|전용 모델|전용 서버|독점 모델|독점 서버)/i, "전용 backend/model 차이 설명 누락");
+    assert.match(section, /Agent Skills.{0,180}(?:호환|로드|지원).{0,100}(?:runtime|런타임)|(?:runtime|런타임).{0,180}Agent Skills/i, "Agent Skills 호환 runtime 범위 누락");
+    assert.match(section, /(?:모델 단독|model alone|모델만).{0,100}(?:범위 밖|지원하지 않|실행할 수 없)/i, "모델 단독 호출이 범위 밖이라는 설명 누락");
+  });
+
+  it("explicit/report-only와 capability fallback 및 Gemini·Antigravity 범위를 설명한다", () => {
+    const agents = flat(read("docs/agents.md"));
+    const section = flat(workflowSection());
+    assert.match(agents, /`deep-research`.{0,260}`?explicit`?.{0,160}`?report-only`?/i, "agents 문서의 deep-research explicit/report-only policy 누락");
+    assert.match(section, /(?:명시 호출|explicit).{0,160}(?:report-only|채팅 보고)/i, "workflow의 explicit/report-only 경계 누락");
+    assert.match(section, /(?:live (?:source|web)|라이브 (?:출처|조회)).{0,220}(?:없|미지원|불가능).{0,220}(?:context-only|현재 session|current-session|미검증|한계)/i, "live capability fallback 설명 누락");
+    assert.match(section, /(?:격리 (?:위임|연구자|critic)|isolated (?:delegation|researcher|critic)).{0,220}(?:없|미지원|불가능).{0,220}(?:not independent|비독립|현재 session|current-session)/i, "isolated delegation fallback 설명 누락");
+    assert.match(section, /Gemini CLI/i, "Gemini CLI 지원 범위 누락");
+    assert.match(section, /Antigravity.{0,220}(?:전용 (?:adapter|어댑터)|정식 target|정식 대상).{0,160}(?:범위 밖|후속|추후|포함하지 않)/i, "Antigravity 전용 adapter 비목표 설명 누락");
+    assert.doesNotMatch(agents, /Gemini CLI.{0,160}(?:실행 전|pre-execution).{0,80}hook이 없/i, "Gemini CLI에 실행 전 hook이 없다는 낡은 사실을 쓰면 안 됨");
+    assert.match(agents, /Gemini CLI.{0,220}(?:공식 )?(?:실행 전 )?hook.{0,120}(?:존재|지원)/i, "Gemini CLI의 공식 hook 존재 설명 누락");
+    assert.match(agents, /LocalMind.{0,220}(?:wrapper|래퍼).{0,180}hook.{0,120}(?:설치하거나 등록하지 않|미등록).{0,180}(?:instruction-level|지침 수준)/i, "LocalMind wrapper가 hook을 등록하지 않아 instruction-level이라는 경계 누락");
+  });
+
+  it("추상 실행 등급과 설치별 binding을 분리하고 final critic 다운시프트를 금지한다", () => {
+    const section = flat(workflowSection());
+    assert.match(section, /source scout.{0,100}`economy`/i, "source scout=economy 누락");
+    assert.match(section, /(?:coordinator|research coordinator).{0,120}`standard`/i, "coordinator=standard 누락");
+    assert.match(section, /(?:evidence researcher|researcher).{0,120}`standard`/i, "researcher=standard 누락");
+    assert.match(section, /(?:synthesizer|research synthesizer).{0,140}`critical-reasoning`/i, "synthesizer=critical-reasoning 누락");
+    assert.match(section, /(?:final critic|critic).{0,140}`critical-reasoning`/i, "final critic=critical-reasoning 누락");
+    assert.match(section, /(?:설치별|runtime) (?:binding|바인딩).{0,180}(?:구체|실제).{0,100}(?:model|모델)/i, "추상 tier와 설치별 model binding 경계 누락");
+    assert.match(section, /final critic.{0,180}(?:조용히|silent).{0,100}(?:낮추지 않|대체하지 않|downshift|다운시프트)/i, "final critic silent downshift 금지 누락");
+  });
+});
+
 describe("goal-impl-completion-delegation: AC-4 (specs/051 I-5, D-6)", () => {
   const rootAgents = () => read("AGENTS.md");
   const skillBody = () => read("templates/skills/goal-impl/SKILL.md");

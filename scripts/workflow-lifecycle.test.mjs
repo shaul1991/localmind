@@ -2,7 +2,7 @@
  * AC-17 — 워크플로 자산 lifecycle 재현 E2E (specs/044 FR-11).
  * seed·배포는 모든 lifecycle 진입점(restore/recover/update/device-sync)이 공유하는
  * `skills:deploy` CLI로 수렴한다. 실제 CLI와 restore-assets.sh(recover)를 injected temp
- * 경로로 실행해 세 workflow와 target별 산출물이 재현되는지 검증한다. 실제 $HOME는 건드리지 않는다.
+ * 경로로 실행해 production workflow와 target별 산출물이 재현되는지 검증한다. 실제 $HOME는 건드리지 않는다.
  */
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -45,10 +45,17 @@ function runDeployCli(env = deployEnv()) {
   return execFileSync("node", ["--import", "tsx/esm", "scripts/skills-deploy.ts"], { cwd: REPO_ROOT, encoding: "utf8", env });
 }
 const read = (p) => fs.readFileSync(p, "utf8");
-const WORKFLOWS = ["goal-ready", "goal-impl", "sdd-self-review"];
+// specs/044 당시의 3-workflow characterization 의미는 별도 상수로 보존한다.
+const LEGACY_CHARACTERIZATION_WORKFLOWS = ["goal-ready", "goal-impl", "sdd-self-review"];
+const PRODUCTION_WORKFLOWS = [
+  "deep-research",
+  ...LEGACY_CHARACTERIZATION_WORKFLOWS,
+  "localmind-binding",
+  "localmind-rules",
+].sort();
 
 function assertAllTargetsReproduced() {
-  for (const n of WORKFLOWS) {
+  for (const n of PRODUCTION_WORKFLOWS) {
     assert.ok(fs.existsSync(path.join(canonical, n, "SKILL.md")), `canonical ${n}`);
     assert.ok(read(path.join(claudeSkills, n, "SKILL.md")).includes(`managed-by: localmind (skill: ${n})`), `claude ${n} marker`);
     assert.ok(read(path.join(agentSkills, n, "SKILL.md")).includes(`managed-by: localmind (skill: ${n})`), `agent ${n} marker`);
@@ -56,10 +63,12 @@ function assertAllTargetsReproduced() {
   }
   assert.match(read(path.join(claudeSkills, "goal-impl", "SKILL.md")).split("\n---")[0], /disable-model-invocation:\s*true/);
   assert.match(read(path.join(agentSkills, "goal-impl", "agents", "openai.yaml")), /allow_implicit_invocation: false/);
+  assert.match(read(path.join(claudeSkills, "deep-research", "SKILL.md")).split("\n---")[0], /disable-model-invocation:\s*true/);
+  assert.match(read(path.join(agentSkills, "deep-research", "agents", "openai.yaml")), /allow_implicit_invocation: false/);
 }
 
 describe("workflow-lifecycle: AC-17", () => {
-  it("skills:deploy CLI가 세 workflow를 모든 available target에 재현한다", () => {
+  it("skills:deploy CLI가 production 여섯 workflow를 모든 available target에 재현한다", () => {
     const out = runDeployCli();
     assert.match(out, /배포 결과: (성공|부분 성공)/);
     assertAllTargetsReproduced();
@@ -69,7 +78,57 @@ describe("workflow-lifecycle: AC-17", () => {
     const out = runDeployCli();
     // 정본 시드/각 target 모두 unchanged 이어야 한다
     assert.match(out, /변경 없음/);
+    assert.match(out, /deep-research: 변경 없음/);
     assert.ok(!/생성됨/.test(out.split("배포 결과")[1] ?? ""), "두 번째 배포에 생성 없음");
+  });
+
+  it("managed deep-research target drift는 갱신하고 다음 실행에 수렴한다", () => {
+    const target = path.join(claudeSkills, "deep-research", "SKILL.md");
+    assert.ok(fs.existsSync(target), "managed update 사전조건: deep-research Claude target 존재");
+    fs.appendFileSync(target, "\nLOCALMIND_MANAGED_DRIFT\n");
+    const updated = runDeployCli();
+    assert.match(updated, /deep-research: 갱신됨/, "managed target drift를 갱신으로 보고");
+    assert.ok(!read(target).includes("LOCALMIND_MANAGED_DRIFT"), "managed target을 canonical 내용으로 복원");
+    const stable = runDeployCli();
+    assert.match(stable, /deep-research: 변경 없음/, "복원 후 재실행은 unchanged");
+  });
+
+  it("동명 unmanaged deep-research asset은 byte-for-byte 보존한다", () => {
+    const target = path.join(geminiCmds, "deep-research.toml");
+    fs.rmSync(target, { force: true });
+    const unmanaged = Buffer.from('description = "사용자 deep-research"\nprompt = "byte-for-byte 보존"\n', "utf8");
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, unmanaged);
+
+    const out = runDeployCli();
+    assert.deepEqual(fs.readFileSync(target), unmanaged, "동명 unmanaged wrapper bytes 불변");
+    assert.match(out, /deep-research: 건너뜀\(직접 만든 자산 보호\)/, "unmanaged 보호를 정직하게 보고");
+
+    // 뒤 lifecycle fixture가 managed production 상태를 전제로 하므로 격리 자산만 회수해 복원한다.
+    fs.rmSync(target, { force: true });
+    runDeployCli();
+    assert.ok(read(target).includes("managed-by: localmind (command: deep-research)"), "managed wrapper 재생성");
+  });
+
+  it("실제 runtime이 없는 temp home은 deep-research missing target을 skipped로 보고한다", () => {
+    const missingHome = path.join(root, "missing-runtime-home");
+    const missingCanonical = path.join(missingHome, ".localmind", "skills");
+    const missingAgent = path.join(missingHome, ".agents", "skills");
+    fs.mkdirSync(missingHome, { recursive: true });
+    const env = { ...process.env };
+    delete env.LOCALMIND_CLAUDE_SKILLS_DIR;
+    delete env.LOCALMIND_GEMINI_COMMANDS_DIR;
+    env.HOME = missingHome;
+    env.LOCALMIND_SKILLS_DIR = missingCanonical;
+    env.LOCALMIND_AGENT_SKILLS_DIR = missingAgent;
+
+    const out = runDeployCli(env);
+    assert.match(out, /배포 결과: 부분 성공/);
+    assert.ok(fs.existsSync(path.join(missingAgent, "deep-research", "SKILL.md")), "available Agent Skill target은 생성");
+    assert.ok(!fs.existsSync(path.join(missingHome, ".claude")), "미설치 Claude root 임의 생성 금지");
+    assert.ok(!fs.existsSync(path.join(missingHome, ".gemini")), "미설치 Gemini root 임의 생성 금지");
+    const skipped = out.match(/deep-research: 건너뜀\(런타임 미설치\)/g) ?? [];
+    assert.equal(skipped.length, 2, "Claude/Gemini 두 missing target을 각각 skipped로 보고");
   });
 
   it("recover(초기화된 기기): target을 지우고 다시 배포하면 재현된다", () => {
@@ -107,13 +166,13 @@ describe("workflow-lifecycle E2E entry points: AC-17 (R4-05)", () => {
   const runShell = (script, env) => execFileSync("bash", [script], { cwd: REPO_ROOT, encoding: "utf8", env });
   const isDeny = (p) => /allow_implicit_invocation: false/.test(fs.readFileSync(p, "utf8"));
 
-  it("backup 진입점: 정본 세 skill 소스를 미러하고 생성 Claude/공용/Gemini 산출물은 제외한다", () => {
+  it("backup 진입점: production 여섯 skill 소스를 미러하고 생성 Claude/공용/Gemini 산출물은 제외한다", () => {
     runDeployCli(); // 정본 seed + 전 target 배포
     const backupDir = path.join(root, "backup");
     fs.mkdirSync(backupDir, { recursive: true });
     runShell("scripts/backup-assets.sh", { ...deployEnv(), BACKUP_DIR: backupDir, LOCALMIND_ENV_FILE: notesEnvFile });
     const mirror = path.join(backupDir, "skills");
-    for (const n of WORKFLOWS) assert.ok(fs.existsSync(path.join(mirror, n, "SKILL.md")), `정본 ${n} 미러`);
+    for (const n of PRODUCTION_WORKFLOWS) assert.ok(fs.existsSync(path.join(mirror, n, "SKILL.md")), `정본 ${n} 미러`);
     assert.ok(fs.existsSync(path.join(mirror, ".localmind-mirror")), "미러 마커");
     // 생성 target 전용 산출물은 정본 미러에 없다(정본은 generated openai.yaml / .toml / deny frontmatter 미포함)
     assert.ok(!fs.existsSync(path.join(mirror, "goal-impl", "agents", "openai.yaml")), "생성 openai.yaml 제외");
@@ -169,7 +228,7 @@ describe("workflow-lifecycle E2E entry points: AC-17 (R4-05)", () => {
     // 활성 표면의 은퇴 리터럴 자체를 금지하므로, 실제 구 논리 ID 문자열이 아니라 일반화된
     // fixture 이름으로 "packaged 정본에서 빠진 managed 잔재 → seed+deploy가 함께 정리"를 검증한다.
     const RETIRED = "wf-legacy-retired";
-    runDeployCli(); // 정상 배포 먼저 — canonical에 세 workflow가 자리잡는다
+    runDeployCli(); // 정상 배포 먼저 — canonical에 production workflow가 자리잡는다
 
     const staleDir = path.join(canonical, RETIRED);
     fs.mkdirSync(staleDir, { recursive: true });
@@ -189,7 +248,7 @@ describe("workflow-lifecycle E2E entry points: AC-17 (R4-05)", () => {
     assert.ok(!fs.existsSync(staleDir), "데이터 정본 잔재가 seed sweep으로 정리됨(D-2①)");
     assert.ok(!fs.existsSync(path.join(geminiCmds, `${RETIRED}.toml`)), "gemini wrapper 잔재가 sweep으로 정리됨(D-2②)");
     assert.match(out, new RegExp(`${RETIRED}: 정리됨 \\(packaged 정본에서 은퇴됨\\)`));
-    assertAllTargetsReproduced(); // 개명된 세 workflow는 여전히 정상 배포돼 있다
+    assertAllTargetsReproduced(); // production workflow는 여전히 정상 배포돼 있다
   });
 
   it("device-sync 검증 진입점: 전 target 정상이면 verify-targets 통과, 하나라도 깨지면 실패", () => {

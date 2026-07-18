@@ -282,3 +282,34 @@ describe("self-review-contract: AC-11", () => {
     assert.equal(scanPackagedNeutrality(reg.skills.find((s) => s.name === "sdd-self-review")!).length, 0);
   });
 });
+
+describe("deep-research policy contract: AC-1, AC-3", () => {
+  it("production policy는 exact explicit/report-only이며 docs-only/mutating으로 완화되지 않는다", () => {
+    const policy = policyOf("deep-research");
+    assert.deepEqual(policy, { activation: "explicit", sideEffects: "report-only" });
+    assert.notEqual(policy.sideEffects, "docs-only");
+    assert.notEqual(policy.sideEffects, "mutating");
+  });
+
+  it("explicit policy가 Claude deny-implicit metadata를 정확히 생성한다", () => {
+    const metadata = claudeInvocationFrontmatter(policyOf("deep-research"));
+    assert.deepEqual(metadata, { "disable-model-invocation": true });
+    assert.equal(Object.keys(metadata).length, 1, "Claude invocation-control 키 중복/추가 금지");
+  });
+
+  it("explicit policy가 Codex allow_implicit_invocation:false를 정확히 1회 생성한다", () => {
+    const yaml = codexPolicyYaml("deep-research", policyOf("deep-research"), "deadbeef");
+    assert.ok(yaml, "explicit workflow는 Codex policy metadata가 필요하다");
+    assert.equal((yaml.match(/allow_implicit_invocation:\s*false/g) ?? []).length, 1);
+    assert.doesNotMatch(yaml, /allow_implicit_invocation:\s*true/);
+    assert.match(yaml, /managed-by: localmind \(skill: deep-research\)/);
+    assert.match(yaml, /source-payload-sha256: deadbeef/);
+  });
+
+  it("명시 활성화 enforcement는 Claude/Codex runtime-enforced, generated wrapper는 instruction-level이다", () => {
+    const policy = policyOf("deep-research");
+    assert.equal(enforcementFor("claude-skill", policy), "runtime-enforced");
+    assert.equal(enforcementFor("agent-skill", policy), "runtime-enforced");
+    assert.equal(enforcementFor("gemini-command", policy), "instruction-level");
+  });
+});
