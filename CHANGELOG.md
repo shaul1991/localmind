@@ -20,6 +20,15 @@ localmind의 주요 변경 이력. 최신이 위.
   Agent Skills 호환 runtime용 워크플로이고 모델 단독 실행 대상이 아니다. Gemini CLI는 현재 target,
   Antigravity 전용 adapter는 범위 밖이다. 추상 실행 등급의 실제 model 선택은 설치별 binding이 맡는다.
 
+### specs 폴더 timestamp 프리픽스 정합 (PR #26 후속)
+
+PR #26(3자리 → timestamp 프리픽스 전환)이 남긴 드리프트를 정합하고, 그 과정에서 깨져 있던 main CI를 복구했다.
+
+- **드리프트 정합** — 정본 `AGENTS.md`만 바뀌고 뒤처졌던 곳을 동기화: scaffold 템플릿(`templates/sdd/AGENTS.md` — `make init-sdd` 산출물), `docs/agents.md`, 활성화 정규식(`workflow-policy.ts`의 `validNnn`을 timestamp `^(?:[0-9]{12}|[0-9]{14})$` + 레거시 3자리로 확장), goal-impl 스킬 계약.
+- **깨진 CI 복구** — PR #26이 갱신하지 않아 실패하던 문서-계약 테스트 3건을 timestamp 계약에 맞춰 정정(main이 red였다).
+- **프리픽스 모호성 가드** — `mkdir`(`-p` 금지)은 경로 충돌만 막고 timestamp 프리픽스는 유일하지 않을 수 있으므로(같은 분·다른 슬러그, 레거시 `041-*` 중복 실재), `goal-impl` 프리픽스 매칭이 2개 이상 폴더에 걸리면 추측하지 않고 사용자에게 묻도록 규약7 1단계에 명문화.
+- **후속(별도 슬라이스 필요)** — `src/retro-analysis.ts`의 spec 참조 파서가 `\d{3}` 하드코딩이라 timestamp 프리픽스 spec을 `make retro`가 누락한다(현재는 timestamp spec 0개라 잠복). 스키마 결정이 필요해 별도 SDD 작업으로 분리.
+
 ## 2026.07.1 — 2026-07-17 — 버전/릴리스 프로세스 규약 (specs/053)
 
 첫 CalVer 릴리스(`2026.07.0`)를 dogfood하며 합의한 버전/릴리스 프로세스를 성문 규약으로 정착시켰다.

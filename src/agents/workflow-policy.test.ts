@@ -52,8 +52,16 @@ describe("goal-ready-contract: AC-9", () => {
   it("중립적 지속 결정 기록 + fallback 사유", () => {
     has("goal-ready", "결정 로그(decision-log)", "지속적 기록 능력", "지속 기록을 하지 못한 사유", "특정 도구 이름을 전제하지 않는다");
   });
-  it("네 문서(goal/spec/plan/tasks) + 실제 max+1 + 조건부 design/SSoT gate", () => {
-    has("goal-ready", "goal.md·spec.md·plan.md·tasks.md", "최댓값 + 1", "디자인 사전 정의", "실제로 존재하는", "없는 문서를 필수라고 추측하지 않는다");
+  it("네 문서(goal/spec/plan/tasks) + timestamp 프리픽스 + 조건부 design/SSoT gate", () => {
+    has("goal-ready", "goal.md·spec.md·plan.md·tasks.md", "YYYYMMDDHHmm", "디자인 사전 정의", "실제로 존재하는", "없는 문서를 필수라고 추측하지 않는다");
+  });
+
+  // 구 "최댓값 + 1" 자리를 대체하는 **규칙** 핀(형식 문자열이 아니라 규칙 — 사라지면 red).
+  it("폴더 생성 규칙: 덮어쓰기 금지 + 배타적 생성 + 시각 재독 재시도 + 프리픽스 모호성 한계", () => {
+    has("goal-ready", "덮어쓰지 않는다", "`mkdir`(`-p` 금지)", "EEXIST", "현재 시각을 다시 읽어", "YYYYMMDDHHmmss");
+    // mkdir이 경로 충돌만 막는다는 정직한 한계 표기(중대-A) — 프리픽스는 유일하지 않을 수 있다.
+    has("goal-ready", "프리픽스는 유일하지 않을 수 있다");
+    assert.ok(!flatBody("goal-ready").includes("최댓값 + 1"), "구 max+1 규칙 부재");
   });
   it("역할 위임 + 크리틱 fallback(비독립 표기)", () => {
     has("goal-ready", "역할 + 과제 + 기대 산출물", "크리틱(critic)", "독립(independent) 검토라고 부르지 않는다");
@@ -89,12 +97,46 @@ describe("goal-impl-contract: AC-10", () => {
     }
   });
 
-  it("attested라도 인용/부정/설명/리뷰-only/누락/2·4자리/복수 인자는 grant 아님", () => {
-    for (const raw of ['"044"', "not 044", "044 아님", "044 설명만", "explain 044", "review 044 only", "", "44", "0444", "044 045", "044 please"]) {
+  // 2026-07-17: spec 폴더 프리픽스가 timestamp(YYYYMMDDHHmm, 같은 분 충돌 시 초까지 = 14자리)로
+  // 전환됐다. 레거시 3자리도 계속 grant다(기존 NNN- 폴더 매칭).
+  it("runtime-attested explicit + timestamp 프리픽스(12·14자리) → runtime-attested grant", () => {
+    for (const raw of ["202607172120", "20260717212045"]) {
+      const d = evaluateActivation({ attestedExplicit: true, rawArgs: raw });
+      assert.deepEqual(d, { grant: true, branch: "runtime-attested", nnn: raw }, `${raw}는 grant여야 함`);
+    }
+  });
+
+  it("timestamp 프리픽스도 앞뒤 공백·복수 인자는 grant 아님(exact match)", () => {
+    for (const raw of [" 202607172120", "202607172120 ", "202607172120 202607172121", '"202607172120"', "explain 202607172120"]) {
+      const d = evaluateActivation({ attestedExplicit: true, rawArgs: raw });
+      assert.equal(d.grant, false, `"${raw}"는 grant면 안 됨`);
+    }
+  });
+
+  it("attested라도 인용/부정/설명/리뷰-only/누락/자릿수 미달·초과/복수 인자는 grant 아님", () => {
+    // 3(레거시)·12·14자리만 유효 — 그 사이/바깥 자릿수는 프리픽스가 아니다.
+    for (const raw of ['"044"', "not 044", "044 아님", "044 설명만", "explain 044", "review 044 only", "", "44", "0444", "044 045", "044 please", "20260717212", "2026071721204", "202607172120456"]) {
       const d = evaluateActivation({ attestedExplicit: true, rawArgs: raw });
       assert.equal(d.grant, false, `"${raw}"는 grant면 안 됨`);
       assert.equal((d as { action: string }).action, "reject");
     }
+  });
+
+  it("provenance 부재 + timestamp 프리픽스 → challenge 발급(side effect 금지)", () => {
+    const d = evaluateActivation({ attestedExplicit: false, rawArgs: "202607172120", currentTurn: 5 });
+    assert.deepEqual(d, { grant: false, action: "issue-challenge", nnn: "202607172120", challengeTurn: 5 });
+  });
+
+  it("provenance 부재 + timestamp 프리픽스: 바로 다음 턴의 exact confirmation만 grant", () => {
+    const ch: Challenge = { nnn: "202607172120", token: "lm-confirm-ts01", issuedTurn: 5 };
+    const ok = evaluateActivation({
+      attestedExplicit: false,
+      rawArgs: "202607172120",
+      currentTurn: 6,
+      priorChallenge: ch,
+      confirmationResponse: "lm-confirm-ts01 202607172120",
+    });
+    assert.deepEqual(ok, { grant: true, branch: "fresh-confirmation", nnn: "202607172120", consumeChallengeToken: "lm-confirm-ts01" });
   });
 
   it("provenance 부재 + 유효 번호 + 확인 없음 → challenge 발급(side effect 금지)", () => {
@@ -190,15 +232,16 @@ describe("goal-impl-contract: AC-10", () => {
     );
   });
 
-  it("활성화 게이트 정직 표기 — provenance·3자리 정규식·challenge·instruction-level(AC-3, specs/051)", () => {
-    has("goal-impl", "provenance", "^[0-9]{3}$", "일회용 확인 문구(challenge)", "지침 수준(instruction-level)");
+  it("활성화 게이트 정직 표기 — provenance·프리픽스 정규식·challenge·instruction-level(AC-3, specs/051)", () => {
+    // SKILL.md의 선언 정규식은 코드(PREFIX_RE)와 정확히 같은 집합이어야 한다 — 12·14자리만(13은 없다).
+    has("goal-impl", "provenance", "^(?:[0-9]{12}|[0-9]{14})$", "^[0-9]{3}$", "일회용 확인 문구(challenge)", "지침 수준(instruction-level)");
   });
 
   it("canonical body: activation contract + AGENTS SSoT + TDD + self-review + evidence + completion + honesty", () => {
     has(
       "goal-impl",
       "일회용 확인 문구(challenge)",
-      "3자리 숫자",
+      "spec 폴더 프리픽스",
       "최우선 정본으로 읽는다",
       "실패 테스트 먼저(red)",
       "독립(적대적) 리뷰를 돌린다",

@@ -168,3 +168,71 @@ describe("032 회고 집계", () => {
     assert.ok(special.includes('"we\\"ird]"'), "JSON 이스케이프로 frontmatter 안 깨짐(R5)");
   });
 });
+
+// specs/202607180014-retro-analysis-timestamp-prefix — timestamp 프리픽스 대응
+describe("retro timestamp 프리픽스 대응", () => {
+  it("AC-1: specs/{ts}-slug 경로형 cadence 집계 — 키는 폴더 식별자 전체", () => {
+    const log = [
+      "feat: 백엔드 인증 흐름 — specs/202607180014-add-auth 구현",
+      "docs: 계약 갱신 (specs/202607181530-fix-cache)",
+    ].join("\n");
+    const c = parseCommits(log);
+    assert.equal(c.specCadence["202607180014-add-auth"], 1, "12자리 경로형 폴더 식별자 키");
+    assert.equal(c.specCadence["202607181530-fix-cache"], 1);
+  });
+
+  it("AC-2: 3자리·timestamp 혼재 + 같은 분 다른 슬러그 두 spec 독립 집계(같은 프리픽스 분리)", () => {
+    const log = [
+      "feat: a specs/202607180014-add-auth",
+      "fix: b specs/202607180014-fix-cache", // 같은 분·다른 슬러그 — 별개여야
+      "feat: legacy bump (031)", // 레거시 바레 — 여전히 031
+      "docs: c specs/041-agent-rules-central", // 레거시 경로형 — 폴더 식별자 키
+    ].join("\n");
+    const c = parseCommits(log);
+    assert.equal(c.specCadence["202607180014-add-auth"], 1);
+    assert.equal(c.specCadence["202607180014-fix-cache"], 1, "같은 프리픽스라도 슬러그로 분리");
+    assert.equal(c.specCadence["031"], 1, "레거시 바레 (NNN)은 그대로 3자리 키");
+    assert.equal(c.specCadence["041-agent-rules-central"], 1, "레거시 경로형도 폴더 식별자 키");
+    // 중대 회귀 가드: 경로형 `specs/041-...`가 인접형까지 발화해 바레 `041` 키를 중복 생성하면 안 됨
+    // (한 참조 형태 = 한 키; spec.md "참조 형태당 단일 키").
+    assert.equal(c.specCadence["041"], undefined, "경로형은 폴더 식별자 키 하나만 — 바레 041 중복 금지");
+    assert.equal(c.specCadence["202607180014"], undefined, "timestamp도 프리픽스만 키로 새지 않음");
+  });
+
+  it("AC-5: timestamp 오집계 방지 — docs(spec) 절 중간 숫자·specs/ 없는 timestamp 배제", () => {
+    const c = parseCommits("docs(spec): 202607180014 cap 100 chars");
+    // 경로형(specs/) 아닌 docs(spec) 나열형은 3자리 절 시작만 인정 — 12자리 프리픽스·절 중간 100 모두 배제
+    assert.equal(Object.keys(c.specCadence).length, 0, "specs/ 없는 timestamp·절 중간 숫자 미집계");
+  });
+
+  it("AC-3: decision 노트가 timestamp 참조를 폴더 식별자 키로 수집(cadence 키와 동일 규칙)", () => {
+    const files = [
+      { path: "d.md", text: '---\ntitle: "결정 T"\ndate: 2026-07-18T00:00:00\ntags: ["decision"]\n---\n관련 specs/202607180014-add-auth 참조' },
+    ];
+    const d = collectDecisionNotes(files);
+    assert.deepEqual(d[0].specRefs, ["202607180014-add-auth"], "timestamp 폴더 식별자 전체");
+  });
+
+  it("AC-6: specs/ 경로 밖의 맨 12·14자리 숫자열은 timestamp spec으로 집계하지 않음(경로형만)", () => {
+    const log = [
+      "fix: 이슈 202607180014 관련 회귀", // specs/ 아님 → 미집계
+      "chore: 해시 20260718153045 로깅", // 14자리 맨 숫자 → 미집계
+      "feat: spec 202607180014 언급만", // adjacency지만 3자리 경계 실패 → 미집계
+    ].join("\n");
+    const c = parseCommits(log);
+    assert.equal(Object.keys(c.specCadence).length, 0, "specs/ 앵커 없는 timestamp 숫자열은 미집계");
+  });
+
+  it("AC-4: 레거시 무회귀 — 기존 032 바레/나열/인접 형식 집계 불변", () => {
+    // 032 AC-5 픽스처의 핵심을 재확인(경로형 미포함이라 line 40 변경에 불변)
+    const log = [
+      "feat: 기기 동기화 (031)",
+      "fix: reduce to 100 items",
+      "docs(spec): 022 색인, 023 벡터, 024 라벨 초안",
+    ].join("\n");
+    const c = parseCommits(log);
+    assert.equal(c.specCadence["031"], 1);
+    assert.equal(c.specCadence["100"], undefined, "spec 앵커 없는 3자리 미집계 유지");
+    for (const n of ["022", "023", "024"]) assert.equal(c.specCadence[n], 1);
+  });
+});

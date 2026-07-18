@@ -4,25 +4,38 @@
 
 ## SDD 흐름 — 기본값
 
-모든 기능·변경은 `specs/{NNN}-{feature-slug}/` 폴더에 3개 문서로 시작한다:
+모든 기능·변경은 `specs/{timestamp}-{feature-slug}/` 폴더에 3개 문서로 시작한다:
 
 - `goal.md` — 왜(why): Background·Problem·Objective·Success metrics·Non-goals·Constraints·Stakeholders·Risks
 - `spec.md` — 무엇을(what): FR(각 FR은 goal 항목을 지지), Acceptance Criteria(Given-When-Then, 테스트와 1:1 매핑), Open questions
 - `plan.md` — 어떻게(how): 도메인 경계, 영향 모듈, 단계, 테스트 전략
 
-번호는 3자리(`001`, `002`, ...), 슬러그는 kebab-case. 다음 사용 가능 번호는 기존 `specs/`
-폴더의 최댓값 + 1이다(폴더가 없으면 `001`부터 시작).
+폴더 프리픽스는 **생성 시점 timestamp**(`YYYYMMDDHHmm`, 예: `202607172120`), 슬러그는 kebab-case.
+동시작업(병렬 세션·멀티 에이전트)에서 번호가 겹치지 않게 하려는 것이다.
 
-## `goal-impl {NNN}` 처리 방법 (SDD 구현 워크플로)
+**기존 spec을 덮어쓰지 않는다** — `mkdir -p`가 아니라 **`mkdir`(`-p` 금지)** 로 생성해 같은 경로가
+이미 있으면 EEXIST로 실패하게 한다(확인-후-생성의 경쟁 창 없이 덮어쓰기 불가). EEXIST면 **현재
+시각을 다시 읽어** 초까지 확장(`YYYYMMDDHHmmss`)해 재시도한다 — 시각이 진행하므로 곧 빈 경로에
+도달한다(같은 경로 재확인은 무한 반복 — 반드시 시각을 다시 읽는다).
+
+`mkdir`은 **경로**(프리픽스+슬러그) 충돌만 막는다. 같은 분에 만든, 슬러그가 다른 두 spec은 경로가
+달라 둘 다 성공하므로 **프리픽스는 유일하지 않을 수 있다**. 프리픽스로 폴더를 고르는 쪽(아래 규약
+1단계)이 모호성을 처리한다.
+
+기존 `NNN-`(3자리 일련번호) 폴더는 레거시로 유지하며 프리픽스 매칭 대상이다.
+
+## `goal-impl {prefix}` 처리 방법 (SDD 구현 워크플로)
 
 이 규약이 SDD 구현 완료 규칙의 정본이다. 논리 command ID는 `goal-impl`이고 호출은 runtime별로
-Claude Code `/goal-impl {NNN}`, Codex `$goal-impl {NNN}`, Gemini CLI 생성 wrapper `/goal-impl {NNN}`다.
+Claude Code `/goal-impl {prefix}`, Codex `$goal-impl {prefix}`, Gemini CLI 생성 wrapper `/goal-impl {prefix}`다.
 Claude Code built-in `/goal`(session completion condition)과는 이름·의미가 다르며 shadow하지 않는다.
 
-runtime이 명시 호출을 보증하고 원인자가 정확히 3자리 숫자일 때(또는 provenance 없는 runtime의 새
-확인이 있을 때) 다음을 수행한다:
+runtime이 명시 호출을 보증하고 원인자가 spec 폴더 프리픽스(timestamp 또는 레거시 3자리 숫자)일
+때(또는 provenance 없는 runtime의 새 확인이 있을 때) 다음을 수행한다:
 
-1. `specs/{NNN}-*/` 폴더를 찾는다(번호 프리픽스로 매칭, 슬러그는 몰라도 됨).
+1. `specs/{prefix}-*/` 폴더를 찾는다(프리픽스로 매칭, 슬러그는 몰라도 됨). **프리픽스가 2개 이상
+   폴더에 매칭되면**(같은 분·다른 슬러그, 레거시 번호 중복 등) 추측하지 말고 **어느 spec인지
+   사용자에게 묻는다** — 잘못된 폴더로 구현하는 것보다 되묻는 편이 낫다.
 2. 해당 폴더의 `goal.md` · `spec.md` · `plan.md`를 모두 읽는다.
 3. `plan.md`의 단계를 기준으로 구현한다 — FR/AC는 `spec.md`, 배경/의도는 `goal.md`를 따른다.
 4. 구현 후 AC를 테스트로 검증한다(TDD — 실패 테스트를 먼저 쓰고 통과시킨다).

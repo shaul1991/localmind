@@ -189,9 +189,9 @@ describe("goal-impl-completion-delegation: AC-4 (specs/051 I-5, D-6)", () => {
 
   it("AGENTS.md 절 제목·호출 문법이 goal-impl이다", () => {
     const a = rootAgents();
-    assert.match(a, /## `goal-impl \{NNN\}` 처리 방법/);
-    assert.match(a, /`\/goal-impl \{NNN\}`/);
-    assert.match(a, /\$goal-impl \{NNN\}/);
+    assert.match(a, /## `goal-impl \{prefix\}` 처리 방법/);
+    assert.match(a, /`\/goal-impl \{prefix\}`/);
+    assert.match(a, /\$goal-impl \{prefix\}/);
   });
 
   it("goal-impl 본문에 commit/push/CI 완료 규칙 자체 정의가 없고 AGENTS.md 참조만 있다", () => {
@@ -227,6 +227,20 @@ describe("goal-impl-completion-delegation: AC-4 (specs/051 I-5, D-6)", () => {
     assert.match(a, /main 직접 push는 금지/);
     assert.match(a, /PR을 생성한다/);
     assert.match(a, /머지는 사람이 한다/);
+  });
+
+  // timestamp 프리픽스 전환(2026-07-17)의 실제 규칙을 핀한다 — 형식(YYYYMMDDHHmm)만이 아니라
+  // "덮어쓰지 않는다"는 규칙 자체. 형식 문자열만 핀하면 규칙이 사라져도 green이 된다.
+  it("AGENTS.md specs 폴더 규약: 배타적 생성(-p 금지) + 시각 재독 재시도 + 프리픽스 모호성 가드", () => {
+    const flat = rootAgents().replace(/\s+/g, " ");
+    assert.ok(flat.includes("`mkdir`(`-p` 금지)"), "배타적 생성 규칙");
+    assert.ok(flat.includes("EEXIST"), "이미 있으면 실패 = 덮어쓰기 불가");
+    assert.ok(flat.includes("현재 시각을 다시 읽어"), "종료성 — 같은 경로 재확인이 아니라 시각 재독");
+    assert.ok(flat.includes("YYYYMMDDHHmmss"), "초까지 확장 형식");
+    // mkdir이 경로 충돌만 막는다는 정직한 한계 + 그로 인한 프리픽스 모호성의 실제 가드(중대-A).
+    assert.ok(flat.includes("프리픽스는 유일하지 않을 수 있다"), "프리픽스 모호성 표기");
+    assert.ok(flat.includes("어느 spec인지 사용자에게 묻는다"), "모호 프리픽스 → 사용자에게 질의(추측 금지)");
+    assert.ok(!/최댓값 \+ 1/.test(rootAgents()), "구 max+1 규칙 부재");
   });
 });
 
