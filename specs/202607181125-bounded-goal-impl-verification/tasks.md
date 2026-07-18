@@ -93,19 +93,19 @@ tracked evidence pointer 갱신은 Phase 6이 소유하므로 `files: 없음`과
 ## Phase 4 — 통합 검증·dogfood
 > depends-on: Phase 3 · files: 없음
 
-- [ ] **T4.1 (AC-10):** 관련 contract/scaffold 테스트, 전체 test와 build를 실행해 green을 확인한다.
-- [ ] **T4.2 (AC-4·5):** 첫 dogfood 직전에 matrix 11행을 최종 재검증해 candidate·시각·변경 여부와 함께
+- [x] **T4.1 (AC-10):** 관련 contract/scaffold 테스트, 전체 test와 build를 실행해 green을 확인한다.
+- [x] **T4.2 (AC-4·5):** 첫 dogfood 직전에 matrix 11행을 최종 재검증해 candidate·시각·변경 여부와 함께
       freeze한다. 필수 capability 부재·불완전 행은 green/skipped로 우회하지 않고 중단한다.
-- [ ] **T4.3 (AC-10):** temporary HOME/target에 packaged workflows를 배포해 canonical↔installed hash와
+- [x] **T4.3 (AC-10):** temporary HOME/target에 packaged workflows를 배포해 canonical↔installed hash와
       unmanaged 보호를 확인한다. 필요 시 repository 표준 deploy 명령으로 managed target을 갱신한다.
-- [ ] **T4.4 (AC-6·7):** temporary bare remote에서 up-to-date와 base-advanced 두 시나리오를 수행해
+- [x] **T4.4 (AC-6·7):** temporary bare remote에서 up-to-date와 base-advanced 두 시나리오를 수행해
       full SHA 기록, 통합, regression-before-review를 관찰한다.
-- [ ] **T4.5 (AC-5):** frozen matrix 뒤 evidence 선호·실제 제품/보안 결함·잘못된 stop condition을 각각
+- [x] **T4.5 (AC-5):** frozen matrix 뒤 evidence 선호·실제 제품/보안 결함·잘못된 stop condition을 각각
       판정하고 개정 시 reason/affected AC/invalid evidence가 남는지 확인한다.
-- [ ] **T4.6 (AC-9):** status-only PR/CI 기록은 tracked task가 아니고 실제 CI defect fix는 허용되는
+- [x] **T4.6 (AC-9):** status-only PR/CI 기록은 tracked task가 아니고 실제 CI defect fix는 허용되는
       representative handoff를 검토한다. 실제 fix는 새 candidate로 관련 테스트와 남은 round/추가 승인
       review를 통과해야 commit할 수 있음을 함께 확인한다.
-- [ ] **T4.7 (AC-6·11):** `package-lock.json`의 byte hash/stage와 이 slice의 scope-creep 지표를 확인한다.
+- [x] **T4.7 (AC-6·11):** `package-lock.json`의 byte hash/stage와 이 slice의 scope-creep 지표를 확인한다.
 
 ## Phase 5 — pre-review freshness·bounded self-review
 > depends-on: Phase 4 · files: `AGENTS.md`, `templates/sdd/AGENTS.md`, `templates/sdd/plan.template.md`, `templates/skills/goal-ready/SKILL.md`, `templates/skills/goal-impl/SKILL.md`, `templates/skills/goal-impl/references/tasks-format.md`, `templates/skills/sdd-self-review/SKILL.md`, `src/agents/skill-contract.test.ts`, `src/agents/workflow-docs.test.ts`, `src/scaffold.test.ts`, `docs/agents.md`, `docs/workflows.md`, `CHANGELOG.md`
