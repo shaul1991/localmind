@@ -263,9 +263,11 @@ Phase 5가 소유한다.
 - [x] **T5.5 — 최종 회귀:** `npm test`, `npm run build`를 다시 실행하고 clean 결과를 기록한다.
       — 최신 `origin/main` 병합 후 전체 `npm test` 922/922, `npm run build`, `git diff --check`가 모두
       green이다. targeted Deep Research 계약 25/25와 lifecycle 14/14도 전체 suite에 포함돼 통과했다.
-- [ ] **T5.6 — completion:** self-review clean이면 AGENTS.md 규약 7대로 feature branch commit
+- [x] **T5.6 — completion:** self-review clean이면 AGENTS.md 규약 7대로 feature branch commit
       (self-review 요약 포함) → push → draft PR 생성 → 전체 SHA로 CI 감시한다. main direct push,
-      merge, version stamp, tag, release는 하지 않는다.
+      merge, version stamp, tag, release는 하지 않는다. — feature branch를 push하고 draft PR
+      [#30](https://github.com/shaul1991/localmind/pull/30)을 생성했다. 최초 PR head의 CI run
+      `29624372001`은 Node 20/22/24 test·build·shell과 Docker build가 모두 green이다.
 
 ## AC 추적 요약
 
