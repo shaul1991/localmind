@@ -50,34 +50,34 @@ tracked evidence pointer 갱신은 Phase 6이 소유하므로 `files: 없음`과
 ## Phase 2A — repository governance·SDD template GREEN
 > depends-on: Phase 1 · files: `AGENTS.md`, `templates/sdd/AGENTS.md`, `templates/sdd/plan.template.md`
 
-- [ ] **T2A.1 (AC-2·3·6~10):** root `AGENTS.md`의 무제한 재검을 candidate 기반 automatic max 2,
+- [x] **T2A.1 (AC-2·3·6~10):** root `AGENTS.md`의 무제한 재검을 candidate 기반 automatic max 2,
       fresh one-round approval, blocker stop으로 교체하고 `origin/main`·GitHub 완료 경계를 추가한다.
-- [ ] **T2A.2 (AC-2·3·6~10):** scaffold `AGENTS.md`에 provider-neutral 동일 의미를 반영하되 특정 remote나
+- [x] **T2A.2 (AC-2·3·6~10):** scaffold `AGENTS.md`에 provider-neutral 동일 의미를 반영하되 특정 remote나
       CI provider를 강제하지 않는다.
-- [ ] **T2A.3 (AC-4·5):** plan template의 테스트 전략을 `AC / 검증 방법·레벨 / 최소 evidence /
+- [x] **T2A.3 (AC-4·5):** plan template의 테스트 전략을 `AC / 검증 방법·레벨 / 최소 evidence /
       통과·종료 조건 / 상태`로 바꾸고 확인→dogfood 전 freeze→제한적 개정 규칙을 넣는다.
-- [ ] **T2A.4:** 맡은 계약 테스트를 GREEN으로 만들고 두 AGENTS의 의미 drift를 diff로 점검한다.
+- [x] **T2A.4:** 맡은 계약 테스트를 GREEN으로 만들고 두 AGENTS의 의미 drift를 diff로 점검한다.
 
 ## Phase 2B — canonical workflow·task format GREEN
 > depends-on: Phase 1 · files: `templates/skills/goal-ready/SKILL.md`, `templates/skills/goal-impl/SKILL.md`, `templates/skills/goal-impl/references/tasks-format.md`, `templates/skills/sdd-self-review/SKILL.md`
 
-- [ ] **T2B.1 (AC-4·5):** `goal-ready`에 5열 matrix 작성·확인 책임과 post-push checkbox 생성 금지를
+- [x] **T2B.1 (AC-4·5):** `goal-ready`에 5열 matrix 작성·확인 책임과 post-push checkbox 생성 금지를
       추가하되 document critic의 기존 clean loop는 바꾸지 않는다.
-- [ ] **T2B.2 (AC-1~9):** `goal-impl`에 start/pre-review freshness, matrix readiness/freeze,
+- [x] **T2B.2 (AC-1~9):** `goal-impl`에 start/pre-review freshness, matrix readiness/freeze,
       candidate/round budget, fresh approval, blocker stop, versioned/external state 분리를 추가한다.
-- [ ] **T2B.3 (AC-9):** tasks format에 tracked phase는 publish handoff 준비까지만 두고 post-push
+- [x] **T2B.3 (AC-9):** tasks format에 tracked phase는 publish handoff 준비까지만 두고 post-push
       PR/CI는 checkbox 없는 external handoff로 다루는 형식을 추가한다.
-- [ ] **T2B.4 (AC-1~3):** `sdd-self-review` merged report에 candidate identity, round number,
+- [x] **T2B.4 (AC-1~3):** `sdd-self-review` merged report에 candidate identity, round number,
       independence, blockers/advisories, approval-needed를 포함하고 completion ownership은 넓히지 않는다.
-- [ ] **T2B.5 (AC-10):** canonical neutrality와 기존 TDD·dogfood·critical review 계약을 재검사하고
+- [x] **T2B.5 (AC-10):** canonical neutrality와 기존 TDD·dogfood·critical review 계약을 재검사하고
       맡은 계약 테스트를 GREEN으로 만든다.
 
 ## Phase 2 barrier — GREEN 통합
 > depends-on: Phase 2A, Phase 2B · files: 없음
 
-- [ ] **T2C.1 (AC-1~10):** Phase 2A/2B diff를 통합 검토해 용어·round semantics·matrix ownership·remote
+- [x] **T2C.1 (AC-1~10):** Phase 2A/2B diff를 통합 검토해 용어·round semantics·matrix ownership·remote
       위임 경계가 일치하는지 확인한다.
-- [ ] **T2C.2:** Phase 1의 세 테스트 파일을 함께 실행해 GREEN을 확인한다.
+- [x] **T2C.2:** Phase 1의 세 테스트 파일을 함께 실행해 GREEN을 확인한다.
 
 ## Phase 3 — 사람용 문서·CHANGELOG
 > depends-on: Phase 2 barrier · files: `docs/agents.md`, `docs/workflows.md`, `CHANGELOG.md`

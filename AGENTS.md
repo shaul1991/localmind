@@ -38,9 +38,22 @@ runtime이 명시 호출을 보증하고 원인자가 spec 폴더 프리픽스(t
    이상 폴더에 매칭되면**(같은 분·다른 슬러그, 레거시 번호 중복 등) 추측하지 말고 **어느
    spec인지 사용자에게 묻는다** — 잘못된 폴더로 구현하는 것보다 되묻는 편이 낫다.
 2. 해당 폴더의 `goal.md` · `spec.md` · `plan.md`를 모두 읽는다.
-3. `plan.md`의 단계를 기준으로 구현한다 — FR/AC는 `spec.md`, 배경/의도는 `goal.md`를 따른다.
-4. 구현 후 AC를 테스트로 검증한다(TDD — 실패 테스트를 먼저 쓰고 통과시킨다).
-5. **self-review를 반드시 수행한다 — 생략 불가.** 구현·테스트가 끝났다고 스스로 판단해 곧장
+3. **시작 base freshness gate**: 어떤 파일도 변경하거나 쓰기 전에 `origin/main`을 fetch하고 최신
+   **full SHA**를 기록한다. **latest origin/main base에서 분리한 feature branch**에서만 작업한다.
+   기존 dirty·unmanaged 파일은 그대로 보존하고 작업 범위와 겹치면 수정하지 말고 중단·보고한다.
+   fetch·정합이 실패하면 `freshness unverified`로 기준 SHA·원인·영향을 밝히고 사용자의 방향을
+   받기 전에는 fresh 또는 complete라고 단정하지 않는다.
+   그 뒤 `plan.md`의 단계를 기준으로 구현한다 — FR/AC는 `spec.md`, 배경/의도는 `goal.md`를 따른다.
+   verification matrix의 모든 AC가 검증 방법·evidence·종료 조건을 가진 정확히 한 행인지 readiness를
+   확인한다. 필수 검증 capability가 없거나 skipped/degraded이면 green이 아니라 blocker다. 첫
+   dogfood 직전에 matrix를 freeze하며, 이후 개정은 변경 이유·영향 AC·무효화할 evidence를 기록한다.
+4. 구현 후 AC를 테스트로 검증한다(TDD — 실패 테스트를 먼저 쓰고 통과시킨다). 테스트 green만으로
+   완료하지 않고 실제 실행을 관찰하는 dogfood를 반드시 수행한다.
+5. **최종 self-review 직전에 `origin/main`을 다시 fetch해 full SHA를 비교한다.** base 또는 기준 SHA가
+   이동했으면 repository 정책대로 정합·통합하고 영향받은 regression 테스트를 재실행해 green이 된
+   뒤에만 review를 시작한다. 조회·정합 실패는 `freshness unverified`로 원인·영향과 함께 보고하고
+   사용자의 방향 없이 진행하지 않는다.
+   **self-review를 반드시 수행한다 — 생략 불가.** 구현·테스트가 끝났다고 스스로 판단해 곧장
    "완료"로 보고하지 않는다.
    - 가능하면 구현 컨텍스트와 분리된 격리 리뷰어(runtime이 제공하는 격리 위임 능력)로 독립
      리뷰한다. 격리 위임을 쓸 수 없는 환경이면, 결함을 찾으러 간다는 자세로(자기확증
@@ -50,12 +63,17 @@ runtime이 명시 호출을 보증하고 원인자가 spec 폴더 프리픽스(t
      (4) 불필요한 복잡도·보안 취약점, (5) **사실 정확성 — 낡을 수 있는 사실(외부 API·SDK·
      라이브러리 거동·가격·모델명·버전·한도·표준)이 라이브 최신 공식문서(T1)로 검증됐는지.
      기억·주입 컨텍스트로 단정한 미검증 사실은 결함으로 본다**(아래 구현 규율 Live-Verify Facts).
-   - 명백한 결함이나 미충족 AC를 찾으면 즉시 수정하고 다시 review한다(clean해질 때까지 반복).
-     판단이 애매하거나 트레이드오프가 있는 사안만 사용자에게 보고한다.
-   - **재검 라운드 배칭(2026-07-05 보완)**: 기계적 수정(문구 동기화·카운트 갱신·주석 정정
-     류)은 건별로 재검을 돌리지 않고 **모아서 1라운드**로 재검한다 — 교차 검증 1라운드가
-     3~6분이라 직렬 다회전이 대기 시간의 주범(실측: 031·032에서 5라운드 중 3라운드가
-     한 줄짜리 동기화). 실질 결함 수정만 즉시 재검 대상.
+   - **candidate와 round:** review candidate는 코드·계약·필수 evidence의 한 세대다. 동일 candidate를
+     여러 독립 reviewer가 검수해도 findings를 합친 merged report 하나가 round 1개다. finding 수정으로
+     candidate가 바뀐 뒤 새 merged report를 만들 때만 다음 round로 센다.
+   - **유한한 자동 재검:** 자동 self-review는 **최대 2 round**다. round 1 blocker를 묶어 수정한 뒤
+     round 2를 실행할 수 있다. **round 2에도 blocker가 남으면 즉시 중단**하고 남은 blocker·수정·테스트
+     상태·다음 review 목적을 사용자에게 보고한다. 그 결과를 본 뒤의 명시적인 **fresh round approval**
+     만 유효하며, **승인 1개는 다음 round 1개만** 해제한다. 과거·포괄·암묵 승인과 승인 재사용은
+     무효다. 추가 round 뒤 blocker가 남으면 새 승인을 다시 받아야 한다.
+   - round 상한은 품질을 낮추는 성공 조건이 아니다. blocker·미충족 AC·실패한 필수 테스트가 하나라도
+     남으면 완료·commit·push로 진행하지 않는다. 판단이 애매하거나 트레이드오프가 있는 사안도
+     사용자에게 보고한다.
    - self-review에서 결함 0 + 테스트 green + AC 전부 충족(미충족분은 사용자에게 명시 보고)이
      확인된 뒤에야 "완료"로 보고한다.
    - **검증 표기를 세 문서에 남긴다(2026-07-05 보완)**: self-review가 clean으로 닫히면 결과를
@@ -65,12 +83,16 @@ runtime이 명시 호출을 보증하고 원인자가 spec 폴더 프리픽스(t
      (은폐 금지). 문서만 읽어도 "무엇이 실제로 됐는지"가 보여야 하며, 이 표기까지가 규약 7
      커밋에 포함된다.
 6. 세 문서 중 하나라도 없으면 진행 전에 사용자에게 알린다 — 문서 없이 구현하지 않는다.
-7. **self-review가 clean이면 feature 브랜치 커밋·push + PR 생성까지가 `goal-impl`의 완료
-   정의다**(치명·중대 0 + 테스트 green + 교차 검증 상태 명시 — 2026-07-05 회고 결정: clean
+7. **versioned completion state와 external completion state를 분리한다.** self-review가 clean이면
+   versioned 구현·테스트·문서 상태를 최종 commit에 닫고, feature 브랜치 push + PR 생성까지가
+   `goal-impl`의 완료 정의다(치명·중대 0 + 테스트 green + 교차 검증 상태 명시 — 2026-07-05 회고 결정: clean
    후 커밋을 거부한 사례가 0회라 별도 지시를 없앰). **main 직접 push는 금지 — feature
    브랜치에 커밋·push하고 PR을 생성한다. 머지는 사람이 한다**(2026-07-17 결정, D-6 — base
    PR 게이트를 규약7에 명문화). 커밋 메시지에 self-review 요약을 남긴다. clean이 아니면
-   커밋하지 않고 보고한다. push 뒤에는 CI 감시를 자동으로 걸어 **실패 시에만** 즉시
+   커밋하지 않고 보고한다. push 이후 PR/CI 상태는 **원격 GitHub가 SSoT**인 external completion
+   state다. PR 번호·CI 상태·run ID만 기록하기 위한 후속 commit은 만들지 않는다. **CI 실제 결함은
+   새 candidate**로 수정할 수 있지만 관련 테스트와 남은 round 또는 fresh approval review를 다시
+   통과해야 한다. push 뒤에는 CI 감시를 자동으로 걸어 **실패 시에만** 즉시
    알리고(green은 다음 보고에 부기), 끝난 감시 프로세스는 정리한다. **감시 방법(2026-07-05
    보완)**: 폴링 루프 대신 `gh run watch <run-id> --exit-status`(단일 블로킹 명령 — CI 평균
    2.5분이라 폴링·알림 왕복이 CI보다 비쌈)를 쓰고, run 조회는 **전체 sha**만 사용한다
