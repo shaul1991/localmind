@@ -16,13 +16,20 @@
 - [ ] 1. …
 - [ ] 2. …
 
-## 테스트 전략
-<!-- 각 AC를 어느 레벨 테스트(단위/통합/E2E)로 검증할지. TDD로 작성.
-     상태 컬럼은 self-review clean 후 [x] green(또는 실증 근거)으로 채운다. -->
-| AC | 테스트 레벨 | 방법 | 상태 |
-|---|---|---|---|
-| AC-1 | 단위 | … | [ ] |
-| AC-2 | 통합 | … | [ ] |
+## 검증 matrix — AC 1:1
+<!-- 모든 AC는 정확히 한 행에 둔다. TDD 검증 방법·레벨, 최소 evidence, 통과·종료 조건을
+     구현 전에 채워 readiness를 확인한다. 필수 검증 capability가 없거나 skipped/degraded이면
+     green이 아니라 미충족 blocker다.
+
+     첫 dogfood 직전에 matrix freeze를 수행한다. freeze 뒤 단순 evidence 형식 선호는 현재 완료의
+     blocker가 아니지만 재현된 제품·보안 결함은 blocker다. stop condition이 잘못됐거나 새 요구가
+     필요하면 임의 확장하지 말고 변경 이유, 영향 AC, 무효화할 evidence를 기록한 뒤 spec-first 절차와
+     영향 범위 재검증을 따른다.
+     상태 컬럼은 self-review clean 후 [x]와 실제 evidence pointer로 채운다. -->
+| AC | 검증 방법·레벨 | 최소 evidence | 통과·종료 조건 | 상태 |
+|---|---|---|---|---|
+| AC-1 | 단위 — … | … | …이면 종료 | [ ] |
+| AC-2 | 통합 — … | … | …이면 종료 | [ ] |
 
 ## Open questions
 <!-- plan 차원의 미결정(드라이버 선택·배치 등). -->

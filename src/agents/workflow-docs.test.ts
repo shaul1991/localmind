@@ -244,6 +244,75 @@ describe("goal-impl-completion-delegation: AC-4 (specs/051 I-5, D-6)", () => {
   });
 });
 
+describe("bounded-verification repository/scaffold contract: AC-2, AC-6~10", () => {
+  const goalImplSection = (rel: "AGENTS.md" | "templates/sdd/AGENTS.md") => {
+    const body = read(rel);
+    const start = body.indexOf("\n## `goal-impl {prefix}` 처리 방법");
+    assert.ok(start !== -1, `${rel}: goal-impl 절 없음`);
+    const end = body.indexOf("\n## ", start + 1);
+    return flat(end === -1 ? body.slice(start + 1) : body.slice(start + 1, end));
+  };
+
+  it("AC-2: root와 scaffold 모두 자동 최대 2 round 뒤 blocker에서 멈추고 fresh 승인 1개당 1회만 재개한다", () => {
+    for (const rel of ["AGENTS.md", "templates/sdd/AGENTS.md"] as const) {
+      const section = goalImplSection(rel);
+      assert.match(section, /(?:자동|automatic).{0,100}(?:최대|상한).{0,30}(?:2|두) (?:회|round|라운드)/i, `${rel}: 자동 최대 2 round 누락`);
+      assert.match(section, /(?:round|라운드) 2.{0,180}blocker.{0,180}(?:중단|멈춘)/i, `${rel}: round 2 blocker stop 누락`);
+      assert.match(section, /fresh (?:round )?approval/i, `${rel}: fresh approval 용어 누락`);
+      assert.match(section, /(?:승인|approval) (?:1개|하나|1회).{0,100}(?:round|라운드) (?:1개|하나|1회)/i, `${rel}: one-approval/one-round 누락`);
+      assert.doesNotMatch(section, /clean해질 때까지 반복|재검\(clean까지\)/, `${rel}: 무제한 자동 재검 문구 잔존`);
+    }
+  });
+
+  it("AC-6~8: root와 scaffold에 변경 전·최종 review 직전 두 freshness gate와 정직한 실패 경로가 있다", () => {
+    const root = goalImplSection("AGENTS.md");
+    const scaffold = goalImplSection("templates/sdd/AGENTS.md");
+
+    assert.match(root, /(?:변경|쓰기).{0,60}(?:전|전에).{0,160}origin\/main.{0,120}full SHA/i, "root: start origin/main full SHA gate 누락");
+    assert.match(root, /latest origin\/main.{0,140}feature branch/i, "root: latest base feature branch 누락");
+    assert.match(root, /dirty.{0,80}(?:unmanaged|관리되지 않은).{0,120}(?:보존|변경하지 않)/i, "root: dirty/unmanaged 보호 누락");
+    assert.match(scaffold, /(?:변경|쓰기).{0,60}(?:전|전에).{0,160}(?:원격 기본 브랜치|repository.{0,40}base).{0,120}full SHA/i, "scaffold: provider-neutral start gate 누락");
+
+    for (const [rel, section] of [["AGENTS.md", root], ["templates/sdd/AGENTS.md", scaffold]] as const) {
+      assert.match(section, /(?:최종|final) self-review (?:직전|전에).{0,160}(?:다시|재조회|fetch).{0,160}(?:full SHA|기준 SHA)/i, `${rel}: pre-review freshness gate 누락`);
+      assert.match(section, /(?:base|기준 SHA).{0,60}(?:이동|전진|달라).{0,180}(?:정합|통합).{0,140}(?:테스트|regression).{0,80}(?:재실행|green|통과)/i, `${rel}: moved-base integration/regression 누락`);
+      assert.match(section, /base.{0,80}(?:통합|integration).{0,120}candidate.{0,80}(?:변경|바뀌).{0,180}(?:matrix|매트릭스).{0,100}(?:영향 행|영향받는 행).{0,100}(?:재평가|다시 평가)/i, `${rel}: post-integration matrix 영향 행 재평가 누락`);
+      for (const required of ["테스트", "dogfood", "배포"]) {
+        assert.match(
+          section,
+          new RegExp(`(?:무효화|invalid).{0,80}(?:evidence|증거).{0,120}${required}.{0,140}(?:재실행|다시 실행)`, "i"),
+          `${rel}: post-integration ${required} evidence 재실행 누락`,
+        );
+      }
+      assert.match(section, /freshness unverified/i, `${rel}: unavailable 정직 보고 상태 누락`);
+      assert.match(section, /(?:사용자|user).{0,100}(?:방향|결정|지시)/i, `${rel}: unavailable 시 사용자 결정 요청 누락`);
+    }
+  });
+
+  it("AC-9: root와 scaffold가 remote PR/CI를 외부 SSoT로 두고 status-only commit을 금지한다", () => {
+    for (const rel of ["AGENTS.md", "templates/sdd/AGENTS.md"] as const) {
+      const section = goalImplSection(rel);
+      assert.match(section, /external completion state/i, `${rel}: external completion state 용어 누락`);
+      assert.match(section, /(?:PR|CI).{0,120}(?:원격|remote).{0,120}(?:SSoT|정본)/i, `${rel}: remote PR/CI SSoT 누락`);
+      assert.match(section, /(?:상태|번호|run ID).{0,160}(?:후속 )?(?:commit|커밋).{0,100}(?:금지|만들지 않)/i, `${rel}: status-only commit 금지 누락`);
+      assert.match(section, /CI.{0,100}(?:실제 )?(?:결함|defect).{0,160}(?:새 )?candidate.{0,160}(?:테스트|review|재검)/i, `${rel}: 실제 CI fix 재검 경계 누락`);
+    }
+  });
+
+  it("AC-10: root/scaffold 모두 TDD·필수 dogfood·독립 critic·전 AC green·feature PR gate를 유지한다", () => {
+    for (const rel of ["AGENTS.md", "templates/sdd/AGENTS.md"] as const) {
+      const body = read(rel);
+      assert.match(body, /TDD/);
+      assert.match(body, /실패 테스트를 먼저/);
+      assert.match(body, /도그푸드|dogfood/i);
+      assert.match(body, /독립 (?:리뷰|review)|독립 리뷰/);
+      assert.match(body, /테스트 green \+ AC 전부 충족|전 AC green/);
+      assert.match(body, /feature branch|feature 브랜치/);
+      assert.match(body, /PR 생성/);
+    }
+  });
+});
+
 describe("workflow-boundary: AC-18", () => {
   it("canonical/template/bridge/신규 소스에 실제 개인 절대경로·secret이 없다", () => {
     const scan: string[] = [];

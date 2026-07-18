@@ -6,6 +6,24 @@ localmind의 주요 변경 이력. 최신이 위.
 
 ## 미릴리스
 
+### goal-impl 검증 루프 유한화·증거 경계 (specs/202607181125)
+
+- **AC 검증 matrix** — 모든 AC에 검증 방법·레벨, 최소 evidence, 통과·종료 조건, 상태를 1:1로
+  연결한다. readiness를 확인하고 첫 dogfood 직전에 동결하며, 이후 단순 evidence 선호는 현재
+  blocker로 확장하지 않는다. 재현된 제품·보안 결함과 입증된 종료 조건 오류는 숨기지 않는다.
+- **유한한 자동 self-review** — 같은 candidate의 독립 reviewer findings는 merged report 하나를
+  round 하나로 센다. 자동 재검은 최대 2 round이고, 이후에는 현재 blocker와 다음 목적을 보고받은
+  사용자의 fresh 승인 1개당 추가 round 1개만 허용한다. blocker는 성공이나 완료로 취급하지 않는다.
+- **두 base freshness gate** — 파일을 쓰기 전과 최종 self-review 직전에 remote base의 full SHA를
+  확인한다. base가 이동하면 정합 후 regression을 재실행하며, 조회·정합 불가는
+  `freshness unverified`로 원인·영향과 함께 보고한다.
+- **versioned/external 상태 분리** — 최종 commit에서 구현·테스트·문서·publish 준비를 닫고, push 뒤
+  PR/CI 상태는 원격 시스템을 SSoT로 삼는다. 상태만 기록하는 후속 commit은 만들지 않으며, 실제 CI
+  결함 수정은 새 candidate로 테스트와 남은 round 또는 fresh 승인 review를 다시 통과한다.
+- **품질 gate 불변** — TDD, 필수 dogfood, 강한 최종 critic, 전 AC·필수 테스트 green, feature PR
+  gate는 약화하지 않는다. 2-round 제한은 `goal-impl` 구현 self-review에만 적용하며 `goal-ready`
+  문서 critic과 Deep Research final critic은 각자의 계약을 유지한다.
+
 ### Provider-neutral Deep Research 워크플로 (specs/202607172313)
 
 - **공용 논리 command ID** — `deep-research` 하나를 Agent Skills 정본으로 추가했다. Claude Code는

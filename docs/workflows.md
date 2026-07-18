@@ -140,6 +140,96 @@ worker 등)별로 위임할 페르소나를 확정하는 **온보딩·재설정 
 위 표에 없는 런타임(향후 추가되는 Agent Skills 호환 도구 등)은 제품명을 소문자 kebab-case로
 바꾼 값을 그대로 씁니다. 애매하면 세션이 추측하지 않고 사용자에게 직접 물어 확정합니다.
 
+## SDD 구현 검증 — 증거를 먼저 고정하고 유한하게 닫기
+
+> **결론** — `goal-impl`은 구현 전에 최신 base를 확인하고, 모든 AC의 검증 방법·evidence·종료
+> 조건을 준비합니다. 첫 dogfood 직전에 그 범위를 동결한 뒤 실제 실행과 최대 2회의 자동
+> self-review로 검증합니다. blocker가 남으면 성공으로 낮춰 부르지 않고 사용자에게 보고해
+> 멈추며, push 이후 PR/CI의 동적 상태는 원격 시스템이 정본입니다.
+
+```mermaid
+flowchart LR
+    A[시작 base 확인] --> B[AC 검증 matrix readiness]
+    B --> C[TDD 구현]
+    C --> D[matrix 최종 확인·freeze]
+    D --> E[첫 dogfood]
+    E --> F[최종 review 직전 base 재확인]
+    F --> G[self-review round 1]
+    G -->|blocker 수정| H[self-review round 2]
+    G -->|clean| I[versioned closure]
+    H -->|clean| I
+    H -->|blocker 잔존| J[중단·fresh approval 요청]
+    I --> K[push·PR·원격 CI]
+```
+
+### 1. 쓰기 전에 base와 검증 가능성을 확인합니다
+
+첫 파일을 고치기 전에 repository가 정한 remote base를 조회해 확인 시각과 **full SHA**를 남기고,
+latest base에서 분리된 feature branch인지 확인합니다. 기존 dirty·unmanaged 자산은 보존하며 작업
+대상과 겹치면 고치지 않고 멈춥니다.
+
+같은 readiness 단계에서 `plan.md`의 verification matrix도 확인합니다. spec의 모든 AC는 정확히
+한 행이어야 하며, 각 행은 다음 다섯 칸을 빠짐없이 가집니다.
+
+| AC | 검증 방법·레벨 | 최소 evidence | 통과·종료 조건 | 상태 |
+|---|---|---|---|---|
+| 예: AC-1 | 계약 테스트 + 실제 실행 | 테스트 로그와 관찰 기록 | 필수 테스트 green + 기대 상태 관찰 | Pending |
+
+필수 도구나 환경이 없어 검증할 수 없다면 `skipped`나 간이 검증을 green으로 바꾸지 않고
+**blocker**로 보고합니다. 이 matrix는 `goal-ready`에서 작성·확인하고 `goal-impl`이 readiness를
+재검사합니다.
+
+### 2. 첫 dogfood 직전에 matrix를 동결합니다
+
+구현 중 발견한 내용을 matrix에 반영한 뒤, **첫 dogfood 바로 직전** 검증 방법·최소 evidence·종료
+조건을 최종 확인하고 freeze합니다. 이 시점부터 단순히 “이런 증거도 있으면 좋겠다”는 새 선호는
+현재 작업의 blocker가 아니라 advisory 또는 후속 과제입니다. 그래야 검수할 때마다 증거 요구가
+늘어나 dogfood가 끝나지 않는 일을 막을 수 있습니다.
+
+동결은 실제 결함을 숨기는 장치가 아닙니다. 재현된 제품·보안 결함은 언제나 blocker입니다. 기존
+종료 조건이 틀렸다고 입증되면 변경 이유·영향받는 AC·무효가 되는 evidence를 먼저 기록하고 해당
+검증을 다시 실행합니다. 새로운 요구나 AC라면 사용자 확인 후 spec→plan→matrix 순서로 먼저
+고칩니다.
+
+### 3. 최종 review 직전 base를 다시 확인합니다
+
+dogfood와 테스트가 끝나면 self-review를 시작하기 **직전** 같은 remote base의 full SHA를 다시
+조회합니다. base가 전진했으면 repository 정책에 따라 정합·통합하고, 영향받는 필수 regression을
+다시 green으로 만든 뒤에야 review round 1을 시작합니다. 이 통합으로 candidate가 바뀌면 frozen
+matrix의 영향 행을 다시 평가하고, 무효가 된 테스트·dogfood·배포 evidence를 새 candidate에서
+재실행합니다. stop condition 자체가 틀린 경우에는 matrix amendment 기록을 먼저 남깁니다.
+
+remote가 없거나 조회·통합에 실패하면 상태를 **`freshness unverified`**로 표시하고 기준 SHA·원인·
+영향을 설명합니다. 이때는 fresh 또는 complete라고 단정하지 않으며, 사용자의 방향을 받기 전에
+다음 단계로 가지 않습니다.
+
+### 4. 자동 self-review는 최대 두 round입니다
+
+review하는 코드·계약·필수 evidence 한 세대가 **candidate**입니다. 같은 candidate를 격리 reviewer
+여러 명이 살펴도 findings를 합친 merged report 하나가 round 하나입니다. finding이나 실제 CI 결함을
+고쳐 candidate가 달라지고 새 merged report를 만들 때만 다음 round로 셉니다.
+
+- round 1이 clean이면 종료합니다. blocker를 고쳤을 때만 변경된 candidate로 round 2를 자동 실행합니다.
+- round 2에도 blocker가 남으면 성공 처리하지 않습니다. 남은 findings·수정·테스트 상태와 다음
+  review 목적을 보고하고 멈춥니다.
+- 그 보고 뒤 사용자가 명시한 **fresh round approval 1개는 다음 round 1개만** 허용합니다. 실행하면
+  승인은 소진되며, 추가 round에도 blocker가 남으면 새 승인을 다시 받아야 합니다.
+
+이는 자동 반복 횟수의 상한이지 품질 하향이 아닙니다. blocker·미충족 AC·실패한 필수 테스트가
+하나라도 있으면 완료할 수 없습니다. 이 규칙은 `goal-impl` 구현 self-review에 적용되며,
+`goal-ready` 문서 critic과 Deep Research final critic은 각자의 독립된 종료 계약을 따릅니다.
+
+### 5. commit으로 닫을 상태와 원격 상태를 분리합니다
+
+최종 commit 전에 확정할 수 있는 코드·테스트·문서·publish handoff 준비가 **versioned completion
+state**입니다. tracked task checkbox는 여기까지만 닫습니다. push 뒤 생기는 PR 번호·review·CI run과
+성공/실패는 **external completion state**이며 repository가 정한 원격 PR/CI 시스템을 SSoT로 삼습니다.
+
+따라서 PR 번호나 CI 성공 상태만 기록하려는 후속 commit, 또는 external task를 `[x]`로 바꾸기 위한
+commit은 만들지 않습니다. CI가 실제 결함을 찾았다면 예외적으로 코드를 고칠 수 있지만, 그것은
+새 candidate입니다. 관련 테스트를 다시 통과하고 남아 있는 round 예산 또는 새 fresh approval에
+따른 review를 거친 뒤 commit하며, 새 head의 원격 CI가 다시 정본이 됩니다.
+
 ## SDD 병렬 오케스트레이션 — tasks 하나로 여러 worker 동시에 (specs/052)
 
 > `goal-impl`은 `tasks.md`의 phase 선언을 읽어 **의존 DAG**를 세우고, 조건이 맞으면 여러

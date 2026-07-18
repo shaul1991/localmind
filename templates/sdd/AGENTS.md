@@ -37,9 +37,25 @@ runtime이 명시 호출을 보증하고 원인자가 spec 폴더 프리픽스(t
    폴더에 매칭되면**(같은 분·다른 슬러그, 레거시 번호 중복 등) 추측하지 말고 **어느 spec인지
    사용자에게 묻는다** — 잘못된 폴더로 구현하는 것보다 되묻는 편이 낫다.
 2. 해당 폴더의 `goal.md` · `spec.md` · `plan.md`를 모두 읽는다.
-3. `plan.md`의 단계를 기준으로 구현한다 — FR/AC는 `spec.md`, 배경/의도는 `goal.md`를 따른다.
-4. 구현 후 AC를 테스트로 검증한다(TDD — 실패 테스트를 먼저 쓰고 통과시킨다).
-5. **self-review를 반드시 수행한다 — 생략 불가.** 구현·테스트가 끝났다고 스스로 판단해 곧장
+3. **시작 base freshness gate**: 어떤 파일도 변경하거나 쓰기 전에 repository가 설정한 upstream의
+   **원격 기본 브랜치**를 조회하고 latest **full SHA**를 기록한다. 그 base에서 분리한 feature branch에서만
+   작업한다. 기존 dirty·unmanaged 파일은 그대로 보존하고 작업 범위와 겹치면 수정하지 말고 중단·보고한다.
+   remote 조회·정합이 실패하면 `freshness unverified`로 기준 SHA·원인·영향을 밝히고 사용자의 방향을
+   받기 전에는 fresh 또는 complete라고 단정하지 않는다.
+   그 뒤 `plan.md`의 단계를 기준으로 구현한다 — FR/AC는 `spec.md`, 배경/의도는 `goal.md`를 따른다.
+   verification matrix의 모든 AC가 검증 방법·evidence·종료 조건을 가진 정확히 한 행인지 readiness를
+   확인한다. 필수 검증 capability가 없거나 skipped/degraded이면 green이 아니라 blocker다. 첫
+   dogfood 직전에 matrix를 freeze하며, 이후 개정은 변경 이유·영향 AC·무효화할 evidence를 기록한다.
+4. 구현 후 AC를 테스트로 검증한다(TDD — 실패 테스트를 먼저 쓰고 통과시킨다). 테스트 green만으로
+   완료하지 않고 실제 실행을 관찰하는 dogfood를 반드시 수행한다.
+5. **최종 self-review 직전에 원격 기본 브랜치를 다시 fetch해 full SHA를 비교한다.** base 또는 기준
+   SHA가 이동했으면 repository 정책대로 정합·통합하고 영향받은 regression 테스트를 재실행해 green이
+   된 뒤에만 review를 시작한다. **base 통합으로 candidate가 변경되면 frozen matrix의 영향 행을 재평가하고,
+   무효화된 evidence(테스트·dogfood·배포)를 현재 candidate에서 재실행한다.** stop condition 자체가
+   틀렸다면 matrix amendment 규칙에 따라 이유·영향 AC·무효 evidence를 먼저 기록한다.
+   조회·정합 실패는 `freshness unverified`로 원인·영향과 함께 보고하고
+   사용자의 방향 없이 진행하지 않는다.
+   **self-review를 반드시 수행한다 — 생략 불가.** 구현·테스트가 끝났다고 스스로 판단해 곧장
    "완료"로 보고하지 않는다.
    - 가능하면 구현 컨텍스트와 분리된 서브에이전트로 독립 리뷰한다. 분리된 에이전트를 띄울
      수 없는 환경이면, 결함을 찾으러 간다는 자세로(자기확증 편향 배제) 직접 재검토한다.
@@ -48,8 +64,17 @@ runtime이 명시 호출을 보증하고 원인자가 spec 폴더 프리픽스(t
      (4) 불필요한 복잡도·보안 취약점, (5) **사실 정확성 — 낡을 수 있는 사실(외부 API·SDK·
      라이브러리 거동·가격·모델명·버전·한도·표준)이 라이브 최신 공식문서로 검증됐는지. 기억으로
      단정한 미검증 사실은 결함으로 본다**(아래 구현 규율 Live-Verify Facts).
-   - 명백한 결함이나 미충족 AC를 찾으면 즉시 수정하고 다시 review한다(clean해질 때까지 반복).
-     판단이 애매하거나 트레이드오프가 있는 사안만 사용자에게 보고한다.
+   - **candidate와 round:** review candidate는 코드·계약·필수 evidence의 한 세대다. 동일 candidate를
+     여러 독립 reviewer가 검수해도 findings를 합친 merged report 하나가 round 1개다. finding 수정으로
+     candidate가 바뀐 뒤 새 merged report를 만들 때만 다음 round로 센다.
+   - **유한한 자동 재검:** 자동 self-review는 **최대 2 round**다. round 1 blocker를 묶어 수정한 뒤
+     round 2를 실행할 수 있다. **round 2에도 blocker가 남으면 즉시 중단**하고 남은 blocker·수정·테스트
+     상태·다음 review 목적을 사용자에게 보고한다. 그 결과를 본 뒤의 명시적인 **fresh round approval**
+     만 유효하며, **승인 1개는 다음 round 1개만** 해제한다. 과거·포괄·암묵 승인과 승인 재사용은
+     무효다. 추가 round 뒤 blocker가 남으면 새 승인을 다시 받아야 한다.
+   - round 상한은 품질을 낮추는 성공 조건이 아니다. blocker·미충족 AC·실패한 필수 테스트가 하나라도
+     남으면 완료·commit·push로 진행하지 않는다. 판단이 애매하거나 트레이드오프가 있는 사안도
+     사용자에게 보고한다.
    - **검증 표기를 세 문서에 남긴다**: self-review가 clean으로 닫히면 결과를 보고문에만 쓰지
      말고 문서 자체에 체크로 표기한다 — `spec.md`의 FR·AC 각 항목에 `[x]` + 검증 근거(테스트
      시나리오/실증 방법), `plan.md`의 단계·테스트 전략 항목 체크, `goal.md`의 Success metrics
@@ -58,6 +83,12 @@ runtime이 명시 호출을 보증하고 원인자가 spec 폴더 프리픽스(t
    - self-review에서 결함 0 + 테스트 green + AC 전부 충족(미충족분은 사용자에게 명시 보고)이
      확인된 뒤에야 "완료"로 보고한다.
 6. 세 문서 중 하나라도 없으면 진행 전에 사용자에게 알린다 — 문서 없이 구현하지 않는다.
+7. **versioned completion state와 external completion state를 분리한다.** clean 뒤에는 repository가
+   정한 feature branch commit·push·PR 생성 gate를 따른다. push 이후 PR/CI 상태는 **원격 PR/CI
+   시스템이 SSoT**인 external completion state다. PR 번호·CI 상태·run ID만 기록하기 위한 후속
+   commit은 만들지 않는다. **CI 실제 결함은 새 candidate**로 수정할 수 있지만 관련 테스트와 남은
+   round 또는 fresh approval review를 다시 통과해야 한다. remote·provider별 세부 절차는 repository
+   정책이 정본이며, blocker 0 + 테스트 green + AC 전부 충족과 feature PR gate는 약화하지 않는다.
 
 ## 구현 규율
 

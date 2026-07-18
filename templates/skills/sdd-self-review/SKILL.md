@@ -18,7 +18,10 @@ SDD 구현이 끝나면 이 절차로 self-review를 수행한다. 역할은 능
 
 ## 2. 입력
 
-해당 spec의 모든 FR/AC와 실제 변경(diff)·테스트 근거를 입력으로 받는다 — 경로를 명시해 직접 읽는다.
+해당 spec의 모든 FR/AC와 실제 변경(diff)·테스트 근거, **review candidate** identity와 요청받은
+**review round** 번호를 입력으로 받는다 — 경로를 명시해 직접 읽는다. candidate identity는 commit
+SHA 또는 diff/evidence를 결정적으로 식별하는 값이어야 하며, round 예산과 추가 승인 여부는 이
+워크플로가 아니라 호출한 SDD 구현 워크플로가 소유한다.
 
 ## 3. 적대적 크리틱 검토(필수)
 
@@ -45,10 +48,20 @@ SDD 구현이 끝나면 이 절차로 self-review를 수행한다. 역할은 능
 
 발견을 하나의 self-review 보고로 병합한다.
 
+- 같은 review candidate를 여러 격리 reviewer가 검토해도 findings를 **병합 report 하나**로 합치며,
+  이것이 **review round 하나**다. reviewer 수·finding 수는 round 수를 늘리지 않는다. 서로 다른
+  candidate의 findings를 같은 report에 섞지 않는다.
+
 - **차단(blocking)**: 어느 쪽이 찾았든 치명·중대 결함과 미충족 AC — SDD 구현 워크플로의 수정→재검
   루프로 넘긴다(이 워크플로는 보고까지만).
 - **조언(advisory)**: 참고 표기만 한다.
 - 축을 함께 표기한다: 추적성·커버리지·정확성·단순성/보안·사실 정확성.
+- merged report에는 다음 필드를 항상 포함한다:
+  `candidate-id`, `round`, `independence`, `blockers`, `advisories`, `approval-needed`.
+  `approval-needed`는 호출자가 전달한 자동 예산 상태와 blocker 여부를 다음 상태표로 판정한다.
+  **round 1 + blocker → false; round 2 + blocker → true; round 3+ + blocker → true; 어느 round든
+  clean → false**다. round 3+에 blocker가 남으면 **새 승인(fresh approval)을 다시 요청**한다.
+  이 필드는 승인하거나 다음 round를 실행하는 권한이 아니라 중단 신호다.
 
 ## 6. 독립성 상태 정직 보고
 
