@@ -114,8 +114,8 @@ tracked evidence pointer 갱신은 Phase 6이 소유하므로 `files: 없음`과
       통합하고 전체 regression을 재실행한다. 실패·dirty 충돌이면 review 전에 중단·보고한다.
 - [x] **T5.2 (AC-1·2·10):** isolated critic(s)의 findings를 같은 candidate 기준 merged round 1 report로
       만들고 FR/AC·evidence·정확성·단순성/보안·Live-Verify를 검수한다.
-- [ ] **T5.3 (AC-1·2):** round 1 blocker를 수정해 candidate가 바뀐 경우에만 merged round 2를 실행한다.
-- [ ] **T5.4 (AC-2·3):** round 2 blocker가 남으면 자동 중단하고 goal/next round/findings/fix·verification
+- [x] **T5.3 (AC-1·2):** round 1 blocker를 수정해 candidate가 바뀐 경우에만 merged round 2를 실행한다.
+- [x] **T5.4 (AC-2·3):** round 2 blocker가 남으면 자동 중단하고 goal/next round/findings/fix·verification
       scope를 보고해 fresh approval 1회를 요청한다. 승인 전 완료 task를 체크하지 않는다.
 - [ ] **T5.5 (AC-10·11):** blocker 0, 전 AC green, required evidence 충족과 실제 independence를 확인한다.
 
