@@ -110,7 +110,7 @@ tracked evidence pointer 갱신은 Phase 6이 소유하므로 `files: 없음`과
 ## Phase 5 — pre-review freshness·bounded self-review
 > depends-on: Phase 4 · files: `AGENTS.md`, `templates/sdd/AGENTS.md`, `templates/sdd/plan.template.md`, `templates/skills/goal-ready/SKILL.md`, `templates/skills/goal-impl/SKILL.md`, `templates/skills/goal-impl/references/tasks-format.md`, `templates/skills/sdd-self-review/SKILL.md`, `src/agents/skill-contract.test.ts`, `src/agents/workflow-docs.test.ts`, `src/scaffold.test.ts`, `docs/agents.md`, `docs/workflows.md`, `CHANGELOG.md`
 
-- [ ] **T5.1 (AC-7·8):** `origin/main`을 다시 fetch해 full SHA를 비교한다. 전진했다면 repository 정책대로
+- [x] **T5.1 (AC-7·8):** `origin/main`을 다시 fetch해 full SHA를 비교한다. 전진했다면 repository 정책대로
       통합하고 전체 regression을 재실행한다. 실패·dirty 충돌이면 review 전에 중단·보고한다.
 - [ ] **T5.2 (AC-1·2·10):** isolated critic(s)의 findings를 같은 candidate 기준 merged round 1 report로
       만들고 FR/AC·evidence·정확성·단순성/보안·Live-Verify를 검수한다.
