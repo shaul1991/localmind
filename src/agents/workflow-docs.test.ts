@@ -166,6 +166,9 @@ describe("deep-research discoverability docs: AC-2·14·16 (specs/202607172313)"
     assert.match(section, /(?:격리 (?:위임|연구자|critic)|isolated (?:delegation|researcher|critic)).{0,220}(?:없|미지원|불가능).{0,220}(?:not independent|비독립|현재 session|current-session)/i, "isolated delegation fallback 설명 누락");
     assert.match(section, /Gemini CLI/i, "Gemini CLI 지원 범위 누락");
     assert.match(section, /Antigravity.{0,220}(?:전용 (?:adapter|어댑터)|정식 target|정식 대상).{0,160}(?:범위 밖|후속|추후|포함하지 않)/i, "Antigravity 전용 adapter 비목표 설명 누락");
+    assert.doesNotMatch(agents, /Gemini CLI.{0,160}(?:실행 전|pre-execution).{0,80}hook이 없/i, "Gemini CLI에 실행 전 hook이 없다는 낡은 사실을 쓰면 안 됨");
+    assert.match(agents, /Gemini CLI.{0,220}(?:공식 )?(?:실행 전 )?hook.{0,120}(?:존재|지원)/i, "Gemini CLI의 공식 hook 존재 설명 누락");
+    assert.match(agents, /LocalMind.{0,220}(?:wrapper|래퍼).{0,180}hook.{0,120}(?:설치하거나 등록하지 않|미등록).{0,180}(?:instruction-level|지침 수준)/i, "LocalMind wrapper가 hook을 등록하지 않아 instruction-level이라는 경계 누락");
   });
 
   it("추상 실행 등급과 설치별 binding을 분리하고 final critic 다운시프트를 금지한다", () => {

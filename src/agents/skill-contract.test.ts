@@ -356,11 +356,21 @@ describe("deep-research behavior contract: AC-4~12, AC-16", () => {
       "research brief",
       "질문·목적·대상 독자·기준 시점",
       "포함/제외 범위·선호 출처·산출물·종료 조건",
+      "claim 종류별 우선 source",
+      "live-verify 계획",
+      "사용자에게 짧게 제시",
       "결과를 크게 바꿀 미결정만",
       "완전한 brief",
       "질문 없이 바로 진행",
     ]);
-    requiresOrder(text, "brief-before-research barrier", ["research brief", "사용자 확인", "broad live lookup·research fan-out"]);
+    requiresOrder(text, "brief-and-strategy-before-research barrier", [
+      "research brief에",
+      "claim 종류별 우선 source",
+      "live-verify 계획",
+      "사용자에게 짧게 제시",
+      "사용자 확인을 받는다",
+      "broad live lookup·research fan-out",
+    ]);
   });
 
   it("선행 project·제공 자료·연결 source·persistent knowledge를 먼저 회수하고 unavailable fallback을 보고한다", () => {

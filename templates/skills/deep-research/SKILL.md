@@ -19,15 +19,16 @@ source lookup·fan-out·write는 0건이어야 한다.
 ## 2. Research brief 확인
 
 research brief에 질문·목적·대상 독자·기준 시점, 포함/제외 범위·선호 출처·산출물·종료 조건을 가능한
-만큼 재진술한다. 결과를 크게 바꿀 미결정만 짧게 질문하고 사용자 확인을 받는다. 사용자 확인 전에는
-broad live lookup·research fan-out을 시작하지 않는다. 사용자가 완전한 brief와 질문 없이 바로 진행
-하라는 지시를 함께 줬다면 그 지시를 확인 근거로 기록하고 진행한다.
+만큼 재진술한다. claim 종류별 우선 source와 live-verify 계획도 함께 사용자에게 짧게 제시한다. 결과를
+크게 바꿀 미결정만 짧게 질문하고 사용자 확인을 받는다. 사용자 확인 전에는 broad live lookup·research
+fan-out을 시작하지 않는다. 사용자가 완전한 brief와 질문 없이 바로 진행하라는 지시를 함께 줬다면 그
+지시를 확인 근거로 기록하고 진행한다.
 
 ## 3. 선행 문맥과 source strategy
 
-적용 가능한 project instruction, 제공 파일, 연결 source, persistent knowledge에서 선행 조사·결정을
-먼저 확인한다. 필요한 능력이나 권한이 없어 접근할 수 없으면 그 단계를 생략하고 fallback을 보고한다.
-그 뒤 claim 종류별 우선 source와 live-verify 필요 여부를 정한다.
+확인된 brief에 맞춰 적용 가능한 project instruction, 제공 파일, 연결 source, persistent knowledge에서
+선행 조사·결정을 먼저 확인한다. 필요한 능력이나 권한이 없어 접근할 수 없으면 그 단계를 생략하고
+fallback을 보고한다. 그 뒤 제시한 claim 종류별 우선 source와 live-verify 필요 여부를 구체화한다.
 
 ## 4. 질문 분해와 실행 등급
 
