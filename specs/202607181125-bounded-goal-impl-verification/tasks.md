@@ -117,15 +117,15 @@ tracked evidence pointer 갱신은 Phase 6이 소유하므로 `files: 없음`과
 - [x] **T5.3 (AC-1·2):** round 1 blocker를 수정해 candidate가 바뀐 경우에만 merged round 2를 실행한다.
 - [x] **T5.4 (AC-2·3):** round 2 blocker가 남으면 자동 중단하고 goal/next round/findings/fix·verification
       scope를 보고해 fresh approval 1회를 요청한다. 승인 전 완료 task를 체크하지 않는다.
-- [ ] **T5.5 (AC-10·11):** blocker 0, 전 AC green, required evidence 충족과 실제 independence를 확인한다.
+- [x] **T5.5 (AC-10·11):** blocker 0, 전 AC green, required evidence 충족과 실제 independence를 확인한다.
 
 ## Phase 6 — versioned closure·publish handoff 준비
 > depends-on: Phase 5 · files: `specs/202607181125-bounded-goal-impl-verification/goal.md`, `specs/202607181125-bounded-goal-impl-verification/spec.md`, `specs/202607181125-bounded-goal-impl-verification/plan.md`, `specs/202607181125-bounded-goal-impl-verification/tasks.md`
 
-- [ ] **T6.1 (AC-1~11):** clean report 근거로 goal SM, spec FR/AC, plan phase/matrix, tasks 완료 항목을
+- [x] **T6.1 (AC-1~11):** clean report 근거로 goal SM, spec FR/AC, plan phase/matrix, tasks 완료 항목을
       체크한다. 의미 변경이 생기면 기계적 표기로 가장하지 않고 candidate 변경으로 처리한다.
-- [ ] **T6.2 (AC-10·11):** 최종 diff/check, 전체 test/build, packaged hash, dirty asset 보존을 재확인한다.
-- [ ] **T6.3 (AC-9):** 모든 versioned 변경과 PR 본문용 self-review 요약·evidence pointer가 준비됐고
+- [x] **T6.2 (AC-10·11):** 최종 diff/check, 전체 test/build, packaged hash, dirty asset 보존을 재확인한다.
+- [x] **T6.3 (AC-9):** 모든 versioned 변경과 PR 본문용 self-review 요약·evidence pointer가 준비됐고
       post-push 동적 상태를 tracked 문서에 되쓸 필요가 없음을 확인한다.
 
 ## External handoff — tracked checkbox 범위 밖

@@ -69,19 +69,21 @@ PR CI 성공을 versioned 작업 원장에 다시 기록하는 후속 커밋은 
 
 ## Success metrics — 성공 지표
 
-- [ ] **SM-1:** 기존 프로젝트 정본·새 프로젝트 기본·workflow 계약에서 self-review 자동 상한 2라운드,
-      추가 라운드별 fresh 사용자 승인, blocker 잔존 시 완료 금지가 같은 의미로 고정된다.
-- [ ] **SM-2:** 문서 준비 단계의 plan이 모든 AC에 대해 검증 방식·증거·종료 조건을 포함하고, 구현
-      workflow가 dogfood 직전 동결 여부를 확인한다.
-- [ ] **SM-3:** 시작 전과 최종 review 직전 base freshness gate, remote 조회 불가·dirty 충돌의
-      정직한 중단/승인 경로가 자동 테스트 가능한 계약으로 존재한다.
-- [ ] **SM-4:** versioned task 진행 상태와 post-push PR/CI 상태의 경계가 명문화되고, 완료 결과만을
-      기록하기 위한 후속 commit을 금지하는 계약 테스트가 통과한다.
-- [ ] **SM-5:** 이 slice의 publish handoff 전 검증에서 동결 matrix 밖 증거 선호로 늘어난 blocker,
+- [x] **SM-1:** 기존 프로젝트 정본·새 프로젝트 기본·workflow 계약에서 self-review 자동 상한 2라운드,
+      추가 라운드별 fresh 사용자 승인, blocker 잔존 시 완료 금지가 같은 의미로 고정된다. 검증: bounded
+      contract 13/13 + merged review round 1~3.
+- [x] **SM-2:** 문서 준비 단계의 plan이 모든 AC에 대해 검증 방식·증거·종료 조건을 포함하고, 구현
+      workflow가 dogfood 직전 동결 여부를 확인한다. 검증: 11행 matrix readiness/freeze + amendment A-1.
+- [x] **SM-3:** 시작 전과 최종 review 직전 base freshness gate, remote 조회 불가·dirty 충돌의
+      정직한 중단/승인 경로가 자동 테스트 가능한 계약으로 존재한다. 검증: 실제 fetch 3회 + synthetic
+      up-to-date/advanced/unavailable 시나리오.
+- [x] **SM-4:** versioned task 진행 상태와 post-push PR/CI 상태의 경계가 명문화되고, 완료 결과만을
+      기록하기 위한 후속 commit을 금지하는 계약 테스트가 통과한다. 검증: task-format negative contract.
+- [x] **SM-5:** 이 slice의 publish handoff 전 검증에서 동결 matrix 밖 증거 선호로 늘어난 blocker,
       사용자 승인 없는 3차 review, stale base 최종 재작업, 외부 상태를 되쓰기 위한 필수 tracked task가
-      모두 0건이다.
-- [ ] **SM-6:** 전체 테스트·빌드·packaged workflow 배포가 green이고 기존 TDD·도그푸드·독립
-      critic·PR gate가 약화되지 않는다.
+      모두 0건이다. 검증: round 3 fresh 승인 1회, scope/stale/external mirror 지표 0건.
+- [x] **SM-6:** 전체 테스트·빌드·packaged workflow 배포가 green이고 기존 TDD·도그푸드·독립
+      critic·PR gate가 약화되지 않는다. 검증: 935/935, build pass, deploy unchanged, round 3 blocker 0.
 
 ## Non-goals — 비목표
 

@@ -9,7 +9,7 @@ audience: both
 
 ## Status
 
-Draft — 2026-07-18 채택된 개선안을 명세로 변환했으며 사용자 최종 확인 전이다.
+Confirmed — 2026-07-18 구현·도그푸드·merged self-review round 3 clean으로 검증됐다.
 
 ## Terminology
 
@@ -80,108 +80,125 @@ matrix에 명시된 테스트·evidence·stop condition을 모두 충족한 뒤 
 
 ## Functional Requirements
 
-- [ ] **FR-1 — 결정적인 round 계산:** `goal-impl`과 `sdd-self-review`는 review round를 동일 구현 상태에
+- [x] **FR-1 — 결정적인 round 계산:** `goal-impl`과 `sdd-self-review`는 review round를 동일 구현 상태에
       대한 병합 보고 1개로 정의한다. 병렬 reviewer 수, findings 수, 그 라운드 안의 테스트·수정 횟수는
       round 수를 늘리지 않는다. finding 수정으로 candidate가 바뀐 뒤 새 병합 review 보고가 생성될 때만
       다음 round다. clean 뒤 의미를 바꾸지 않는 기계적 완료 표기는 새 candidate가 아니다.
+      검증: candidate/merged-report contract + round 1~3 실제 병합 보고.
       → goal O-1·O-5 / C-1·C-3
 
-- [ ] **FR-2 — 자동 2회 상한과 승인:** 최초 review와 한 번의 자동 재검만 허용한다. round 2 뒤 blocker가
+- [x] **FR-2 — 자동 2회 상한과 승인:** 최초 review와 한 번의 자동 재검만 허용한다. round 2 뒤 blocker가
       남으면 중단·보고하고 fresh 사용자 승인 1회로 정확히 다음 round 1개만 해제한다. 승인 없는 세 번째
       review, 승인 재사용, blocker 잔존 상태의 완료 보고는 금지한다.
+      검증: round 2 자동 중단 후 fresh 승인 1회로 round 3 한 번만 실행.
       → goal O-1·O-5 / C-1·C-3 / Non-goals
 
-- [ ] **FR-3 — verification matrix 생성·readiness:** `goal-ready` plan의 테스트 전략은 모든 AC에 대해
+- [x] **FR-3 — verification matrix 생성·readiness:** `goal-ready` plan의 테스트 전략은 모든 AC에 대해
       검증 방법/레벨, 필요한 evidence, stop condition, 상태를 한 행에 둔다. `goal-impl`은 누락·중복·
       검증 불가능 행이 있으면 dogfood 전에 readiness 미충족으로 보고한다. 필수 검증 capability가 없으면
       `skipped/degraded`를 green으로 간주하지 않고 미충족 blocker로 보고한다.
+      검증: matrix 11행·5열 readiness audit와 scaffold/skill contract.
       → goal O-2·O-5 / C-1·C-2
 
-- [ ] **FR-4 — dogfood 전 freeze와 예외:** 첫 dogfood 직전에 matrix를 재확인해 동결한다. 동결 후 새
+- [x] **FR-4 — dogfood 전 freeze와 예외:** 첫 dogfood 직전에 matrix를 재확인해 동결한다. 동결 후 새
       evidence 형식이나 reviewer 선호는 자동 blocker가 아니다. 단 재현된 제품·보안 결함은 즉시 blocker로
       다룬다. 잘못된 stop condition이 구체적으로 입증되면 변경 이유·영향 AC·무효화할 기존 evidence를
       기록하고 영향 범위만 다시 실행한다. 새로운 요구/AC는 사용자 승인 후 spec-first로 변경한다.
+      검증: 2026-07-18T03:46:02.369Z freeze + amendment A-1 + 영향 evidence 재실행.
       → goal O-2·O-5 / C-1·C-3 / R-2
 
-- [ ] **FR-5 — 시작 freshness gate:** repository 변경 전에 원격 기본 브랜치를 조회하고 전체 SHA를
+- [x] **FR-5 — 시작 freshness gate:** repository 변경 전에 원격 기본 브랜치를 조회하고 전체 SHA를
       기준으로 기록한다. LocalMind 구현은 최신 `origin/main`에서 분리된 feature branch로 시작하며,
       기존 dirty·unmanaged 자산은 보존하고 겹침이 있으면 중단·보고한다.
+      검증: 시작 base `9f023da…`, feature branch, package-lock hash/stage 불변.
       → goal O-3·O-5 / C-5·C-7
 
-- [ ] **FR-6 — 최종 review 전 freshness gate:** 최종 self-review 직전에 원격 기본 브랜치를 다시
+- [x] **FR-6 — 최종 review 전 freshness gate:** 최종 self-review 직전에 원격 기본 브랜치를 다시
       조회한다. 기준 SHA가 이동했으면 repository 정책에 따라 정합하고 영향 테스트를 재실행한 뒤에만
       review를 시작한다. remote 조회 실패·remote 부재·정합 불가를 fresh로 표기하지 않는다.
+      검증: round 직전 실제 fetch + advanced/unavailable synthetic 시나리오.
       → goal O-3·O-5 / C-3·C-5·C-7
 
-- [ ] **FR-7 — versioned/external 완료 상태 분리:** 최종 versioned commit 전까지 검증 가능한 구현·테스트·
+- [x] **FR-7 — versioned/external 완료 상태 분리:** 최종 versioned commit 전까지 검증 가능한 구현·테스트·
       문서와 publish handoff readiness checkbox를 닫는다. push 이후 PR 번호·CI 상태는 원격 PR/CI와 최종
       보고에서만 기록한다. 외부 상태만 repository에 되쓰기 위한 commit을 금지하되, CI 실패가 요구한
       실제 코드·문서 수정은 새 candidate로 허용하고 관련 테스트·review gate를 다시 적용한다.
+      검증: tasks-format external handoff와 status-only negative contract.
       → goal O-4·O-5 / C-1·C-2·C-3
 
-- [ ] **FR-8 — 정본·scaffold·workflow 의미 동기화:** root `AGENTS.md`, `templates/sdd/AGENTS.md`,
+- [x] **FR-8 — 정본·scaffold·workflow 의미 동기화:** root `AGENTS.md`, `templates/sdd/AGENTS.md`,
       `goal-ready`, `goal-impl`, `sdd-self-review`, plan template, tasks format이 각자의 소유 경계를 유지하면서
       round·matrix·freshness·external state에 같은 의미를 갖는다. generic skill은 repository가 정한
       base/remote/CI policy를 따르고 LocalMind 정본만 `origin/main`·GitHub 세부를 소유한다.
+      검증: root/scaffold/workflow bounded contract와 docs parity test.
       → goal O-1~O-5 / C-2·C-4·C-6
 
-- [ ] **FR-9 — 계약·문서·배포 drift 방지:** 자동 테스트가 두 라운드 상한, 승인 1회성, matrix schema,
+- [x] **FR-9 — 계약·문서·배포 drift 방지:** 자동 테스트가 두 라운드 상한, 승인 1회성, matrix schema,
       두 freshness gate, post-push 재커밋 금지, 기존 품질 gate 보존을 검증한다. 사람용 문서는 새 흐름과
       중단 상태를 평이하게 설명하고 packaged workflow 배포본은 canonical source와 일치한다.
+      검증: dogfood 삭제 mutation RED, 전체 935/935, build, packaged/managed deploy.
       → goal O-1~O-5 / C-2·C-3·C-4 / SM-1~SM-6
 
 ## Acceptance Criteria
 
-- [ ] **AC-1 — round identity (FR-1):** Given 동일 review candidate를 여러 isolated reviewer가 병렬 검수할 때,
+- [x] **AC-1 — round identity (FR-1):** Given 동일 review candidate를 여러 isolated reviewer가 병렬 검수할 때,
       When findings를 하나의 review report로 병합하면, Then reviewer 수와 findings 수와 무관하게 round
-      count는 1이고 수정 후 새 병합 report가 생성될 때만 2가 된다.
+      count는 1이고 수정 후 새 병합 report가 생성될 때만 2가 된다. 검증: candidate contract + 각 round의
+      두 isolated critic merged report.
 
-- [ ] **AC-2 — automatic stop (FR-2):** Given round 2 report에 blocker가 남았을 때, When
+- [x] **AC-2 — automatic stop (FR-2):** Given round 2 report에 blocker가 남았을 때, When
       `goal-impl`이 다음 행동을 결정하면, Then 완료·commit 단계나 round 3으로 진행하지 않고 blocker,
-      수정·테스트 상태, 다음 review 목적을 보고한 뒤 fresh 사용자 승인을 기다린다.
+      수정·테스트 상태, 다음 review 목적을 보고한 뒤 fresh 사용자 승인을 기다린다. 검증: round 2에서
+      실제 중단 후 사용자 fresh 승인 전 mutation 0건.
 
-- [ ] **AC-3 — one approval, one round (FR-2):** Given 사용자가 round 2 결과를 본 뒤 추가 review를
+- [x] **AC-3 — one approval, one round (FR-2):** Given 사용자가 round 2 결과를 본 뒤 추가 review를
       명시 승인했을 때, When review를 재개하면, Then 다음 round 정확히 1개만 실행하고 blocker가 다시
-      남으면 새 승인을 요구한다. 이전·포괄·암묵 승인은 추가 round를 해제하지 않는다.
+      남으면 새 승인을 요구한다. 이전·포괄·암묵 승인은 추가 round를 해제하지 않는다. 검증: 상태표
+      regression + fresh 승인 1개를 round 3에서 1회 소비.
 
-- [ ] **AC-4 — complete matrix (FR-3):** Given `goal-ready`가 plan을 작성했을 때, When 모든 spec AC를
+- [x] **AC-4 — complete matrix (FR-3):** Given `goal-ready`가 plan을 작성했을 때, When 모든 spec AC를
       matrix와 대조하면, Then 각 AC가 정확히 한 행에 매핑되고 검증 방법/레벨, evidence, stop condition,
       상태가 비어 있지 않으며 `goal-impl`이 dogfood 전에 이를 readiness gate로 검사한다. 필수 capability
-      부재나 `skipped/degraded` 상태는 green이 아니라 미충족 blocker로 판정된다.
+      부재나 `skipped/degraded` 상태는 green이 아니라 미충족 blocker로 판정된다. 검증: 11행 uniqueness,
+      5열 non-empty, capability gate audit.
 
-- [ ] **AC-5 — frozen evidence scope (FR-4):** Given matrix가 동결되고 dogfood가 시작된 뒤, When
+- [x] **AC-5 — frozen evidence scope (FR-4):** Given matrix가 동결되고 dogfood가 시작된 뒤, When
       reviewer가 matrix 밖의 새 evidence 형식을 요청하면, Then 재현된 제품·보안 결함이 아니고 사용자가
       spec-first scope 변경을 승인하지 않은 요청은 advisory/후속 과제로 분류되어 현재 blocker 수를
       늘리지 않는다. 잘못된 stop condition을 수정할 때는 이유·영향 AC·무효화 evidence가 기록되고 그
-      영향 범위만 재실행된다.
+      영향 범위만 재실행된다. 검증: freeze scenario audit + amendment A-1 + AC-7·10 재검증.
 
-- [ ] **AC-6 — start freshness and asset safety (FR-5):** Given implementation을 시작할 때, When 원격
+- [x] **AC-6 — start freshness and asset safety (FR-5):** Given implementation을 시작할 때, When 원격
       base와 worktree를 확인하면, Then latest base full SHA와 feature branch가 기록되고 변경은 그 base의
-      분리 브랜치에서 시작하며 기존 dirty·unmanaged 파일의 byte 변경·stage는 0건이다.
+      분리 브랜치에서 시작하며 기존 dirty·unmanaged 파일의 byte 변경·stage는 0건이다. 검증: 시작
+      `9f023da…`; package-lock SHA-256 `c79f421a…ffc6c8`, stage 0.
 
-- [ ] **AC-7 — moved base before final review (FR-6):** Given 시작 SHA 이후 원격 base가 이동했을 때,
+- [x] **AC-7 — moved base before final review (FR-6):** Given 시작 SHA 이후 원격 base가 이동했을 때,
       When final self-review gate를 통과하려 하면, Then latest base를 repository 정책대로 정합하고
-      영향받은 필수 테스트가 green이 된 뒤에만 round 1을 시작한다.
+      영향받은 필수 테스트가 green이 된 뒤에만 round 1을 시작한다. 검증: amended advanced-base synthetic
+      start `e753cf0…` → advanced `b99ba75…` → integrated `9d441c…`, test/dogfood/deploy 재실행.
 
-- [ ] **AC-8 — truthful unavailable path (FR-5·6):** Given remote 조회가 실패하거나 base 정합이 dirty
+- [x] **AC-8 — truthful unavailable path (FR-5·6):** Given remote 조회가 실패하거나 base 정합이 dirty
       충돌로 불가능할 때, When gate 결과를 보고하면, Then `freshness unverified`와 기준 SHA·원인·영향을
-      명시하고 사용자의 방향 없이 fresh/complete라고 단정하지 않는다.
+      명시하고 사용자의 방향 없이 fresh/complete라고 단정하지 않는다. 검증: synthetic unavailable fetch
+      exit 128 → `freshness-unverified`; 실제 sandbox fetch 실패도 캐시 fresh로 오표기하지 않음.
 
-- [ ] **AC-9 — external completion SSoT (FR-7):** Given 최종 versioned candidate와 publish handoff
+- [x] **AC-9 — external completion SSoT (FR-7):** Given 최종 versioned candidate와 publish handoff
       task를 준비했을 때, When tracked task·문서와 대표 PR/CI handoff를 검토하면, Then post-push 상태를
       되쓰기 위한 checkbox·필수 follow-up commit 계획은 0건이고 실제 CI 결함 수정만 새 commit을
       허용한다. 그 수정은 새 candidate로서 관련 테스트와 남은 round/fresh-approval review를 다시 통과해야
-      한다. 원격 상태 자체는 아래 external postcondition으로 확인한다.
+      한다. 원격 상태 자체는 아래 external postcondition으로 확인한다. 검증: unchecked External handoff +
+      status-only commit 금지/CI defect candidate contract.
 
-- [ ] **AC-10 — semantic parity and preserved gates (FR-8·9):** Given root/scaffold/canonical skill과
+- [x] **AC-10 — semantic parity and preserved gates (FR-8·9):** Given root/scaffold/canonical skill과
       문서를 검증할 때, When 계약 테스트와 packaged deploy verification을 실행하면, Then 네 개선안의
       의미가 일치하고 기존 TDD, 필수 dogfood, critic 독립성/강도, 전 AC·테스트 green, feature PR gate는
-      하나도 완화되지 않는다.
+      하나도 완화되지 않는다. 검증: bounded 13/13, full 935/935, build pass, deploy unchanged.
 
-- [ ] **AC-11 — workflow dogfood (FR-1~9):** Given 이 slice 자체가 publish handoff readiness에 도달할 때,
+- [x] **AC-11 — workflow dogfood (FR-1~9):** Given 이 slice 자체가 publish handoff readiness에 도달할 때,
       When versioned acceptance evidence를 검토하면, Then dogfood 직전 matrix가 동결돼 있고 승인 없는
       round 3은 0건이며, matrix 밖 선호로 인한 blocker 증가, stale base 최종 재작업, 외부 상태를 되쓰기
-      위한 tracked task가 모두 0건이다.
+      위한 tracked task가 모두 0건이다. 검증: fresh-approved round 3 clean; scope/stale/external mirror 0.
 
 ## External postconditions — versioned AC 밖의 원격 완료 조건
 

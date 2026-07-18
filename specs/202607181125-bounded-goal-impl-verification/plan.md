@@ -153,7 +153,7 @@ GitHub와 최종 보고가 소유하며 상태 기록만을 위한 commit은 만
 
 ## 7. 구현 단계
 
-### [ ] Phase 0 — 실행 권한·base·matrix readiness
+### [x] Phase 0 — 실행 권한·base·matrix readiness
 
 1. user confirmation으로 `$goal-impl 202607181125` 실행 권한을 확인한다.
 2. dirty/unmanaged 자산을 기록하고 `package-lock.json` hash를 보존 기준으로 잡는다.
@@ -164,7 +164,7 @@ GitHub와 최종 보고가 소유하며 상태 기록만을 위한 commit은 만
    dogfood 직전에 수행한다. 확인 SHA·baseline·readiness는 tracked 파일이 아닌 session run note에
    기록하고 Phase 6에서 필요한 evidence pointer만 versioned 문서에 반영한다.
 
-### [ ] Phase 1 — TDD RED: instruction·scaffold 계약
+### [x] Phase 1 — TDD RED: instruction·scaffold 계약
 
 1. `skill-contract.test.ts`에 round identity/budget/approval, matrix readiness/freeze, external handoff
    계약과 기존 품질 gate 보존 assertion을 먼저 추가한다.
@@ -173,7 +173,7 @@ GitHub와 최종 보고가 소유하며 상태 기록만을 위한 commit은 만
 3. `scaffold.test.ts`에 생성된 AGENTS와 plan template 5열 matrix 검증을 추가한다.
 4. source가 아직 바뀌지 않아 새 테스트가 기대한 이유로 실패하는 RED를 확인한다.
 
-### [ ] Phase 2 — canonical governance GREEN
+### [x] Phase 2 — canonical governance GREEN
 
 1. root와 scaffold AGENTS를 같은 의미로 갱신하되 LocalMind의 `origin/main`·GitHub 세부와 generic
    repository policy를 분리한다.
@@ -185,7 +185,7 @@ GitHub와 최종 보고가 소유하며 상태 기록만을 위한 commit은 만
 6. `sdd-self-review` report에 candidate/round/independence/blocker/approval-needed를 포함한다.
 7. Phase 1 계약 테스트를 GREEN으로 만든다.
 
-### [ ] Phase 3 — 사람용 문서·변경 이력
+### [x] Phase 3 — 사람용 문서·변경 이력
 
 1. `docs/agents.md`에 두 라운드와 독립 reviewer 관계, 중단 상태, 승인 1회성을 설명한다.
 2. `docs/workflows.md`에 matrix 확인→freeze→dogfood→freshness→review→remote completion 흐름을
@@ -193,7 +193,7 @@ GitHub와 최종 보고가 소유하며 상태 기록만을 위한 commit은 만
 3. CHANGELOG의 미버전 영역에 네 개선안과 품질 gate 보존을 기록한다.
 4. docs/scaffold drift 테스트를 GREEN으로 만든다.
 
-### [ ] Phase 4 — 통합 검증·dogfood
+### [x] Phase 4 — 통합 검증·dogfood
 
 1. 관련 unit/contract/scaffold 테스트, 전체 test와 build를 실행한다.
 2. 첫 dogfood 직전에 matrix 11행을 최종 재검증해 freeze하고 시각·candidate·변경 여부를 session run
@@ -206,7 +206,7 @@ GitHub와 최종 보고가 소유하며 상태 기록만을 위한 commit은 만
    대표 handoff를 검토한다.
 6. `package-lock.json` hash와 stage 상태가 시작 기준과 같은지 확인한다.
 
-### [ ] Phase 5 — pre-review freshness·bounded self-review
+### [x] Phase 5 — pre-review freshness·bounded self-review
 
 1. `origin/main`을 다시 fetch해 full SHA를 Phase 0과 비교한다. 전진했으면 정책대로 통합하고 전체
    regression을 다시 통과시킨 뒤에만 round 1을 시작한다.
@@ -216,7 +216,7 @@ GitHub와 최종 보고가 소유하며 상태 기록만을 위한 commit은 만
 4. round 2에도 blocker가 남으면 자동 중단하고 잔여 findings·수정·테스트·round 3 목적을 보고해 fresh
    승인 1회를 요청한다. 승인 없이는 문서 완료 표기·commit/push로 가지 않는다.
 
-### [ ] Phase 6 — versioned closure·publish handoff readiness
+### [x] Phase 6 — versioned closure·publish handoff readiness
 
 1. clean 판정 뒤 goal/spec/plan/tasks에 SM·FR·AC·phase evidence를 기계적으로 표기한다. 의미가 바뀌면
    새 candidate로 보아 남은 review budget/승인 규칙을 다시 적용한다.
@@ -250,17 +250,17 @@ GitHub와 최종 보고가 소유하며 상태 기록만을 위한 commit은 만
 
 | AC | 검증 방법·레벨 | 최소 evidence | 통과·종료 조건 | 상태 |
 |---|---|---|---|---|
-| AC-1 | 정적 계약 + review-report simulation | skill 문구 assertion, 동일 candidate의 다중 reviewer 병합 fixture | 병합 report 1개가 round 1이고 candidate 변경 후 report만 round 2 | Pending |
-| AC-2 | 정적 negative contract + orchestrator 시뮬레이션 | round 2 blockers와 `approval-needed` 결과 | round 3·완료·commit 전환 0건, 잔여 상태 보고 1건 | Pending |
-| AC-3 | 승인 state-table 시뮬레이션 | goal/round/finding 이후 fresh approval 사례와 stale·포괄·암묵 반례 | fresh 승인 1개가 다음 round 1개만 허용하고 모든 반례는 거부 | Pending |
-| AC-4 | goal-ready/plan contract + scaffold 통합 | spec AC 목록과 생성 plan matrix 행 비교, capability 부재 반례 | 모든 AC 정확히 1행, 5열 non-empty; 필수 capability 부재·skipped/degraded는 blocker | Pending |
-| AC-5 | frozen-matrix 시나리오 검토 | 단순 evidence 선호, 제품/보안 결함, 잘못된 stop condition 세 fixture | 선호는 advisory; 실제 결함은 blocker; 개정은 이유·영향 AC·무효 evidence 포함 | Pending |
-| AC-6 | synthetic git remote dogfood + worktree audit | start fetch full SHA/시각/ancestry, 새 branch, dirty file 전후 hash/stage | latest base 분리 branch이고 dirty/unmanaged byte·stage 변화 0건 | Pending |
-| AC-7 | advanced-base synthetic git remote dogfood | start SHA, advanced SHA, integration record, frozen matrix 영향 행 재평가, 현재 candidate의 테스트·dogfood·배포 재실행 log | 최신 base 정합 뒤 무효화된 테스트·dogfood·배포 evidence가 모두 green일 때만 review 시작 | Pending |
-| AC-8 | failure-path contract + synthetic unavailable/conflict case | `freshness unverified`, 기준 SHA·원인·영향·사용자 결정 요청 | silent fallback/`fresh`/`complete` 오표기 0건 | Pending |
-| AC-9 | task-format negative contract + representative handoff audit | final candidate, tracked task, status-only 반례, CI defect fix candidate | external-state mirror task 0건; CI fix는 test + 남은 round/fresh-approval review 뒤 commit | Pending |
-| AC-10 | contract/docs/scaffold tests + full test/build/deploy hash | 세 테스트 suite 결과, 전체 test/build, amendment 영향 배포, canonical↔installed hash | 네 규칙 parity, forbidden weakening 0건, 현재 candidate 재검증 전체 green | Pending |
-| AC-11 | 이 slice의 publish-readiness run record | frozen matrix, base SHA 2회, merged review report(s), versioned task/history | 무승인 round 3·scope-creep blocker·stale 재작업·external-state tracked task 모두 0건 | Pending |
+| AC-1 | 정적 계약 + review-report simulation | skill 문구 assertion, 동일 candidate의 다중 reviewer 병합 fixture | 병합 report 1개가 round 1이고 candidate 변경 후 report만 round 2 | [x] bounded contract + round 1~3 merged reports |
+| AC-2 | 정적 negative contract + orchestrator 시뮬레이션 | round 2 blockers와 `approval-needed` 결과 | round 3·완료·commit 전환 0건, 잔여 상태 보고 1건 | [x] round 2 stop + approval-needed true |
+| AC-3 | 승인 state-table 시뮬레이션 | goal/round/finding 이후 fresh approval 사례와 stale·포괄·암묵 반례 | fresh 승인 1개가 다음 round 1개만 허용하고 모든 반례는 거부 | [x] state table + fresh-approved round 3 1회 |
+| AC-4 | goal-ready/plan contract + scaffold 통합 | spec AC 목록과 생성 plan matrix 행 비교, capability 부재 반례 | 모든 AC 정확히 1행, 5열 non-empty; 필수 capability 부재·skipped/degraded는 blocker | [x] 11행·5열 readiness audit |
+| AC-5 | frozen-matrix 시나리오 검토 | 단순 evidence 선호, 제품/보안 결함, 잘못된 stop condition 세 fixture | 선호는 advisory; 실제 결함은 blocker; 개정은 이유·영향 AC·무효 evidence 포함 | [x] freeze audit + amendment A-1 |
+| AC-6 | synthetic git remote dogfood + worktree audit | start fetch full SHA/시각/ancestry, 새 branch, dirty file 전후 hash/stage | latest base 분리 branch이고 dirty/unmanaged byte·stage 변화 0건 | [x] base 9f023da… + lock hash/stage 불변 |
+| AC-7 | advanced-base synthetic git remote dogfood | start SHA, advanced SHA, integration record, frozen matrix 영향 행 재평가, 현재 candidate의 테스트·dogfood·배포 재실행 log | 최신 base 정합 뒤 무효화된 테스트·dogfood·배포 evidence가 모두 green일 때만 review 시작 | [x] e753cf0…→b99ba75…→9d441c… + 935/935/deploy |
+| AC-8 | failure-path contract + synthetic unavailable/conflict case | `freshness unverified`, 기준 SHA·원인·영향·사용자 결정 요청 | silent fallback/`fresh`/`complete` 오표기 0건 | [x] unavailable exit 128 + real sandbox retry |
+| AC-9 | task-format negative contract + representative handoff audit | final candidate, tracked task, status-only 반례, CI defect fix candidate | external-state mirror task 0건; CI fix는 test + 남은 round/fresh-approval review 뒤 commit | [x] external mirror task 0 + negative contract |
+| AC-10 | contract/docs/scaffold tests + full test/build/deploy hash | 세 테스트 suite 결과, 전체 test/build, amendment 영향 배포, canonical↔installed hash | 네 규칙 parity, forbidden weakening 0건, 현재 candidate 재검증 전체 green | [x] bounded 13/13, full 935/935, build/deploy green |
+| AC-11 | 이 slice의 publish-readiness run record | frozen matrix, base SHA 2회, merged review report(s), versioned task/history | 무승인 round 3·scope-creep blocker·stale 재작업·external-state tracked task 모두 0건 | [x] round 3 clean + four scope metrics 0 |
 
 ## 9. Open questions
 
