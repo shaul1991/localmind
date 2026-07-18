@@ -210,5 +210,5 @@ enabled/disabled로 충돌하고, 후자가 14일 더 최신이며 이전 정책
   주장하지 않았다. 제품 구현 전체는 별도의 isolated SDD critic이 다시 검토한다.
 - Gemini CLI와 Antigravity 설치본이 없어 live invocation E2E는 수행하지 않았다. Gemini wrapper의
   static lifecycle 계약만 검증했으며 spec OQ-2는 미해결이다.
-- 전체 `npm test`에는 이번 변경 전부터 있던 timestamp migration assertion 3건이 남아 있다. Deep
-  Research 범위 신규 회귀는 0건이지만 global green DoD 예외는 사용자 승인 없이는 성립하지 않는다.
+- closure critic이 지적한 유일한 잔여 차단은 최신 main 미통합이었다. `origin/main`을 병합한 뒤 전체
+  `npm test` 922/922, `npm run build`, `git diff --check`가 모두 통과해 global green DoD를 충족했다.

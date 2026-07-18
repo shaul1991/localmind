@@ -232,13 +232,14 @@ Phase 5가 소유한다.
       — fresh isolated-context critic이 2026-07-18 검수해 중대 finding 3건을 보고했다. global test
       green 외 2건(dogfood 감사 artifact·malicious-source 행동 근거)은 [evidence.md](evidence.md)로
       보강했으며 재검 대상이다. timestamp baseline/DoD 충돌은 사용자 결정 없이는 차단 상태다.
-- [ ] **T5.2 — fix/re-review:** 명백 결함은 실패 테스트 또는 정적 assertion으로 재현한 뒤 최소 수정하고
+- [x] **T5.2 — fix/re-review:** 명백 결함은 실패 테스트 또는 정적 assertion으로 재현한 뒤 최소 수정하고
       clean까지 재검한다. 기계적 문구·count 수정은 한 라운드로 배칭한다. trade-off만 사용자에게 올린다.
       — 2차 격리 재검의 감사 가능성 finding 두 건에 대해 완전한 redacted report/ordered trace와 exact
       fixture/hook artifact를 추가했다. 3차 격리 재검이 새로 찾은 Claude source-budget overrun은 정확히
-      네 T1 URL만 각 1회 조회하는 fresh run으로 교체했다. 최종 격리 재검과 global test green 판단을
-      기다렸다. 4차 격리 재검이 요구한 activation edge와 conflict/live-unavailable 행동 증거는 각각
-      complete prompt/result와 ordered trace를 추가했다. global test green 판단만 남겨 재검한다.
+      네 T1 URL만 각 1회 조회하는 fresh run으로 교체했다. 4차 격리 재검이 요구한 activation edge와
+      conflict/live-unavailable 행동 증거는 complete prompt/result와 ordered trace로 추가했다. closure
+      critic은 feature-specific blocker 0건, 최신 main 미통합만 차단으로 판정했고, `origin/main` 병합 후
+      전체 테스트 922/922와 build green으로 그 차단이 해소됐다.
 - [x] **T5.2a — final-hash 재검증:** T5.2가 canonical package·policy·행동 계약을 바꾸면 최종
       canonical hash로 T4.2~T4.6 중 영향받은 항목을 다시 실행한다. 최소 범위는 temp lifecycle,
       installed managed redeploy, representative dogfood, write/prompt-injection/private-data audit다.
@@ -249,19 +250,19 @@ Phase 5가 소유한다.
 - [ ] **T5.2b — clean 실패 rollback:** clean에 도달하지 못해 중단하면 marker-aware lifecycle로 이번에
       새로 만든 managed `deep-research` target만 회수한다. unmanaged 자산은 건드리지 않는다. 안전한
       회수가 불가능하면 commit하지 않고 stale managed target의 정확한 위치·hash·사유를 사용자에게
-      보고한다.
+      보고한다. — clean에 도달했으므로 rollback은 실행하지 않았다.
 - [x] **T5.3 — scope audit:** production engine 변경 0 또는 generic defect 근거가 있는 최소 변경인지,
       `package-lock.json`이 untouched인지, Antigravity adapter·backend·UI·model routing이 들어오지 않았는지
       확인한다. — production `src/agents/*.ts` 변경 0건, canonical은 instruction/reference 두 파일뿐이다.
       Antigravity adapter·backend·UI·model routing 추가 0건이며, 사용자 소유 `package-lock.json` SHA-256은
       착수 시와 같은 `c79f421ad62a6477418ff79e1670474572531e8c1a430b582bd0bce169ffc6c8`이다.
-- [ ] **T5.4 — 문서 검증 표기:** spec FR/AC, plan phase/test strategy, goal Success metrics에 `[x]`와
+- [x] **T5.4 — 문서 검증 표기:** spec FR/AC, plan phase/test strategy, goal Success metrics에 `[x]`와
       test/dogfood 근거를 기록한다. 미충족·skipped는 체크하지 않고 사유를 부기한다. OQ-2는 spike
-      결과로 취소선/확정 포인터 또는 미해결 상태를 명시한다.
-- [ ] **T5.5 — 최종 회귀:** `npm test`, `npm run build`를 다시 실행하고 clean 결과를 기록한다.
-      — 최종 targeted Deep Research 계약 25/25, lifecycle 14/14, build green. 전체 `npm test`는 baseline과
-      동일한 timestamp 전환 잔여 assertion 3건만 실패해 global green은 미충족이다. 별도 수정 또는
-      DoD 예외에 대한 사용자 결정 전까지 이 항목은 체크하지 않는다.
+      결과로 취소선/확정 포인터 또는 미해결 상태를 명시한다. — goal/spec/plan에 근거를 표기했고,
+      OQ-2는 실행 가능한 Gemini CLI 부재로 미해결·비차단 상태와 후속 spike를 명시했다.
+- [x] **T5.5 — 최종 회귀:** `npm test`, `npm run build`를 다시 실행하고 clean 결과를 기록한다.
+      — 최신 `origin/main` 병합 후 전체 `npm test` 922/922, `npm run build`, `git diff --check`가 모두
+      green이다. targeted Deep Research 계약 25/25와 lifecycle 14/14도 전체 suite에 포함돼 통과했다.
 - [ ] **T5.6 — completion:** self-review clean이면 AGENTS.md 규약 7대로 feature branch commit
       (self-review 요약 포함) → push → draft PR 생성 → 전체 SHA로 CI 감시한다. main direct push,
       merge, version stamp, tag, release는 하지 않는다.

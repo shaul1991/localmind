@@ -185,7 +185,7 @@ audience: both
 
 ## 7. 구현 단계
 
-### Phase 0 — baseline·Live-Verify·runtime spike
+### [x] Phase 0 — baseline·Live-Verify·runtime spike
 
 1. 작업트리와 baseline test 상태를 기록하고 user-owned dirty 파일을 다시 확인한다.
 2. F-1~5 공식 문서의 현재 계약을 재확인한다.
@@ -193,7 +193,7 @@ audience: both
    있는지 판단한다. 설치/로그인/유료 호출을 임의로 추가하지 않는다.
 4. baseline failure가 있으면 이번 변경과 분리해 기록하고, unrelated fix로 scope를 넓히지 않는다.
 
-### Phase 1 — TDD RED: 계약·lifecycle·문서 테스트
+### [x] Phase 1 — TDD RED: 계약·lifecycle·문서 테스트
 
 1. core contract tests에 FR-1~12·14의 정적 필수 문구, neutrality, policy, tier routing을 먼저 추가한다.
 2. lifecycle/invocation tests에 6번째 logical ID, 세 target, exact invocation, generated reference,
@@ -201,7 +201,7 @@ audience: both
 3. docs test에 runtime별 호출·Codex bare slash 금지·비개발자 설명 계약을 추가한다.
 4. 아직 package/docs가 없어 새 테스트만 기대한 이유로 실패하는 RED를 확인한다.
 
-### Phase 2 — canonical package GREEN
+### [x] Phase 2 — canonical package GREEN
 
 1. `catalog.json`에 explicit/report-only entry를 추가한다.
 2. 표준 frontmatter(`name`, `description`)만 가진 provider-neutral `SKILL.md`를 작성한다.
@@ -209,14 +209,14 @@ audience: both
    runtime binding/fallback을 provider/model ID 없이 명시한다.
 4. core contract·policy·deployment tests를 통과시킨다. engine 코드 분기 없이 GREEN이어야 한다.
 
-### Phase 3 — 사람용 문서·catalog drift 정리
+### [x] Phase 3 — 사람용 문서·catalog drift 정리
 
 1. README, agents guide, workflows guide, CHANGELOG를 현재 catalog 6개 기준으로 갱신한다.
 2. 공용 command의 의미, runtime별 호출, first-party 제품과 차이, explicit/report-only,
    capability fallback, Gemini/Antigravity 범위를 평이하게 설명한다.
 3. docs tests를 GREEN으로 만든다. 이번 기능과 무관한 legacy/timestamp 문구는 정리하지 않는다.
 
-### Phase 4 — 통합 검증·도그푸드
+### [x] Phase 4 — 통합 검증·도그푸드
 
 1. 전체 unit/integration/lifecycle test와 build를 실행한다.
 2. 임시 HOME/target roots에 seed→deploy→두 번째 deploy를 실행해 세 target 생성, canonical hash,
@@ -228,7 +228,7 @@ audience: both
    확인, live sources, conflict/labels, final critic, report shape를 관찰한다.
 5. Gemini 또는 다른 target을 실제 실행할 수 없으면 static contract 대체와 skipped 이유를 기록한다.
 
-### Phase 5 — self-review·검증 표기·goal-impl completion
+### [x] Phase 5 — self-review·검증 표기·goal-impl completion
 
 1. 격리 critic이 FR/AC 1:1, TDD 증거, 정확성, 단순성/보안, Live-Verify를 적대적으로 검수한다.
 2. 명백 결함을 수정하고 clean까지 재검한다. 기계적 문구 정리는 한 라운드로 배칭한다.
@@ -272,6 +272,11 @@ instruction-only workflow이므로 **정적 계약 테스트는 행동 규칙이
 - `make skills-deploy` 또는 temp root 환경변수를 주입한 `npm run --silent skills:deploy`
 
 정확한 command는 구현 착수 시 `package.json`·Makefile의 현재 task-runner 정본에서 다시 확인한다.
+
+- [x] **AC-1~3·13~14 자동 검증:** catalog/policy/adapter/docs/lifecycle 계약 테스트로 통과했다.
+- [x] **AC-4~12 행동 검증:** activation, 대표 조사, conflict/degraded, malicious-source 감사로 통과했다.
+- [x] **AC-15~16 runtime 검증:** Claude/Codex 공통 brief와 독립성·binding fallback 기록으로 통과했다.
+- [x] **최종 회귀:** 전체 테스트 922/922, TypeScript build 및 `git diff --check`가 clean이다.
 
 ## 9. Rollback
 
