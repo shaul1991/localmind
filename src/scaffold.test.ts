@@ -113,6 +113,41 @@ describe("scaffoldSdd", () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("bounded-verification AC-2·6~10: 생성 AGENTS가 유한 review·두 freshness gate·external-state 경계를 가르친다", () => {
+    const dir = tmpDir();
+    try {
+      scaffoldSdd(dir);
+      const agents = fs.readFileSync(path.join(dir, "AGENTS.md"), "utf8").replace(/\s+/g, " ");
+      assert.match(agents, /(?:자동|automatic).{0,100}(?:최대|상한).{0,30}(?:2|두) (?:회|round|라운드)/i);
+      assert.match(agents, /fresh (?:round )?approval/i);
+      assert.match(agents, /(?:승인|approval) (?:1개|하나|1회).{0,100}(?:round|라운드) (?:1개|하나|1회)/i);
+      assert.match(agents, /(?:변경|쓰기).{0,60}(?:전|전에).{0,160}(?:원격 기본 브랜치|repository.{0,40}base).{0,120}full SHA/i);
+      assert.match(agents, /(?:최종|final) self-review (?:직전|전에).{0,160}(?:다시|재조회|fetch).{0,160}(?:full SHA|기준 SHA)/i);
+      assert.match(agents, /freshness unverified/i);
+      assert.match(agents, /external completion state/i);
+      assert.match(agents, /(?:상태|번호|run ID).{0,160}(?:후속 )?(?:commit|커밋).{0,100}(?:금지|만들지 않)/i);
+      assert.doesNotMatch(agents, /clean해질 때까지 반복|재검\(clean까지\)/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("bounded-verification AC-4·10: 생성 plan template이 실행 가능한 5열 matrix와 dogfood 전 freeze를 요구한다", () => {
+    const dir = tmpDir();
+    try {
+      scaffoldSdd(dir);
+      const plan = fs.readFileSync(path.join(dir, "specs", "plan.template.md"), "utf8");
+      const compact = plan.replace(/\s+/g, " ");
+      assert.match(plan, /\| AC \| 검증 방법·레벨 \| 최소 evidence \| 통과·종료 조건 \| 상태 \|/);
+      assert.match(compact, /모든 AC.{0,100}(?:정확히 )?(?:한|1) (?:행|row)/i);
+      assert.match(compact, /(?:첫 )?dogfood (?:직전|전에).{0,140}(?:matrix freeze|matrix를? (?:동결|freeze))/i);
+      assert.match(compact, /필수 (?:검증 )?capability.{0,140}(?:없|부재).{0,140}(?:blocker|미충족)/i);
+      assert.match(compact, /(?:변경 이유|reason).{0,100}(?:영향 AC|affected AC).{0,100}(?:무효화|invalid).{0,60}evidence/i);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("scaffold-runtime-bridges: AC-16", () => {

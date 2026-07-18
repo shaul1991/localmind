@@ -38,13 +38,13 @@ tracked evidence pointer 갱신은 Phase 6이 소유하므로 `files: 없음`과
 ## Phase 1 — TDD RED: workflow·repository·scaffold 계약
 > depends-on: Phase 0 · files: `src/agents/skill-contract.test.ts`, `src/agents/workflow-docs.test.ts`, `src/scaffold.test.ts`
 
-- [ ] **T1.1 (AC-1~5·9·10):** `skill-contract.test.ts`에 candidate/merged round, automatic budget,
+- [x] **T1.1 (AC-1~5·9·10):** `skill-contract.test.ts`에 candidate/merged round, automatic budget,
       fresh approval, matrix readiness/freeze/amendment, external handoff 계약을 먼저 추가한다.
-- [ ] **T1.2 (AC-2·6~10):** `workflow-docs.test.ts`에 root/scaffold semantic parity, automatic max 2,
+- [x] **T1.2 (AC-2·6~10):** `workflow-docs.test.ts`에 root/scaffold semantic parity, automatic max 2,
       두 freshness gate, status-only commit 금지, 기존 품질 gate 보존 negative assertion을 추가한다.
-- [ ] **T1.3 (AC-4·10):** `scaffold.test.ts`에 생성 AGENTS의 새 규칙과 plan template 5열 matrix assertion을
+- [x] **T1.3 (AC-4·10):** `scaffold.test.ts`에 생성 AGENTS의 새 규칙과 plan template 5열 matrix assertion을
       추가한다.
-- [ ] **T1.4:** source가 아직 구 규칙이라 새 테스트가 기대한 이유로 실패하는 RED를 확인하고 실패
+- [x] **T1.4:** source가 아직 구 규칙이라 새 테스트가 기대한 이유로 실패하는 RED를 확인하고 실패
       메시지를 evidence로 보존한다.
 
 ## Phase 2A — repository governance·SDD template GREEN

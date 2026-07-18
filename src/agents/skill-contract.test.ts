@@ -871,3 +871,113 @@ describe("052 parallel orchestration contract: AC-1/2/3/5/6/7/8/9", () => {
     assert.ok(findings.some((f) => f.token === "claude" || f.token === "opus"), "구체 모델 토큰이 findings에 없음");
   });
 });
+
+// ── 202607181125 bounded goal-impl verification — Phase 1 RED ───────────────
+// 새 실행 엔진이 아니라 canonical instruction contract의 의미를 핀한다. 구현 전에는 아래
+// assertion이 누락 문구 때문에 실패해야 하며, Phase 2A/2B가 같은 계약을 채워 GREEN으로 만든다.
+describe("bounded-verification skill contract: AC-1~5, AC-9~10", () => {
+  const PKG_ROOT = path.join(REPO_ROOT, "templates", "skills");
+  const readWorkflow = (name: string, rel = "SKILL.md") =>
+    fs.readFileSync(path.join(PKG_ROOT, name, rel), "utf8");
+  const compact = (text: string) => text.replace(/\s+/g, " ");
+
+  it("AC-1: 같은 candidate의 격리 reviewer findings는 merged report 하나=round 하나이고 candidate 변경 뒤에만 다음 round다", () => {
+    const impl = compact(readWorkflow("goal-impl"));
+    const review = compact(readWorkflow("sdd-self-review"));
+
+    for (const [name, body] of [["goal-impl", impl], ["sdd-self-review", review]] as const) {
+      assert.match(body, /review candidate/i, `${name}: review candidate 용어 누락`);
+      assert.match(body, /review round/i, `${name}: review round 용어 누락`);
+    }
+    assert.match(
+      review,
+      /같은 (?:review )?candidate.{0,180}(?:병합|merged) (?:report|보고).{0,100}(?:하나|1개).{0,60}(?:round|라운드) (?:하나|1개)/i,
+      "sdd-self-review: same-candidate merged-report=one-round 계약 누락",
+    );
+    assert.match(
+      impl,
+      /candidate.{0,120}(?:수정|변경).{0,160}(?:새|다음) (?:merged )?(?:review )?(?:report|보고).{0,80}(?:다음 )?(?:round|라운드)/i,
+      "goal-impl: candidate 변경 뒤 새 report만 다음 round라는 계약 누락",
+    );
+  });
+
+  it("AC-2~3: 자동 round는 최대 2회이고 blocker가 남으면 fresh 승인 하나가 다음 round 하나만 해제한다", () => {
+    const impl = compact(readWorkflow("goal-impl"));
+    const review = compact(readWorkflow("sdd-self-review"));
+
+    assert.match(impl, /automatic round budget|자동 (?:review )?(?:round|라운드) (?:budget|예산)/i, "자동 round budget 용어 누락");
+    assert.match(impl, /(?:자동|automatic).{0,100}(?:최대|상한).{0,30}(?:2|두) (?:회|round|라운드)/i, "자동 최대 2 round 계약 누락");
+    assert.match(
+      impl,
+      /(?:round|라운드) 2.{0,180}blocker.{0,180}(?:중단|멈춘).{0,120}(?:완료|commit|커밋).{0,100}(?:금지|진행하지 않)/i,
+      "round 2 blocker 뒤 중단·완료 금지 계약 누락",
+    );
+    assert.match(impl, /fresh (?:round )?approval/i, "fresh round approval 용어 누락");
+    assert.match(
+      impl,
+      /(?:승인|approval) (?:1개|하나|1회).{0,100}(?:다음 )?(?:round|라운드) (?:1개|하나|1회)/i,
+      "승인 하나가 다음 round 하나만 해제하는 계약 누락",
+    );
+    for (const rejected of ["과거 승인", "포괄 승인", "암묵 승인", "승인 재사용"]) {
+      assert.ok(impl.includes(rejected), `fresh approval 반례 누락: ${rejected}`);
+    }
+    assert.match(review, /approval-needed/i, "merged review report의 approval-needed field 누락");
+    assert.doesNotMatch(impl, /clean해질 때까지 반복|재검\(clean까지\)/, "goal-impl에 무제한 자동 재검 문구가 남아 있음");
+  });
+
+  it("AC-4: goal-ready가 모든 AC의 5열 matrix를 만들고 goal-impl이 capability 포함 readiness를 dogfood 전에 판정한다", () => {
+    const ready = compact(readWorkflow("goal-ready"));
+    const impl = compact(readWorkflow("goal-impl"));
+
+    assert.match(ready, /verification matrix/i, "goal-ready: verification matrix 책임 누락");
+    for (const column of ["AC", "검증 방법·레벨", "최소 evidence", "통과·종료 조건", "상태"]) {
+      assert.ok(ready.includes(column), `goal-ready matrix 열 누락: ${column}`);
+    }
+    assert.match(ready, /모든 AC.{0,100}(?:정확히 )?(?:한|1) (?:행|row)/i, "모든 AC 1:1 행 계약 누락");
+    assert.match(impl, /matrix readiness|verification matrix.{0,100}readiness/i, "goal-impl matrix readiness gate 누락");
+    assert.match(impl, /dogfood.{0,100}(?:전|전에).{0,180}readiness|readiness.{0,180}dogfood.{0,40}(?:전|전에)/i, "dogfood 전 readiness 순서 누락");
+    assert.match(impl, /필수 (?:검증 )?capability.{0,140}(?:없|부재).{0,140}blocker/i, "필수 capability 부재=blocker 계약 누락");
+    assert.match(impl, /skipped\/degraded.{0,120}(?:green.{0,40}(?:아니|간주하지 않)|미충족)/i, "skipped/degraded 비-green 계약 누락");
+  });
+
+  it("AC-5: 첫 dogfood 직전 matrix를 freeze하고 선호·실제 결함·stop-condition 오류·새 요구를 구분한다", () => {
+    const impl = compact(readWorkflow("goal-impl"));
+
+    assert.match(impl, /(?:첫 )?dogfood (?:직전|전에).{0,140}(?:matrix freeze|matrix를? (?:동결|freeze))/i, "dogfood 전 matrix freeze 계약 누락");
+    assert.match(impl, /(?:evidence|증거).{0,80}(?:형식|선호).{0,160}advisory/i, "matrix 밖 evidence 선호=advisory 계약 누락");
+    assert.match(impl, /(?:제품|product)·?(?:보안|security) 결함.{0,100}blocker/i, "제품·보안 결함=blocker 예외 누락");
+    for (const required of ["변경 이유", "영향 AC", "무효화할 기존 evidence"]) {
+      assert.ok(impl.includes(required), `잘못된 stop condition 개정 기록 누락: ${required}`);
+    }
+    assert.match(impl, /(?:새로운|새) (?:요구|AC).{0,140}(?:사용자 승인|승인).{0,100}spec-first/i, "새 요구의 사용자 승인+spec-first 계약 누락");
+  });
+
+  it("AC-9: tracked completion과 external handoff를 분리하고 status-only commit은 금지하되 실제 CI fix는 재검한다", () => {
+    const impl = compact(readWorkflow("goal-impl"));
+    const format = compact(readWorkflow("goal-impl", path.join("references", "tasks-format.md")));
+
+    assert.match(format, /External handoff|external handoff/i, "tasks format의 external handoff 절 누락");
+    assert.match(format, /(?:checkbox|체크박스).{0,100}(?:두지 않|범위 밖|금지)/i, "post-push external checkbox 금지 누락");
+    assert.match(format, /(?:PR|CI).{0,120}(?:상태|번호|run ID).{0,160}(?:후속 )?(?:commit|커밋).{0,80}(?:금지|만들지 않)/i, "status-only follow-up commit 금지 누락");
+    assert.match(impl, /versioned completion state/i, "goal-impl versioned completion state 용어 누락");
+    assert.match(impl, /external completion state/i, "goal-impl external completion state 용어 누락");
+    assert.match(
+      impl,
+      /CI.{0,100}(?:실제 )?(?:결함|defect).{0,140}(?:새 )?candidate.{0,180}(?:관련 )?테스트.{0,180}(?:남은 )?(?:round|라운드|fresh approval)/i,
+      "실제 CI fix의 새 candidate+test+남은 review gate 계약 누락",
+    );
+  });
+
+  it("AC-10: 기존 TDD·RED·필수 dogfood·critical independent review·전 AC green 계약은 유지된다", () => {
+    const impl = compact(readWorkflow("goal-impl"));
+    const review = compact(readWorkflow("sdd-self-review"));
+
+    assert.match(impl, /TDD 강제/);
+    assert.match(impl, /실패 테스트 먼저\(red\)|실패 테스트 먼저\(RED\)|실패 테스트 먼저\(red\)/i);
+    assert.match(impl, /도그푸드\(필수\)|dogfood\(필수\)/i);
+    assert.match(impl, /전 AC green/);
+    assert.match(impl, /self-review는 절대 다운시프트 금지/);
+    assert.match(review, /구현 컨텍스트와 분리된 격리 리뷰/);
+    assert.match(review, /치명·중대 0 \+ 테스트 green \+ AC 전부 충족/);
+  });
+});
