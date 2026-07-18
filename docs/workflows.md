@@ -195,7 +195,9 @@ latest base에서 분리된 feature branch인지 확인합니다. 기존 dirty·
 
 dogfood와 테스트가 끝나면 self-review를 시작하기 **직전** 같은 remote base의 full SHA를 다시
 조회합니다. base가 전진했으면 repository 정책에 따라 정합·통합하고, 영향받는 필수 regression을
-다시 green으로 만든 뒤에야 review round 1을 시작합니다.
+다시 green으로 만든 뒤에야 review round 1을 시작합니다. 이 통합으로 candidate가 바뀌면 frozen
+matrix의 영향 행을 다시 평가하고, 무효가 된 테스트·dogfood·배포 evidence를 새 candidate에서
+재실행합니다. stop condition 자체가 틀린 경우에는 matrix amendment 기록을 먼저 남깁니다.
 
 remote가 없거나 조회·통합에 실패하면 상태를 **`freshness unverified`**로 표시하고 기준 SHA·원인·
 영향을 설명합니다. 이때는 fresh 또는 complete라고 단정하지 않으며, 사용자의 방향을 받기 전에

@@ -51,7 +51,10 @@ runtime이 명시 호출을 보증하고 원인자가 spec 폴더 프리픽스(t
    완료하지 않고 실제 실행을 관찰하는 dogfood를 반드시 수행한다.
 5. **최종 self-review 직전에 `origin/main`을 다시 fetch해 full SHA를 비교한다.** base 또는 기준 SHA가
    이동했으면 repository 정책대로 정합·통합하고 영향받은 regression 테스트를 재실행해 green이 된
-   뒤에만 review를 시작한다. 조회·정합 실패는 `freshness unverified`로 원인·영향과 함께 보고하고
+   뒤에만 review를 시작한다. **base 통합으로 candidate가 변경되면 frozen matrix의 영향 행을 재평가하고,
+   무효화된 evidence(테스트·dogfood·배포)를 현재 candidate에서 재실행한다.** stop condition 자체가
+   틀렸다면 matrix amendment 규칙에 따라 이유·영향 AC·무효 evidence를 먼저 기록한다.
+   조회·정합 실패는 `freshness unverified`로 원인·영향과 함께 보고하고
    사용자의 방향 없이 진행하지 않는다.
    **self-review를 반드시 수행한다 — 생략 불가.** 구현·테스트가 끝났다고 스스로 판단해 곧장
    "완료"로 보고하지 않는다.

@@ -922,6 +922,16 @@ describe("bounded-verification skill contract: AC-1~5, AC-9~10", () => {
       assert.ok(impl.includes(rejected), `fresh approval 반례 누락: ${rejected}`);
     }
     assert.match(review, /approval-needed/i, "merged review report의 approval-needed field 누락");
+    assert.match(
+      review,
+      /(?:round|라운드) 1.{0,100}blocker.{0,100}false.{0,180}(?:round|라운드) 2.{0,100}blocker.{0,100}true.{0,180}(?:round|라운드) 3\+.{0,100}blocker.{0,100}true/i,
+      "approval-needed가 round 1/2/3+ blocker 상태표를 결정적으로 정의하지 않음",
+    );
+    assert.match(
+      review,
+      /(?:round|라운드) 3\+.{0,180}(?:새 승인|fresh approval).{0,180}(?:다시|재요청)/i,
+      "추가 round blocker 뒤 새 approval 재요청 계약 누락",
+    );
     assert.doesNotMatch(impl, /clean해질 때까지 반복|재검\(clean까지\)/, "goal-impl에 무제한 자동 재검 문구가 남아 있음");
   });
 
@@ -950,6 +960,21 @@ describe("bounded-verification skill contract: AC-1~5, AC-9~10", () => {
       assert.ok(impl.includes(required), `잘못된 stop condition 개정 기록 누락: ${required}`);
     }
     assert.match(impl, /(?:새로운|새) (?:요구|AC).{0,140}(?:사용자 승인|승인).{0,100}spec-first/i, "새 요구의 사용자 승인+spec-first 계약 누락");
+  });
+
+  it("AC-7·10: base 통합으로 candidate가 바뀌면 matrix 영향 행을 재평가하고 무효 evidence·dogfood를 재실행한다", () => {
+    const impl = compact(readWorkflow("goal-impl"));
+
+    assert.match(
+      impl,
+      /base.{0,80}(?:통합|integration).{0,120}candidate.{0,80}(?:변경|바뀌).{0,180}(?:matrix|매트릭스).{0,100}(?:영향 행|영향받는 행).{0,100}(?:재평가|다시 평가)/i,
+      "base 통합 candidate의 frozen matrix 영향 행 재평가 계약 누락",
+    );
+    assert.match(
+      impl,
+      /(?:무효화|invalid).{0,80}(?:evidence|증거).{0,180}(?:테스트|dogfood|도그푸드|배포).{0,140}(?:재실행|다시 실행)/i,
+      "base 통합 뒤 무효 evidence와 필수 dogfood 재실행 계약 누락",
+    );
   });
 
   it("AC-9: tracked completion과 external handoff를 분리하고 status-only commit은 금지하되 실제 CI fix는 재검한다", () => {

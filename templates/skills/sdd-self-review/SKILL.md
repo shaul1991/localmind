@@ -58,8 +58,10 @@ SHA 또는 diff/evidence를 결정적으로 식별하는 값이어야 하며, ro
 - 축을 함께 표기한다: 추적성·커버리지·정확성·단순성/보안·사실 정확성.
 - merged report에는 다음 필드를 항상 포함한다:
   `candidate-id`, `round`, `independence`, `blockers`, `advisories`, `approval-needed`.
-  `approval-needed`는 호출자가 전달한 자동 예산 상태에 따라 round 2 뒤 blocker가 남으면 `true`,
-  그 밖에는 `false`다. 이 필드는 승인하거나 다음 round를 실행하는 권한이 아니라 중단 신호다.
+  `approval-needed`는 호출자가 전달한 자동 예산 상태와 blocker 여부를 다음 상태표로 판정한다.
+  **round 1 + blocker → false; round 2 + blocker → true; round 3+ + blocker → true; 어느 round든
+  clean → false**다. round 3+에 blocker가 남으면 **새 승인(fresh approval)을 다시 요청**한다.
+  이 필드는 승인하거나 다음 round를 실행하는 권한이 아니라 중단 신호다.
 
 ## 6. 독립성 상태 정직 보고
 

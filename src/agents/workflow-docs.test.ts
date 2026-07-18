@@ -276,6 +276,8 @@ describe("bounded-verification repository/scaffold contract: AC-2, AC-6~10", () 
     for (const [rel, section] of [["AGENTS.md", root], ["templates/sdd/AGENTS.md", scaffold]] as const) {
       assert.match(section, /(?:최종|final) self-review (?:직전|전에).{0,160}(?:다시|재조회|fetch).{0,160}(?:full SHA|기준 SHA)/i, `${rel}: pre-review freshness gate 누락`);
       assert.match(section, /(?:base|기준 SHA).{0,60}(?:이동|전진|달라).{0,180}(?:정합|통합).{0,140}(?:테스트|regression).{0,80}(?:재실행|green|통과)/i, `${rel}: moved-base integration/regression 누락`);
+      assert.match(section, /base.{0,80}(?:통합|integration).{0,120}candidate.{0,80}(?:변경|바뀌).{0,180}(?:matrix|매트릭스).{0,100}(?:영향 행|영향받는 행).{0,100}(?:재평가|다시 평가)/i, `${rel}: post-integration matrix 영향 행 재평가 누락`);
+      assert.match(section, /(?:무효화|invalid).{0,80}(?:evidence|증거).{0,180}(?:dogfood|도그푸드|배포).{0,140}(?:재실행|다시 실행)/i, `${rel}: post-integration 필수 evidence 재실행 누락`);
       assert.match(section, /freshness unverified/i, `${rel}: unavailable 정직 보고 상태 누락`);
       assert.match(section, /(?:사용자|user).{0,100}(?:방향|결정|지시)/i, `${rel}: unavailable 시 사용자 결정 요청 누락`);
     }
