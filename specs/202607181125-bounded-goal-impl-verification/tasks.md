@@ -82,13 +82,13 @@ tracked evidence pointer 갱신은 Phase 6이 소유하므로 `files: 없음`과
 ## Phase 3 — 사람용 문서·CHANGELOG
 > depends-on: Phase 2 barrier · files: `docs/agents.md`, `docs/workflows.md`, `CHANGELOG.md`
 
-- [ ] **T3.1 (AC-1~3·10):** `docs/agents.md`에 candidate/round, 구현·review 독립성, 두 round 뒤 중단과
+- [x] **T3.1 (AC-1~3·10):** `docs/agents.md`에 candidate/round, 구현·review 독립성, 두 round 뒤 중단과
       fresh 승인 1회성을 평이하게 설명한다.
-- [ ] **T3.2 (AC-4~9):** `docs/workflows.md`에 matrix 확인→freeze→dogfood→두 base gate→bounded review→
+- [x] **T3.2 (AC-4~9):** `docs/workflows.md`에 matrix 확인→freeze→dogfood→두 base gate→bounded review→
       remote completion 흐름과 실패 경로를 설명한다.
-- [ ] **T3.3 (AC-10):** CHANGELOG 미버전 영역에 네 개선안과 기존 품질 gate 불변을 기록하고 버전 숫자는
+- [x] **T3.3 (AC-10):** CHANGELOG 미버전 영역에 네 개선안과 기존 품질 gate 불변을 기록하고 버전 숫자는
       넣지 않는다.
-- [ ] **T3.4:** docs contract 테스트를 재실행해 문서와 정본의 drift 0을 확인한다.
+- [x] **T3.4:** docs contract 테스트를 재실행해 문서와 정본의 drift 0을 확인한다.
 
 ## Phase 4 — 통합 검증·dogfood
 > depends-on: Phase 3 · files: 없음
