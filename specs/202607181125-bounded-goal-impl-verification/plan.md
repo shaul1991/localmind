@@ -239,6 +239,15 @@ GitHub와 최종 보고가 소유하며 상태 기록만을 위한 commit은 만
 상태는 구현 전 `Pending`, 통과 후 `[x]`와 evidence pointer로 갱신한다. PR/CI의 동적 성공 상태는 이 표에
 사후 commit하지 않고 remote 링크와 최종 보고에서 확인한다.
 
+### Matrix amendment A-1 — round 2 finding (2026-07-18)
+
+- **변경 이유:** pre-review base 통합으로 candidate가 바뀌어도 기존 AC-7 종료 조건은 regression green만
+  요구해, 이전 candidate의 dogfood·배포 evidence가 여전히 유효한지 보장하지 못했다.
+- **영향 AC:** AC-7·AC-10.
+- **무효 evidence:** candidate `5ac55279f7cd3c9bcf1b78fdd783e4c5b5aaa028`에서 만든 regression-only
+  advanced-base synthetic evidence와, 그 결과만으로 기존 dogfood·배포 evidence를 새 candidate에도
+  유효하다고 본 판단. 아래 amended 행에 따라 영향 행 재평가와 테스트·dogfood·배포를 다시 실행한다.
+
 | AC | 검증 방법·레벨 | 최소 evidence | 통과·종료 조건 | 상태 |
 |---|---|---|---|---|
 | AC-1 | 정적 계약 + review-report simulation | skill 문구 assertion, 동일 candidate의 다중 reviewer 병합 fixture | 병합 report 1개가 round 1이고 candidate 변경 후 report만 round 2 | Pending |
@@ -247,10 +256,10 @@ GitHub와 최종 보고가 소유하며 상태 기록만을 위한 commit은 만
 | AC-4 | goal-ready/plan contract + scaffold 통합 | spec AC 목록과 생성 plan matrix 행 비교, capability 부재 반례 | 모든 AC 정확히 1행, 5열 non-empty; 필수 capability 부재·skipped/degraded는 blocker | Pending |
 | AC-5 | frozen-matrix 시나리오 검토 | 단순 evidence 선호, 제품/보안 결함, 잘못된 stop condition 세 fixture | 선호는 advisory; 실제 결함은 blocker; 개정은 이유·영향 AC·무효 evidence 포함 | Pending |
 | AC-6 | synthetic git remote dogfood + worktree audit | start fetch full SHA/시각/ancestry, 새 branch, dirty file 전후 hash/stage | latest base 분리 branch이고 dirty/unmanaged byte·stage 변화 0건 | Pending |
-| AC-7 | advanced-base synthetic git remote dogfood | start SHA, advanced SHA, integration record, post-integration regression log | 최신 base 정합과 필수 regression green 뒤에만 round 1 시작 | Pending |
+| AC-7 | advanced-base synthetic git remote dogfood | start SHA, advanced SHA, integration record, frozen matrix 영향 행 재평가, 현재 candidate의 테스트·dogfood·배포 재실행 log | 최신 base 정합 뒤 무효화된 테스트·dogfood·배포 evidence가 모두 green일 때만 review 시작 | Pending |
 | AC-8 | failure-path contract + synthetic unavailable/conflict case | `freshness unverified`, 기준 SHA·원인·영향·사용자 결정 요청 | silent fallback/`fresh`/`complete` 오표기 0건 | Pending |
 | AC-9 | task-format negative contract + representative handoff audit | final candidate, tracked task, status-only 반례, CI defect fix candidate | external-state mirror task 0건; CI fix는 test + 남은 round/fresh-approval review 뒤 commit | Pending |
-| AC-10 | contract/docs/scaffold tests + full test/build/deploy hash | 세 테스트 suite 결과, 전체 test/build, canonical↔installed hash | 네 규칙 parity, forbidden weakening 0건, 전체 green | Pending |
+| AC-10 | contract/docs/scaffold tests + full test/build/deploy hash | 세 테스트 suite 결과, 전체 test/build, amendment 영향 배포, canonical↔installed hash | 네 규칙 parity, forbidden weakening 0건, 현재 candidate 재검증 전체 green | Pending |
 | AC-11 | 이 slice의 publish-readiness run record | frozen matrix, base SHA 2회, merged review report(s), versioned task/history | 무승인 round 3·scope-creep blocker·stale 재작업·external-state tracked task 모두 0건 | Pending |
 
 ## 9. Open questions

@@ -970,11 +970,13 @@ describe("bounded-verification skill contract: AC-1~5, AC-9~10", () => {
       /base.{0,80}(?:통합|integration).{0,120}candidate.{0,80}(?:변경|바뀌).{0,180}(?:matrix|매트릭스).{0,100}(?:영향 행|영향받는 행).{0,100}(?:재평가|다시 평가)/i,
       "base 통합 candidate의 frozen matrix 영향 행 재평가 계약 누락",
     );
-    assert.match(
-      impl,
-      /(?:무효화|invalid).{0,80}(?:evidence|증거).{0,180}(?:테스트|dogfood|도그푸드|배포).{0,140}(?:재실행|다시 실행)/i,
-      "base 통합 뒤 무효 evidence와 필수 dogfood 재실행 계약 누락",
-    );
+    for (const required of ["테스트", "dogfood", "배포"]) {
+      assert.match(
+        impl,
+        new RegExp(`(?:무효화|invalid).{0,80}(?:evidence|증거).{0,120}${required}.{0,140}(?:재실행|다시 실행)`, "i"),
+        `base 통합 뒤 무효 evidence의 ${required} 재실행 계약 누락`,
+      );
+    }
   });
 
   it("AC-9: tracked completion과 external handoff를 분리하고 status-only commit은 금지하되 실제 CI fix는 재검한다", () => {
