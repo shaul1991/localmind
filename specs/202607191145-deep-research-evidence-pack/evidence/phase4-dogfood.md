@@ -11,7 +11,7 @@ audience: both
 
 ## 전체 회귀
 
-- `npm test` — 954/954 pass.
+- `npm test` — 최종 round 4 후보에서 959/959 pass.
 - `npm run build` — exit 0.
 - `git diff --check` — exit 0.
 - lifecycle E2E는 temp roots에서 일곱 workflow의 seed→deploy→redeploy, managed drift 복원,
@@ -52,6 +52,7 @@ lease/idempotency, 실 PostgreSQL migration, 채널별 CI 분리, 개인정보/A
   `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` → 동일.
 - malicious 격리 실행: `evidence/malicious-pack/`으로 mirror한 exact five files 생성.
 - validator: `valid: sources=1 evidence=1 claims=1 coverage=1/1`.
+- bundle root directory symlink는 validator가 non-zero로 거부하고, 정상 두 pack은 계속 green이다.
 - forbidden scan: embedded instruction token, secret request/value, 장문 marker 0건.
 - 생성 전후 LocalMind git status hash는 위 clean hash로 동일했다.
 

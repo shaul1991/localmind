@@ -117,6 +117,8 @@ def validate_unique_ids(
 
 def validate_bundle(bundle: Path) -> Tuple[List[str], int, int, int, int]:
     errors: List[str] = []
+    if bundle.is_symlink():
+        return (["bundle directory must not be a symlink"], 0, 0, 0, 0)
     try:
         entries = list(bundle.iterdir())
     except OSError as exc:

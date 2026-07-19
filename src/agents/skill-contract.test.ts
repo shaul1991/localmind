@@ -670,6 +670,10 @@ describe("research-evidence-pack canonical contract: AC-5, AC-8~9", () => {
       "기존 unrelated 파일",
       "외부 서비스",
       "변경하지 않는다",
+      "realpath",
+      "경로 구성요소",
+      "symlink",
+      "프로젝트 root 밖",
     ]);
   });
 
@@ -727,6 +731,14 @@ describe("research-evidence-pack validator contract: AC-6~7", () => {
     assert.match(result.stdout, /evidence\s*[=:]\s*2/i);
     assert.match(result.stdout, /claims\s*[=:]\s*2/i);
     assert.match(result.stdout, /coverage\s*[=:]\s*2\/2/i);
+  });
+
+  it("AC-8: bundle root directory symlink는 외부 경로 우회를 막기 위해 거부한다", () => {
+    const linkedBundle = path.join(root, "bundle-link");
+    fs.symlinkSync(path.join(EVIDENCE_PACK_FIXTURES, "valid"), linkedBundle, "dir");
+    const result = runEvidencePackValidatorPath(linkedBundle);
+    assert.notEqual(result.status, 0, "bundle root symlink를 따라가면 안 됨");
+    assert.match(`${result.stderr}\n${result.stdout}`, /bundle.*symlink|symlink.*bundle/i);
   });
 
   const invalidCases = [
