@@ -29,9 +29,9 @@ audience: ai
 ## Phase 3 — distribution·문서
 > depends-on: Phase 2 · files: `README.md`, `docs/agents.md`, `docs/workflows.md`, `CHANGELOG.md`, `src/agents/commands.test.ts`, `src/agents/skills.test.ts`, `src/agents/workflow-docs.test.ts`
 
-- [ ] runtime별 호출, 두 workflow의 side-effect 경계, evidence pack 파일 구성을 문서화한다.
-- [ ] packaged workflow 목록과 lifecycle 기대값을 7개 정본에 맞춘다.
-- [ ] 문서·배포 focused tests를 GREEN으로 만든다.
+- [x] runtime별 호출, 두 workflow의 side-effect 경계, evidence pack 파일 구성을 문서화한다.
+- [x] packaged workflow 목록과 lifecycle 기대값을 7개 정본에 맞춘다.
+- [x] 문서·배포 focused tests를 GREEN으로 만든다.
 
 ## Phase 4 — 통합·도그푸드
 > depends-on: Phase 3 · files: `specs/202607191145-deep-research-evidence-pack/evidence/`

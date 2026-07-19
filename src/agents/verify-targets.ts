@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadSkillRegistry, hasSkillMarker, hasCommandMarker, splitFrontmatter, type SkillPackage } from "./skill-contract.js";
+import { wrapperSelfContained } from "./commands.js";
 import { isDenyImplicit } from "./workflow-policy.js";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -90,10 +91,10 @@ function verifySkillDirTarget(target: "agent-skill" | "claude-skill", dir: strin
   return { target, status: failures.length ? "failed" : "ok", failures };
 }
 
-/** Gemini command target의 각 wrapper 이름 결합 command marker를 검증한다(존재만으로 통과 금지). */
+/** Gemini command target의 wrapper-eligible workflow marker를 검증한다(존재만으로 통과 금지). */
 function verifyGeminiTarget(dir: string, skills: SkillPackage[]): TargetVerification {
   const failures: string[] = [];
-  for (const s of skills) {
+  for (const s of skills.filter(wrapperSelfContained)) {
     const toml = path.join(dir, `${s.name}.toml`);
     let text: string;
     try {

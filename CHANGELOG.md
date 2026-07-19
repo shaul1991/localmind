@@ -6,6 +6,19 @@ localmind의 주요 변경 이력. 최신이 위.
 
 ## 미릴리스
 
+### Deep Research evidence pack·적응형 충분성 (specs/202607191145)
+
+- **추적 가능한 조사 원장** — `deep-research`가 run/source/evidence/claim 안정 ID, atomic claim,
+  supported·contested·unverified·withdrawn 상태를 사용해 보고와 근거를 재검증 가능하게 연결한다.
+- **고정 개수 없는 종료 조건** — 출처 N개 같은 기계적 할당량 대신 직접성·권위·독립성·중요성·상충
+  해소로 충분성을 판정하고, 장기 조사는 checkpoint/handoff로 중복 없이 이어간다.
+- **분리된 파일 저장 권한** — 기본 `report-only`는 유지하고, 별도 explicit·docs-only
+  `research-evidence-pack`만 확인된 새 경로에 정확히 다섯 파일을 쓰고 Python 3.9+ validator로
+  구조·참조 무결성을 검사한다. 자동 HOME 선택·덮어쓰기·자동 열기는 하지 않는다.
+- **런타임 경계** — Claude·공용 Agent Skill에는 validator까지 배포한다. 실행 파일을 자급할 수 없는
+  Gemini generated wrapper는 만들지 않고 `skipped-dependency`로 보고하며, target 검증도 wrapper 적격
+  workflow만 요구한다.
+
 ### goal-impl 검증 루프 유한화·증거 경계 (specs/202607181125)
 
 - **AC 검증 matrix** — 모든 AC에 검증 방법·레벨, 최소 evidence, 통과·종료 조건, 상태를 1:1로

@@ -52,15 +52,20 @@ const PRODUCTION_WORKFLOWS = [
   ...LEGACY_CHARACTERIZATION_WORKFLOWS,
   "localmind-binding",
   "localmind-rules",
+  "research-evidence-pack",
 ].sort();
+const GEMINI_WRAPPER_WORKFLOWS = PRODUCTION_WORKFLOWS.filter((name) => name !== "research-evidence-pack");
 
 function assertAllTargetsReproduced() {
   for (const n of PRODUCTION_WORKFLOWS) {
     assert.ok(fs.existsSync(path.join(canonical, n, "SKILL.md")), `canonical ${n}`);
     assert.ok(read(path.join(claudeSkills, n, "SKILL.md")).includes(`managed-by: localmind (skill: ${n})`), `claude ${n} marker`);
     assert.ok(read(path.join(agentSkills, n, "SKILL.md")).includes(`managed-by: localmind (skill: ${n})`), `agent ${n} marker`);
-    assert.ok(fs.existsSync(path.join(geminiCmds, `${n}.toml`)), `gemini ${n}.toml`);
   }
+  for (const n of GEMINI_WRAPPER_WORKFLOWS) assert.ok(fs.existsSync(path.join(geminiCmds, `${n}.toml`)), `gemini ${n}.toml`);
+  assert.ok(!fs.existsSync(path.join(geminiCmds, "research-evidence-pack.toml")), "실행 validator 전제 workflow는 generated wrapper 없음");
+  assert.ok(fs.existsSync(path.join(claudeSkills, "research-evidence-pack", "scripts", "validate_bundle.py")), "Claude skill validator 배포");
+  assert.ok(fs.existsSync(path.join(agentSkills, "research-evidence-pack", "scripts", "validate_bundle.py")), "Agent Skill validator 배포");
   assert.match(read(path.join(claudeSkills, "goal-impl", "SKILL.md")).split("\n---")[0], /disable-model-invocation:\s*true/);
   assert.match(read(path.join(agentSkills, "goal-impl", "agents", "openai.yaml")), /allow_implicit_invocation: false/);
   assert.match(read(path.join(claudeSkills, "deep-research", "SKILL.md")).split("\n---")[0], /disable-model-invocation:\s*true/);
@@ -68,7 +73,7 @@ function assertAllTargetsReproduced() {
 }
 
 describe("workflow-lifecycle: AC-17", () => {
-  it("skills:deploy CLI가 production 여섯 workflow를 모든 available target에 재현한다", () => {
+  it("skills:deploy CLI가 production 일곱 workflow를 지원 target에 재현하고 wrapper 비적격은 정직하게 건너뛴다", () => {
     const out = runDeployCli();
     assert.match(out, /배포 결과: (성공|부분 성공)/);
     assertAllTargetsReproduced();
@@ -166,7 +171,7 @@ describe("workflow-lifecycle E2E entry points: AC-17 (R4-05)", () => {
   const runShell = (script, env) => execFileSync("bash", [script], { cwd: REPO_ROOT, encoding: "utf8", env });
   const isDeny = (p) => /allow_implicit_invocation: false/.test(fs.readFileSync(p, "utf8"));
 
-  it("backup 진입점: production 여섯 skill 소스를 미러하고 생성 Claude/공용/Gemini 산출물은 제외한다", () => {
+  it("backup 진입점: production 일곱 skill 소스를 미러하고 생성 Claude/공용/Gemini 산출물은 제외한다", () => {
     runDeployCli(); // 정본 seed + 전 target 배포
     const backupDir = path.join(root, "backup");
     fs.mkdirSync(backupDir, { recursive: true });

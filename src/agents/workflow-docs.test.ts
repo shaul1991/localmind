@@ -183,6 +183,35 @@ describe("deep-research discoverability docs: AC-2·14·16 (specs/202607172313)"
   });
 });
 
+describe("research-evidence-pack docs: AC-8·9·10 (specs/202607191145)", () => {
+  const userDocs = ["README.md", "docs/agents.md", "docs/workflows.md"] as const;
+
+  it("별도 explicit/docs-only workflow와 Claude·Codex 실제 호출을 안내한다", () => {
+    const all = flat(userDocs.map(read).join("\n"));
+    assert.match(all, /`research-evidence-pack`.{0,220}(?:`explicit`|명시).{0,160}`?docs-only`?/i);
+    assert.match(all, /Claude(?: Code)?.{0,180}`\/research-evidence-pack <confirmed-path>`/i);
+    assert.match(all, /Codex.{0,180}`\$research-evidence-pack <confirmed-path>`/i);
+  });
+
+  it("정확한 다섯 파일·새 경로 gate·비덮어쓰기·자동 열기 금지를 문서화한다", () => {
+    const workflows = flat(read("docs/workflows.md"));
+    for (const file of ["report.md", "sources.jsonl", "evidence.jsonl", "claims.jsonl", "run-manifest.json"]) {
+      assert.match(workflows, new RegExp(`\\b${file.replace(".", "\\.")}\\b`), `${file} 누락`);
+    }
+    assert.match(workflows, /존재하지 않는 새 디렉터리/);
+    assert.match(workflows, /덮어쓰지 않/);
+    assert.match(workflows, /HOME\/Documents.{0,120}추정하지 않/);
+    assert.match(workflows, /자동으로 열지 않/);
+    assert.match(workflows, /validator.{0,180}(?:사실성|진실성).{0,120}(?:보증하지 않|판정하지 않)/i);
+  });
+
+  it("Gemini generated wrapper 비지원 이유와 공용 Agent Skill의 미검증 경계를 과장 없이 밝힌다", () => {
+    const all = flat(userDocs.map(read).join("\n"));
+    assert.match(all, /Gemini.{0,260}(?:generated wrapper|생성(?:된)? wrapper).{0,160}`skipped-dependency`/i);
+    assert.match(all, /공용 Agent Skill.{0,260}(?:auto-discovery|자동 발견|실제 자동 발견).{0,180}(?:따라|미검증|확인 전)/i);
+  });
+});
+
 describe("goal-impl-completion-delegation: AC-4 (specs/051 I-5, D-6)", () => {
   const rootAgents = () => read("AGENTS.md");
   const skillBody = () => read("templates/skills/goal-impl/SKILL.md");

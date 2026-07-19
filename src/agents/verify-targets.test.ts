@@ -50,6 +50,7 @@ describe("verifyDeployedTargets (R4-05)", () => {
     assert.equal(targetOf(r, "agent-skill").status, "ok");
     assert.equal(targetOf(r, "claude-skill").status, "ok");
     assert.equal(targetOf(r, "gemini-command").status, "ok");
+    assert.equal(fs.existsSync(path.join(geminiCmds, "research-evidence-pack.toml")), false, "executable 전제 workflow는 wrapper 검증 대상 아님");
   });
 
   it("시나리오1: 공용(shared) target에 packaged skill 하나가 빠지면 failed", () => {

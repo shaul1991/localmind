@@ -73,11 +73,11 @@ const frontmatterOf = (p: string) => read(p).split("\n---")[0];
 
 // ── AC-2: fresh seed catalog ────────────────────────────────────────────────
 describe("skills-seed: AC-2", () => {
-  it("production package + 빈 data → 정확히 여섯 workflow + marker, 재실행 unchanged", () => {
+  it("production package + 빈 data → 정확히 일곱 workflow + marker, 재실행 unchanged", () => {
     const r1 = seedWorkflows({ skillsDir: dataDir });
     assert.equal(r1.problems.length, 0);
     const names = r1.items.map((i) => i.logicalId).sort();
-    assert.deepEqual(names, ["deep-research", "goal-impl", "goal-ready", "localmind-binding", "localmind-rules", "sdd-self-review"]);
+    assert.deepEqual(names, ["deep-research", "goal-impl", "goal-ready", "localmind-binding", "localmind-rules", "research-evidence-pack", "sdd-self-review"]);
     assert.ok(r1.items.every((i) => i.status === "created"));
     for (const n of names) {
       const md = read(path.join(dataDir, n, "SKILL.md"));
@@ -130,18 +130,26 @@ describe("research-evidence-pack managed lifecycle: AC-10", () => {
       >,
     };
     const first = deployWorkflows(options);
-    for (const id of ["deep-research", "research-evidence-pack"]) {
-      const items = first.items.filter((item) => item.logicalId === id);
-      assert.equal(items.length, 3, `${id}: 세 runtime target 결과 필요`);
-      assert.ok(items.every((item) => item.status === "created"), JSON.stringify(items));
-    }
+    const deepItems = first.items.filter((item) => item.logicalId === "deep-research");
+    assert.equal(deepItems.length, 3, "deep-research: 세 runtime target 결과 필요");
+    assert.ok(deepItems.every((item) => item.status === "created"), JSON.stringify(deepItems));
+    const packItems = first.items.filter((item) => item.logicalId === "research-evidence-pack");
+    assert.equal(packItems.length, 3, "research-evidence-pack: 세 runtime target 결과 필요");
+    assert.equal(packItems.find((item) => item.target === "claude-skill")?.status, "created");
+    assert.equal(packItems.find((item) => item.target === "agent-skill")?.status, "created");
+    assert.equal(packItems.find((item) => item.target === "gemini-command")?.status, "skipped-dependency");
 
     const second = deployWorkflows(options);
+    assert.ok(second.items.filter((item) => item.logicalId === "deep-research").every((item) => item.status === "unchanged"), JSON.stringify(second.items));
     assert.ok(
       second.items
-        .filter((item) => ["deep-research", "research-evidence-pack"].includes(item.logicalId))
+        .filter((item) => item.logicalId === "research-evidence-pack" && item.target !== "gemini-command")
         .every((item) => item.status === "unchanged"),
       JSON.stringify(second.items),
+    );
+    assert.equal(
+      second.items.find((item) => item.logicalId === "research-evidence-pack" && item.target === "gemini-command")?.status,
+      "skipped-dependency",
     );
   });
 
@@ -168,7 +176,7 @@ describe("research-evidence-pack managed lifecycle: AC-10", () => {
     for (const result of [first, second]) {
       assert.equal(
         result.items.find((item) => item.logicalId === "research-evidence-pack" && item.target === "claude-skill")?.status,
-        "skipped-dependency",
+        "skipped-unmanaged",
       );
     }
     assert.ok(fs.readFileSync(path.join(unmanagedTarget, "SKILL.md")).equals(unmanagedBytes));
