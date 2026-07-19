@@ -47,7 +47,11 @@ describe("commands-gemini: AC-6", () => {
     seedWorkflows({ skillsDir: dataDir });
     const g = geminiHome();
     const r = deployWorkflows({ skillsDir: dataDir, geminiCommandsDir: g, targets: ["gemini-command"] });
-    assert.equal(r.outcome, "success");
+    assert.equal(r.outcome, "partial", "executable validator workflow의 wrapper skip을 부분 성공으로 보고");
+    assert.equal(
+      r.items.find((item) => item.logicalId === "research-evidence-pack" && item.target === "gemini-command")?.status,
+      "skipped-dependency",
+    );
     for (const n of ["goal-ready", "goal-impl", "sdd-self-review"]) {
       assert.ok(fs.existsSync(path.join(g, `${n}.toml`)), `${n}.toml 생성`);
     }
@@ -602,7 +606,11 @@ describe("workflow-invocation: AC-7", () => {
     assert.equal(binding.enforcement["gemini-command"], "instruction-level");
     // 예약 이름은 goal-impl/goal-ready/sdd-self-review — built-in `/goal`과 이름이 다르다
     assert.ok(!rows.some((r) => r.logicalId === "goal"));
-    assert.deepEqual(rows.map((r) => r.logicalId), ["deep-research", "goal-impl", "goal-ready", "localmind-binding", "localmind-rules", "sdd-self-review"]);
+    assert.deepEqual(rows.map((r) => r.logicalId), ["deep-research", "goal-impl", "goal-ready", "localmind-binding", "localmind-rules", "research-evidence-pack", "sdd-self-review"]);
+    const evidencePack = rows.find((r) => r.logicalId === "research-evidence-pack")!;
+    assert.equal(evidencePack.sideEffects, "docs-only");
+    assert.equal(evidencePack.enforcement["claude-skill"], "runtime-enforced");
+    assert.equal(evidencePack.enforcement["agent-skill"], "runtime-enforced");
   });
 
   it("summary는 target/status/invocation/resolution을 평이한 한국어로 표시하고 Codex /name·LocalMind /goal을 주장하지 않는다", () => {
@@ -672,6 +680,11 @@ describe("workspace resolution boundary (R1-11)", () => {
     const outside = path.join(root, "outside-cwd");
     fs.mkdirSync(outside, { recursive: true });
     const r = deployWorkflows({ skillsDir: dataDir, geminiCommandsDir: g, targets: ["gemini-command"], workspace: { cwd: outside, repoRoot: repo } });
-    assert.ok(r.items.filter((i) => i.target === "gemini-command").every((i) => i.resolution === "unverified"), "repo 밖 cwd → unverified");
+    assert.ok(
+      r.items
+        .filter((i) => i.target === "gemini-command" && i.status !== "skipped-dependency")
+        .every((i) => i.resolution === "unverified"),
+      "repo 밖 cwd → wrapper-eligible 항목은 unverified",
+    );
   });
 });

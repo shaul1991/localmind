@@ -73,11 +73,11 @@ const frontmatterOf = (p: string) => read(p).split("\n---")[0];
 
 // ── AC-2: fresh seed catalog ────────────────────────────────────────────────
 describe("skills-seed: AC-2", () => {
-  it("production package + 빈 data → 정확히 여섯 workflow + marker, 재실행 unchanged", () => {
+  it("production package + 빈 data → 정확히 일곱 workflow + marker, 재실행 unchanged", () => {
     const r1 = seedWorkflows({ skillsDir: dataDir });
     assert.equal(r1.problems.length, 0);
     const names = r1.items.map((i) => i.logicalId).sort();
-    assert.deepEqual(names, ["deep-research", "goal-impl", "goal-ready", "localmind-binding", "localmind-rules", "sdd-self-review"]);
+    assert.deepEqual(names, ["deep-research", "goal-impl", "goal-ready", "localmind-binding", "localmind-rules", "research-evidence-pack", "sdd-self-review"]);
     assert.ok(r1.items.every((i) => i.status === "created"));
     for (const n of names) {
       const md = read(path.join(dataDir, n, "SKILL.md"));
@@ -99,6 +99,87 @@ describe("skills-seed: AC-2", () => {
     assert.equal(r.problems.length, 0);
     assert.deepEqual(r.items.map((i) => i.logicalId).sort(), ["w-alpha", "w-beta", "w-delta", "w-gamma"]);
     assert.ok(r.items.every((i) => i.status === "created"));
+  });
+});
+
+describe("research-evidence-pack managed lifecycle: AC-10", () => {
+  it("production package는 seed→3 runtime deploy 후 재실행이 모두 unchanged다", () => {
+    const seeded = seedWorkflows({ skillsDir: dataDir });
+    const expected = [
+      "deep-research",
+      "goal-impl",
+      "goal-ready",
+      "localmind-binding",
+      "localmind-rules",
+      "research-evidence-pack",
+      "sdd-self-review",
+    ];
+    assert.deepEqual(seeded.items.map((item) => item.logicalId).sort(), expected);
+    assert.ok(seeded.items.every((item) => item.status === "created"), JSON.stringify(seeded.items));
+
+    const c = claudeHome();
+    const a = agentHome();
+    const g = geminiHome();
+    const options = {
+      skillsDir: dataDir,
+      claudeSkillsDir: c.skillsDir,
+      agentSkillsDir: a.skillsDir,
+      geminiCommandsDir: g.commandsDir,
+      targets: ["claude-skill", "agent-skill", "gemini-command"] as Array<
+        "claude-skill" | "agent-skill" | "gemini-command"
+      >,
+    };
+    const first = deployWorkflows(options);
+    const deepItems = first.items.filter((item) => item.logicalId === "deep-research");
+    assert.equal(deepItems.length, 3, "deep-research: 세 runtime target 결과 필요");
+    assert.ok(deepItems.every((item) => item.status === "created"), JSON.stringify(deepItems));
+    const packItems = first.items.filter((item) => item.logicalId === "research-evidence-pack");
+    assert.equal(packItems.length, 3, "research-evidence-pack: 세 runtime target 결과 필요");
+    assert.equal(packItems.find((item) => item.target === "claude-skill")?.status, "created");
+    assert.equal(packItems.find((item) => item.target === "agent-skill")?.status, "created");
+    assert.equal(packItems.find((item) => item.target === "gemini-command")?.status, "skipped-dependency");
+
+    const second = deployWorkflows(options);
+    assert.ok(second.items.filter((item) => item.logicalId === "deep-research").every((item) => item.status === "unchanged"), JSON.stringify(second.items));
+    assert.ok(
+      second.items
+        .filter((item) => item.logicalId === "research-evidence-pack" && item.target !== "gemini-command")
+        .every((item) => item.status === "unchanged"),
+      JSON.stringify(second.items),
+    );
+    assert.equal(
+      second.items.find((item) => item.logicalId === "research-evidence-pack" && item.target === "gemini-command")?.status,
+      "skipped-dependency",
+    );
+  });
+
+  it("marker 없는 동명 source/target은 두 번 실행해도 byte 변경·삭제하지 않는다", () => {
+    const unmanagedSource = path.join(dataDir, "research-evidence-pack");
+    fs.mkdirSync(unmanagedSource, { recursive: true });
+    const unmanagedBytes = Buffer.from(
+      "---\nname: research-evidence-pack\ndescription: 사용자 소유 evidence pack\n---\n# 사용자 파일\n",
+    );
+    fs.writeFileSync(path.join(unmanagedSource, "SKILL.md"), unmanagedBytes);
+
+    const seeded = seedWorkflows({ skillsDir: dataDir });
+    const collision = seeded.items.find((item) => item.logicalId === "research-evidence-pack");
+    assert.ok(collision, "research-evidence-pack canonical package/catalog entry missing");
+    assert.equal(collision?.status, "skipped-unmanaged");
+    assert.ok(fs.readFileSync(path.join(unmanagedSource, "SKILL.md")).equals(unmanagedBytes));
+
+    const c = claudeHome();
+    const unmanagedTarget = path.join(c.skillsDir, "research-evidence-pack");
+    fs.mkdirSync(unmanagedTarget, { recursive: true });
+    fs.writeFileSync(path.join(unmanagedTarget, "SKILL.md"), unmanagedBytes);
+    const first = deployWorkflows({ skillsDir: dataDir, claudeSkillsDir: c.skillsDir, targets: ["claude-skill"] });
+    const second = deployWorkflows({ skillsDir: dataDir, claudeSkillsDir: c.skillsDir, targets: ["claude-skill"] });
+    for (const result of [first, second]) {
+      assert.equal(
+        result.items.find((item) => item.logicalId === "research-evidence-pack" && item.target === "claude-skill")?.status,
+        "skipped-unmanaged",
+      );
+    }
+    assert.ok(fs.readFileSync(path.join(unmanagedTarget, "SKILL.md")).equals(unmanagedBytes));
   });
 });
 

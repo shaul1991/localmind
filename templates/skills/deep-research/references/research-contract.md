@@ -2,7 +2,7 @@
 
 이 문서는 source authority, evidence ledger, 상충 근거 처리, 결과 형식, critic, 안전 경계를 정의한다.
 
-## 1. Source authority와 evidence ledger
+## 1. Source authority와 안정적 ID
 
 - **T1:** 공식 문서·표준·동료평가 연구·공식 원자료.
 - **T2:** 공식 저장소·공식 발표·1차 데이터.
@@ -12,18 +12,45 @@
 시간 민감 claim은 최신 T1/T2를 우선해 현재 session에서 직접 확인한다. 기억, 이전 대화, 검색 snippet은
 live evidence가 아니다. 존재하지 않거나 열어보지 않은 source를 인용하지 않는다.
 
-evidence ledger는 핵심 claim마다 다음을 한 행으로 연결한다.
+한 research run 안에서 다음 run-local 순번을 안정적으로 유지한다. 항목을 삭제하거나 상태를 바꿔도 ID를
+재사용하거나 다시 번호 매기지 않는다.
+
+- run ID: `R-001`
+- source ID: `S-001`
+- evidence ID: `E-001`
+- claim ID: `C-001`
+
+각 source와 evidence와 claim은 `run_id`로 run을 참조한다. evidence는 `source_id`로 source를 참조하고,
+claim은 `evidence_ids`로 evidence를 참조한다. 상충하는 atomic claim은 `conflicts_with`에 claim ID를
+기록한다.
+
+## 2. Atomic claim ledger와 적응형 충분성
+
+핵심 결론은 검증 가능한 한 문장 claim으로 분해한다. claim 상태는 다음 네 값만 사용한다.
+
+- `supported`: 직접 evidence가 claim을 지지한다.
+- `contested`: 독립 evidence가 서로 충돌하거나 적용 범위가 갈린다.
+- `unverified`: 필요한 evidence를 현재 확인하지 못했다.
+- `withdrawn`: 반증이나 범위 수정으로 더 이상 결론으로 사용하지 않는다.
+
+evidence ledger는 핵심 claim마다 다음을 연결한다.
 
 | 필드 | 기록 내용 |
 |---|---|
-| Claim | 검증 가능한 한 문장 |
-| Evidence | 직접 URL과 핵심 근거 |
+| IDs | run/source/evidence/claim ID와 참조 관계 |
+| Claim | 검증 가능한 한 문장 claim과 상태 |
+| Evidence | 직접 URL·locator·짧은 핵심 근거 요약 |
 | Authority | T1·T2·T3·T4와 판정 이유 |
 | Dates | 발행/갱신일과 확인일 |
 | Relation | claim에 대한 지지/반박 |
-| Status | 확인된 사실·추론·권고·미검증 중 하나 |
+| Conflict | `conflicts_with` claim ID와 적용 범위 |
 
-## 2. 상충 근거와 인식 상태
+충분성은 단순 출처 개수로 판정하지 않는다. 각 claim의 `directness`, `authority`, `independence`,
+`materiality`, `conflict`를 함께 판정한다. 단일 결정적 T1이 claim을 직접 지지하면 출처 1개도 충분할 수
+있다. 해석·시장 비교·고위험 권고에는 독립 source를 추가해 삼각검증한다. 고위험 claim이나 상충 evidence가
+남으면 근거 수를 채웠다는 이유로 확정하지 말고 `contested` 또는 `unverified`로 남긴다.
+
+## 3. 상충 근거와 인식 상태
 
 상충 source를 조용히 합치거나 하나를 숨기지 않는다. 양쪽의 권위·날짜·적용 범위를 비교하고
 채택/보류 근거를 기록한다. 최종 결론에는 다음 상태를 명시한다.
@@ -37,7 +64,25 @@ live source를 사용할 수 없으면 결과를 context-only 또는 live verifi
 범위를 설명한다. 최신 결론을 단정하지 않는다. Open questions와 후속 검증 단계를 제시하며 fabricated
 citation은 0건이어야 한다.
 
-## 3. Conclusion-first report
+## 4. Checkpoint와 handoff
+
+긴 조사, capability 제약이 있는 조사, 중단 가능한 조사는 checkpoint를 만든다. checkpoint에는 다음을
+빠짐없이 기록한다.
+
+- run ID와 `incomplete|completed` 상태
+- 완료 질문과 미완료 질문
+- 현재 source/evidence/claim `ledger ID`
+- 실제 `capability fallback`과 독립성 상태
+- 다음 검증 단계
+
+미완료 질문이 하나라도 있으면 `incomplete`로 기록하고 완료로 표시하지 않는다. 재개할 때 기존 ID와
+상태를 이어 쓰고, 새 항목에만 다음 순번을 배정한다.
+
+파일 보존 handoff는 report, ledger, checkpoint, critic 상태만 전달한다. 이 report-only workflow는 파일을
+쓰거나 보존 workflow를 자동 호출하지 않는다. 사용자가 별도로 보존을 명시했을 때만 handoff를 별도
+workflow의 입력으로 사용한다.
+
+## 5. Conclusion-first report
 
 기본 출력은 채팅 보고다. 다음 절을 이 순서로 쓴다.
 
@@ -53,11 +98,12 @@ citation은 0건이어야 한다.
 평이한 문장으로 사실과 판단을 구분한다. 파일 산출물을 요청받아도 보고 안에서는 형식과 내용만
 제안하고, 실제 파일 저장은 별도 권한과 별도 workflow로 넘긴다.
 
-## 4. Final critic checklist
+## 6. Final critic checklist
 
 critic checklist는 항상 실행한다. 다음을 결함을 찾는 관점으로 확인한다.
 
 - claim-evidence coverage와 direct link의 실제 지지 관계
+- stable ID 참조 무결성, adaptive sufficiency, checkpoint와 handoff 상태
 - 최신성·source authority·상충 근거·적용 범위
 - 사실·추론·권고·미검증 구분과 과도한 확신
 - brief의 scope·종료 조건·누락된 한계
@@ -67,7 +113,7 @@ critic checklist는 항상 실행한다. 다음을 결함을 찾는 관점으로
 체크리스트를 수행하고 not independent라고 표기한다. 명백한 결함은 수정 후 재검하고, 최종 상태에
 수정·재검 여부를 남긴다.
 
-## 5. Report-only safety
+## 7. Report-only safety
 
 research lane과 critic에는 read-only 지시를 준다. report-only 조사 중 다음 행동은 금지한다.
 

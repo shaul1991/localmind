@@ -313,3 +313,21 @@ describe("deep-research policy contract: AC-1, AC-3", () => {
     assert.equal(enforcementFor("gemini-command", policy), "instruction-level");
   });
 });
+
+describe("research-evidence-pack policy contract: AC-5", () => {
+  it("별도 workflow는 exact explicit/docs-only이고 runtime별 deny-implicit metadata를 생성한다", () => {
+    const reg = loadSkillRegistry(TEMPLATES, { packaged: true });
+    const skill = reg.skills.find((candidate) => candidate.name === "research-evidence-pack");
+    assert.ok(skill, "research-evidence-pack package/catalog entry missing");
+    assert.ok(skill.policy, "research-evidence-pack manifest policy missing");
+    const policy = skill.policy;
+    assert.deepEqual(policy, { activation: "explicit", sideEffects: "docs-only" });
+    assert.deepEqual(claudeInvocationFrontmatter(policy), { "disable-model-invocation": true });
+    const yaml = codexPolicyYaml("research-evidence-pack", policy, "deadbeef");
+    assert.ok(yaml, "explicit evidence pack workflow는 Codex policy metadata가 필요하다");
+    assert.equal((yaml.match(/allow_implicit_invocation:\s*false/g) ?? []).length, 1);
+    assert.equal(enforcementFor("claude-skill", policy), "runtime-enforced");
+    assert.equal(enforcementFor("agent-skill", policy), "runtime-enforced");
+    assert.equal(enforcementFor("gemini-command", policy), "instruction-level");
+  });
+});

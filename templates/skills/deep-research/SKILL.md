@@ -46,12 +46,15 @@ final critic이다.
 
 ## 5. 근거 수집과 종합
 
-reference의 source authority와 evidence ledger schema를 사용한다. 시간 민감 claim은 live evidence로
-확인하고, 상충 근거와 미검증 범위를 숨기지 않는다. 모든 research lane과 evidence ledger가 모인 뒤
-synthesis를 하고, 그 다음 final critic을 수행한 뒤에만 최종 보고를 작성한다.
+reference의 source authority, 안정적 ID, atomic claim ledger, 적응형 충분성 계약을 사용한다. 시간 민감
+claim은 live evidence로 확인하고, 상충 근거와 미검증 범위를 숨기지 않는다. 모든 research lane과
+evidence ledger가 모인 뒤 synthesis를 하고, 그 다음 final critic을 수행한 뒤에만 최종 보고를 작성한다.
 
 ## 6. 보고와 종료
 
 reference의 conclusion-first report 형식과 critic checklist를 적용한다. 명백한 결함은 수정·재검하고,
 판단이 필요한 trade-off만 사용자에게 올린다. 실제로 사용하지 않은 source 조회, 격리 위임, 독립 검수,
 실행 등급 적용을 수행했다고 쓰지 않는다.
+
+긴 조사나 중단 가능한 실행은 reference의 checkpoint를 남긴다. 파일 handoff가 필요해도 이 workflow가
+저장하지 말고, 사용자가 별도로 명시한 보존 workflow에 report와 ledger를 전달한다.
