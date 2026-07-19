@@ -1,0 +1,2 @@
+{"claim_id":"C-001","run_id":"R-001","text":"The official specification requires the bounded behavior.","status":"supported","evidence_ids":["E-001"],"conflicts_with":[]}
+{"claim_id":"C-002","run_id":"R-001","text":"All implementations exhibit identical behavior.","status":"contested","evidence_ids":["E-001","E-002"],"conflicts_with":["C-001"]}

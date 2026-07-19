@@ -1,0 +1,8 @@
+{
+  "run_id": "R-001",
+  "source_id": "S-001",
+  "evidence_id": "E-001",
+  "claim_id": "C-001",
+  "allowed_statuses": ["supported", "contested", "unverified", "withdrawn"],
+  "conflict_relation": "conflicts_with"
+}

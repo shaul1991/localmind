@@ -15,9 +15,9 @@ audience: ai
 ## Phase 1 — TDD RED
 > depends-on: Phase 0 · files: `src/agents/skill-contract.test.ts`, `src/agents/workflow-policy.test.ts`, `src/agents/skills.test.ts`, `src/agents/commands.test.ts`, `src/agents/workflow-docs.test.ts`, `tests/fixtures/research-evidence-pack/`
 
-- [ ] AC-1~5·10의 canonical/policy/lifecycle 실패 테스트를 추가한다.
-- [ ] AC-6~9의 valid/invalid/security fixture와 validator 실패 테스트를 추가한다.
-- [ ] 새 package·contract·validator가 없어서 기대한 이유로 RED인지 확인한다.
+- [x] AC-1~5·10의 canonical/policy/lifecycle 실패 테스트를 추가한다.
+- [x] AC-6~9의 valid/invalid/security fixture와 validator 실패 테스트를 추가한다.
+- [x] 새 package·contract·validator가 없어서 기대한 이유로 RED인지 확인한다.
 
 ## Phase 2 — canonical package GREEN
 > depends-on: Phase 1 · files: `templates/skills/deep-research/`, `templates/skills/research-evidence-pack/`, `templates/skills/catalog.json`

@@ -102,6 +102,79 @@ describe("skills-seed: AC-2", () => {
   });
 });
 
+describe("research-evidence-pack managed lifecycle: AC-10", () => {
+  it("production package는 seed→3 runtime deploy 후 재실행이 모두 unchanged다", () => {
+    const seeded = seedWorkflows({ skillsDir: dataDir });
+    const expected = [
+      "deep-research",
+      "goal-impl",
+      "goal-ready",
+      "localmind-binding",
+      "localmind-rules",
+      "research-evidence-pack",
+      "sdd-self-review",
+    ];
+    assert.deepEqual(seeded.items.map((item) => item.logicalId).sort(), expected);
+    assert.ok(seeded.items.every((item) => item.status === "created"), JSON.stringify(seeded.items));
+
+    const c = claudeHome();
+    const a = agentHome();
+    const g = geminiHome();
+    const options = {
+      skillsDir: dataDir,
+      claudeSkillsDir: c.skillsDir,
+      agentSkillsDir: a.skillsDir,
+      geminiCommandsDir: g.commandsDir,
+      targets: ["claude-skill", "agent-skill", "gemini-command"] as Array<
+        "claude-skill" | "agent-skill" | "gemini-command"
+      >,
+    };
+    const first = deployWorkflows(options);
+    for (const id of ["deep-research", "research-evidence-pack"]) {
+      const items = first.items.filter((item) => item.logicalId === id);
+      assert.equal(items.length, 3, `${id}: 세 runtime target 결과 필요`);
+      assert.ok(items.every((item) => item.status === "created"), JSON.stringify(items));
+    }
+
+    const second = deployWorkflows(options);
+    assert.ok(
+      second.items
+        .filter((item) => ["deep-research", "research-evidence-pack"].includes(item.logicalId))
+        .every((item) => item.status === "unchanged"),
+      JSON.stringify(second.items),
+    );
+  });
+
+  it("marker 없는 동명 source/target은 두 번 실행해도 byte 변경·삭제하지 않는다", () => {
+    const unmanagedSource = path.join(dataDir, "research-evidence-pack");
+    fs.mkdirSync(unmanagedSource, { recursive: true });
+    const unmanagedBytes = Buffer.from(
+      "---\nname: research-evidence-pack\ndescription: 사용자 소유 evidence pack\n---\n# 사용자 파일\n",
+    );
+    fs.writeFileSync(path.join(unmanagedSource, "SKILL.md"), unmanagedBytes);
+
+    const seeded = seedWorkflows({ skillsDir: dataDir });
+    const collision = seeded.items.find((item) => item.logicalId === "research-evidence-pack");
+    assert.ok(collision, "research-evidence-pack canonical package/catalog entry missing");
+    assert.equal(collision?.status, "skipped-unmanaged");
+    assert.ok(fs.readFileSync(path.join(unmanagedSource, "SKILL.md")).equals(unmanagedBytes));
+
+    const c = claudeHome();
+    const unmanagedTarget = path.join(c.skillsDir, "research-evidence-pack");
+    fs.mkdirSync(unmanagedTarget, { recursive: true });
+    fs.writeFileSync(path.join(unmanagedTarget, "SKILL.md"), unmanagedBytes);
+    const first = deployWorkflows({ skillsDir: dataDir, claudeSkillsDir: c.skillsDir, targets: ["claude-skill"] });
+    const second = deployWorkflows({ skillsDir: dataDir, claudeSkillsDir: c.skillsDir, targets: ["claude-skill"] });
+    for (const result of [first, second]) {
+      assert.equal(
+        result.items.find((item) => item.logicalId === "research-evidence-pack" && item.target === "claude-skill")?.status,
+        "skipped-dependency",
+      );
+    }
+    assert.ok(fs.readFileSync(path.join(unmanagedTarget, "SKILL.md")).equals(unmanagedBytes));
+  });
+});
+
 // ── AC-3: legacy update + fork 보호 + reserved-ID fork ────────────────────────
 describe("skills-seed: AC-3", () => {
   it("legacy managed는 갱신, 일반 markerless fork는 보존, reserved-ID fork는 보존+exposure 차단", () => {

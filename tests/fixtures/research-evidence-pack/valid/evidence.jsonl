@@ -1,0 +1,2 @@
+{"evidence_id":"E-001","run_id":"R-001","source_id":"S-001","locator":"section-1","summary":"The official specification directly defines the behavior.","relation":"supports"}
+{"evidence_id":"E-002","run_id":"R-001","source_id":"S-002","locator":"record-4","summary":"The independent implementation reports a conflicting behavior.","relation":"refutes"}

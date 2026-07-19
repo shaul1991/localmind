@@ -7,6 +7,7 @@ import os from "node:os";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
   loadSkillRegistry,
@@ -23,6 +24,9 @@ import {
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const PACKAGED_SKILLS = path.join(REPO_ROOT, "templates", "skills");
 const DEEP_RESEARCH_ROOT = path.join(PACKAGED_SKILLS, "deep-research");
+const EVIDENCE_PACK_ROOT = path.join(PACKAGED_SKILLS, "research-evidence-pack");
+const EVIDENCE_PACK_FIXTURES = path.join(REPO_ROOT, "tests", "fixtures", "research-evidence-pack");
+const EVIDENCE_PACK_VALIDATOR = path.join(EVIDENCE_PACK_ROOT, "scripts", "validate_bundle.py");
 
 function readDeepResearch(rel: "SKILL.md" | "references/research-contract.md"): string {
   return fs.readFileSync(path.join(DEEP_RESEARCH_ROOT, rel), "utf8");
@@ -32,6 +36,29 @@ function flatDeepResearch(): string {
   return [readDeepResearch("SKILL.md"), readDeepResearch("references/research-contract.md")]
     .join("\n")
     .replace(/\s+/g, " ");
+}
+
+function readEvidencePack(rel: "SKILL.md" | "references/evidence-pack-contract.md"): string {
+  const target = path.join(EVIDENCE_PACK_ROOT, rel);
+  assert.ok(fs.existsSync(target), `research-evidence-pack canonical package missing: ${rel}`);
+  return fs.readFileSync(target, "utf8");
+}
+
+function flatEvidencePack(): string {
+  return [readEvidencePack("SKILL.md"), readEvidencePack("references/evidence-pack-contract.md")]
+    .join("\n")
+    .replace(/\s+/g, " ");
+}
+
+function readFixtureJson<T>(rel: string): T {
+  return JSON.parse(fs.readFileSync(path.join(EVIDENCE_PACK_FIXTURES, rel), "utf8")) as T;
+}
+
+function runEvidencePackValidator(fixture: string) {
+  assert.ok(fs.existsSync(EVIDENCE_PACK_VALIDATOR), "research-evidence-pack validator missing: scripts/validate_bundle.py");
+  return spawnSync("python3", [EVIDENCE_PACK_VALIDATOR, path.join(EVIDENCE_PACK_FIXTURES, fixture)], {
+    encoding: "utf8",
+  });
 }
 
 function requiresTogether(text: string, contract: string, phrases: string[]): void {
@@ -509,6 +536,207 @@ describe("deep-research behavior contract: AC-4~12, AC-16", () => {
       "final critic을 더 낮은 등급으로 조용히 대체하지 않는다",
     ]);
   });
+});
+
+// ── 202607191145 evidence pack — Phase 1 TDD RED ───────────────────────────
+describe("deep-research evidence ledger/checkpoint contract: AC-1~4", () => {
+  it("AC-1: 기존 deep-research는 exact explicit/report-only·neutral·non-executable이다", () => {
+    const reg = loadSkillRegistry(PACKAGED_SKILLS, { packaged: true });
+    assert.equal(reg.problems.length, 0, JSON.stringify(reg.problems));
+    const skill = reg.skills.find((candidate) => candidate.name === "deep-research");
+    assert.ok(skill, "deep-research package missing");
+    assert.deepEqual(skill.policy, { activation: "explicit", sideEffects: "report-only" });
+    assert.deepEqual(skill.executableFiles, []);
+    assert.equal(scanPackagedNeutrality(skill).length, 0, JSON.stringify(scanPackagedNeutrality(skill)));
+  });
+
+  it("AC-2: run/source/evidence/claim ID와 atomic claim 상태·참조·충돌 관계를 정의한다", () => {
+    const fixture = readFixtureJson<{
+      run_id: string;
+      source_id: string;
+      evidence_id: string;
+      claim_id: string;
+      allowed_statuses: string[];
+      conflict_relation: string;
+    }>("contract/id-ledger.json");
+    assert.deepEqual(
+      [fixture.run_id, fixture.source_id, fixture.evidence_id, fixture.claim_id],
+      ["R-001", "S-001", "E-001", "C-001"],
+    );
+    assert.deepEqual(fixture.allowed_statuses, ["supported", "contested", "unverified", "withdrawn"]);
+    assert.equal(fixture.conflict_relation, "conflicts_with");
+
+    requiresTogether(flatDeepResearch(), "stable ID and atomic claim ledger", [
+      "R-001",
+      "S-001",
+      "E-001",
+      "C-001",
+      "supported",
+      "contested",
+      "unverified",
+      "withdrawn",
+      "conflicts_with",
+      "한 문장 claim",
+    ]);
+  });
+
+  it("AC-3: 단일 결정적 T1과 상충 고위험 claim을 fixed count 없이 다르게 판정한다", () => {
+    const fixture = readFixtureJson<{
+      cases: Array<{ id: string; expected: string }>;
+    }>("contract/adaptive-sufficiency.json");
+    assert.deepEqual(
+      fixture.cases.map((item) => [item.id, item.expected]),
+      [["single-direct-t1", "sufficient"], ["conflicting-high-risk", "contested-or-unverified"]],
+    );
+
+    requiresTogether(flatDeepResearch(), "adaptive sufficiency", [
+      "단일 결정적 T1",
+      "출처 1개도 충분",
+      "directness",
+      "authority",
+      "independence",
+      "materiality",
+      "conflict",
+      "고위험",
+      "contested",
+      "unverified",
+      "단순 출처 개수",
+    ]);
+  });
+
+  it("AC-4: partial checkpoint는 완료·미완료 질문, ledger ID, fallback, next step과 incomplete 상태를 보존한다", () => {
+    const fixture = readFixtureJson<{
+      status: string;
+      completed_questions: string[];
+      incomplete_questions: string[];
+      ledger_ids: string[];
+      capability_fallback: string;
+      next_validation_steps: string[];
+    }>("contract/partial-checkpoint.json");
+    assert.equal(fixture.status, "incomplete");
+    assert.ok(fixture.completed_questions.length > 0);
+    assert.ok(fixture.incomplete_questions.length > 0);
+    assert.deepEqual(fixture.ledger_ids, ["S-001", "E-001", "C-001"]);
+    assert.ok(fixture.capability_fallback.length > 0);
+    assert.ok(fixture.next_validation_steps.length > 0);
+
+    requiresTogether(flatDeepResearch(), "partial checkpoint", [
+      "checkpoint",
+      "완료 질문",
+      "미완료 질문",
+      "ledger ID",
+      "capability fallback",
+      "다음 검증 단계",
+      "incomplete",
+      "완료로 표시하지 않는다",
+    ]);
+  });
+});
+
+describe("research-evidence-pack canonical contract: AC-5, AC-8~9", () => {
+  it("AC-5: no-path 호출은 write/open 0건이고 사용자에게 출력 경로만 질문한다", () => {
+    const text = flatEvidencePack();
+    const reg = loadSkillRegistry(PACKAGED_SKILLS, { packaged: true });
+    const skill = reg.skills.find((candidate) => candidate.name === "research-evidence-pack");
+    assert.ok(skill, "research-evidence-pack package missing from catalog/registry");
+    assert.deepEqual(skill.policy, { activation: "explicit", sideEffects: "docs-only" });
+    requiresTogether(text, "explicit output path gate", [
+      "사용자 지정 경로",
+      "확인된 프로젝트 내부 경로",
+      "경로만 질문",
+      "파일 생성·수정 0건",
+      "자동 open 0건",
+      "HOME",
+      "Documents",
+    ]);
+  });
+
+  it("AC-8: 확인된 프로젝트 경로에 정확히 5개만 쓰고 외부·unrelated 상태를 바꾸지 않는다", () => {
+    const fixtureFiles = fs.readdirSync(path.join(EVIDENCE_PACK_FIXTURES, "valid")).sort();
+    assert.deepEqual(fixtureFiles, ["claims.jsonl", "evidence.jsonl", "report.md", "run-manifest.json", "sources.jsonl"]);
+    requiresTogether(flatEvidencePack(), "bounded output", [
+      "정확히 5개",
+      "report.md",
+      "sources.jsonl",
+      "evidence.jsonl",
+      "claims.jsonl",
+      "run-manifest.json",
+      "기존 unrelated 파일",
+      "외부 서비스",
+      "변경하지 않는다",
+    ]);
+  });
+
+  it("AC-9: malicious source는 실행·secret·장문 복제 없이 URL·locator·짧은 요약만 보존한다", () => {
+    const fixture = readFixtureJson<{
+      input: { embedded_instruction: string; secret_request: string; long_quote: string };
+      expected: { url: string; locator: string; summary: string; forbidden: string[] };
+    }>("security/malicious-source.json");
+    assert.ok(fixture.input.embedded_instruction.length > 0);
+    assert.ok(fixture.input.secret_request.length > 0);
+    assert.ok(fixture.input.long_quote.length > fixture.expected.summary.length);
+    assert.deepEqual(fixture.expected.forbidden, ["execute-instruction", "copy-secret", "copy-long-quote"]);
+
+    requiresTogether(flatEvidencePack(), "minimal-copy security", [
+      "untrusted data",
+      "embedded instruction",
+      "실행하지 않는다",
+      "secret",
+      "기록하지 않는다",
+      "장문 원문",
+      "직접 URL",
+      "locator",
+      "짧은 요약",
+      "critic",
+    ]);
+  });
+});
+
+describe("research-evidence-pack validator contract: AC-6~7", () => {
+  it("validator fixture harness: 모든 pack은 exact 5-file이고 JSON/JSONL 문법이 유효하다", () => {
+    const packs = [
+      "valid",
+      "invalid-duplicate-id",
+      "invalid-broken-reference",
+      "invalid-status",
+      "invalid-supported-without-evidence",
+    ];
+    const expectedFiles = ["claims.jsonl", "evidence.jsonl", "report.md", "run-manifest.json", "sources.jsonl"];
+    for (const pack of packs) {
+      const dir = path.join(EVIDENCE_PACK_FIXTURES, pack);
+      assert.deepEqual(fs.readdirSync(dir).sort(), expectedFiles, `${pack}: exact five-file fixture`);
+      JSON.parse(fs.readFileSync(path.join(dir, "run-manifest.json"), "utf8"));
+      for (const rel of ["sources.jsonl", "evidence.jsonl", "claims.jsonl"]) {
+        const lines = fs.readFileSync(path.join(dir, rel), "utf8").trim().split("\n");
+        assert.ok(lines.length > 0, `${pack}/${rel}: empty fixture`);
+        for (const line of lines) JSON.parse(line);
+      }
+    }
+  });
+
+  it("AC-6: valid five-file pack은 exit 0과 count·coverage 요약을 반환한다", () => {
+    const result = runEvidencePackValidator("valid");
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /sources\s*[=:]\s*2/i);
+    assert.match(result.stdout, /evidence\s*[=:]\s*2/i);
+    assert.match(result.stdout, /claims\s*[=:]\s*2/i);
+    assert.match(result.stdout, /coverage\s*[=:]\s*2\/2/i);
+  });
+
+  const invalidCases = [
+    ["invalid-duplicate-id", /duplicate.*S-001/i],
+    ["invalid-broken-reference", /(?:unknown|missing|broken).*S-999/i],
+    ["invalid-status", /(?:invalid|unsupported).*certain/i],
+    ["invalid-supported-without-evidence", /supported.*evidence/i],
+  ] as const;
+
+  for (const [fixture, expectedError] of invalidCases) {
+    it(`AC-7: ${fixture} fixture는 결함을 식별하며 non-zero다`, () => {
+      const result = runEvidencePackValidator(fixture);
+      assert.notEqual(result.status, 0, `${fixture}: validator unexpectedly succeeded`);
+      assert.match(`${result.stderr}\n${result.stdout}`, expectedError);
+    });
+  }
 });
 
 // ── R1-09: 파서/소유권 검증이 위조 가능한 패키지를 거부한다 ─────────────────────
