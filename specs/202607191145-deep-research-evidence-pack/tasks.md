@@ -36,10 +36,10 @@ audience: ai
 ## Phase 4 — 통합·도그푸드
 > depends-on: Phase 3 · files: `specs/202607191145-deep-research-evidence-pack/evidence/`
 
-- [ ] 전체 test/build/diff-check를 실행한다.
-- [ ] temp roots에서 seed→deploy→redeploy와 unmanaged 보호를 검증한다.
-- [ ] matrix를 freeze하고 Innerview 구현 전 조사 brief로 report-only dogfood를 수행한다.
-- [ ] 명시적 임시 프로젝트 경로에 evidence pack을 만들고 validator green을 확인한다.
+- [x] 전체 test/build/diff-check를 실행한다.
+- [x] temp roots에서 seed→deploy→redeploy와 unmanaged 보호를 검증한다.
+- [x] matrix를 freeze하고 Innerview 구현 전 조사 brief로 report-only dogfood를 수행한다.
+- [x] 명시적 임시 프로젝트 경로에 evidence pack을 만들고 validator green을 확인한다.
 
 ## Phase 5 — self-review·versioned closure
 > depends-on: Phase 4 · files: `specs/202607191145-deep-research-evidence-pack/goal.md`, `specs/202607191145-deep-research-evidence-pack/spec.md`, `specs/202607191145-deep-research-evidence-pack/plan.md`, `specs/202607191145-deep-research-evidence-pack/tasks.md`, `specs/202607191145-deep-research-evidence-pack/evidence/`
