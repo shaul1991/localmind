@@ -28,6 +28,7 @@ audience: both
 - 수정: 수집 항목·처리자 관계·국외이전·자동화 수준·후기 대가성을 먼저 확정하고, 사실관계별
   적용 통제를 한국 법률/개인정보 전문가가 검수하는 출시 gate로 조건화.
 - critic recheck: PASS, blocker 0.
+- 원문 보존: `evidence/innerview-research-critic.md`에 최초 blocker·advisory·재검 출력을 보존했다.
 
 핵심 결과는 PostgreSQL 18.4·Python 3.14.6·Node 24 LTS·Next.js 16.2·Xcode 26.6/Swift 6.3·
 `gpt-5.6-sol`의 공식 확인, Android KGP/AGP 문서 충돌과 built-in Kotlin spike, outbox

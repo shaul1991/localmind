@@ -768,6 +768,15 @@ describe("research-evidence-pack versioned dogfood evidence: AC-5, AC-8~11", () 
     assert.match(report, /(?:final|최종) critic은 별도 격리 컨텍스트/);
   });
 
+  it("AC-11: Innerview final critic의 최초 blocker와 수정 후 recheck 원문을 보존한다", () => {
+    const critic = fs.readFileSync(path.join(FEATURE_EVIDENCE, "innerview-research-critic.md"), "utf8");
+    assert.match(critic, /Critic result: FAIL — 1 blocker/);
+    assert.match(critic, /법률 문구 과잉 확정/);
+    assert.match(critic, /Independence:\*\* 독립 fresh critic, read-only, 파일 수정 없음/);
+    assert.match(critic, /PASS — blocker 0/);
+    assert.match(critic, /Android 충돌도\s*>?\s*contested 관계로 명시됐다/);
+  });
+
   it("AC-9: malicious dogfood pack은 exact·valid이고 입력 instruction·secret·장문 원문을 복제하지 않는다", () => {
     const bundle = path.join(FEATURE_EVIDENCE, "malicious-pack");
     assert.deepEqual(fs.readdirSync(bundle).sort(), expectedFiles);
