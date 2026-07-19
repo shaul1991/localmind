@@ -22,9 +22,9 @@ audience: ai
 ## Phase 2 — canonical package GREEN
 > depends-on: Phase 1 · files: `templates/skills/deep-research/`, `templates/skills/research-evidence-pack/`, `templates/skills/catalog.json`
 
-- [ ] deep-research에 ID·적응형 충분성·checkpoint·handoff 계약을 최소 추가한다.
-- [ ] research-evidence-pack SKILL/reference를 explicit path gate와 함께 작성한다.
-- [ ] Python 3.9+ 표준 라이브러리 validator를 구현하고 focused test를 GREEN으로 만든다.
+- [x] deep-research에 ID·적응형 충분성·checkpoint·handoff 계약을 최소 추가한다.
+- [x] research-evidence-pack SKILL/reference를 explicit path gate와 함께 작성한다.
+- [x] Python 3.9+ 표준 라이브러리 validator를 구현하고 focused test를 GREEN으로 만든다.
 
 ## Phase 3 — distribution·문서
 > depends-on: Phase 2 · files: `README.md`, `docs/agents.md`, `docs/workflows.md`, `CHANGELOG.md`, `src/agents/commands.test.ts`, `src/agents/skills.test.ts`, `src/agents/workflow-docs.test.ts`
