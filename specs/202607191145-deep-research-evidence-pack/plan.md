@@ -79,35 +79,35 @@ JSONL 구조 검증은 외부 의존이 없는 Python 표준 라이브러리 scr
 
 ## 단계
 
-- [ ] **Phase 0 — baseline/freshness:** origin/main과 clean 상태를 확인하고 기존 deep-research 계약·전체
+- [x] **Phase 0 — baseline/freshness:** origin/main과 clean 상태를 확인하고 기존 deep-research 계약·전체
       baseline을 기록한다.
-- [ ] **Phase 1 — TDD RED:** ID/충분성/checkpoint, 새 policy/package, validator valid/invalid fixture,
+- [x] **Phase 1 — TDD RED:** ID/충분성/checkpoint, 새 policy/package, validator valid/invalid fixture,
       docs/lifecycle 계약 테스트를 먼저 실패시킨다.
-- [ ] **Phase 2 — canonical GREEN:** deep-research reference를 최소 보강하고 research-evidence-pack
+- [x] **Phase 2 — canonical GREEN:** deep-research reference를 최소 보강하고 research-evidence-pack
       package·validator를 구현해 focused test를 통과시킨다.
-- [ ] **Phase 3 — distribution/docs:** catalog·runtime adapter 기대값·호출 문서·CHANGELOG를 7개 workflow
+- [x] **Phase 3 — distribution/docs:** catalog·runtime adapter 기대값·호출 문서·CHANGELOG를 7개 workflow
       상태로 갱신하고 generic lifecycle 회귀를 통과시킨다.
-- [ ] **Phase 4 — 통합/dogfood:** 전체 test/build, temp roots 2회 배포, unmanaged 보호, validator fixture,
+- [x] **Phase 4 — 통합/dogfood:** 전체 test/build, temp roots 2회 배포, unmanaged 보호, validator fixture,
       실제 Innerview 조사 brief의 report-only 실행과 임시 프로젝트 pack 생성을 관찰한다.
-- [ ] **Phase 5 — self-review/closure:** FR·AC 추적성, 정확성, 단순성, 보안·저작권·Live-Verify를 적대적으로
+- [x] **Phase 5 — self-review/closure:** FR·AC 추적성, 정확성, 단순성, 보안·저작권·Live-Verify를 적대적으로
       검수하고 문서 검증 표기를 닫는다.
 
 ## 검증 matrix — AC 1:1
 
 | AC | 검증 방법·레벨 | 최소 evidence | 통과·종료 조건 | 상태 |
 |---|---|---|---|---|
-| AC-1 | 정적 계약 단위 | policy exact, neutrality/executable scan | deep-research explicit/report-only와 고유 토큰·실행파일 0 | [ ] |
-| AC-2 | 정적 계약 + fixture | ID/schema/참조 assertion | 네 ID 종류·상태·관계가 모두 존재 | [ ] |
-| AC-3 | 행동 fixture | 단일 T1/상충 고위험 판정 기록 | fixed count 없이 각 기대 상태와 일치 | [ ] |
-| AC-4 | 행동 fixture | partial checkpoint sample | 완료·미완료·ledger·fallback·next step 모두 존재 | [ ] |
-| AC-5 | policy + 격리 agent 행동 | no-path 응답, watch tree·git status before/after hash | write/open 0, 경로 질문만 반환 | [ ] |
-| AC-6 | validator 단위 | valid pack stdout/exit | exit 0, count·coverage 요약 일치 | [ ] |
-| AC-7 | validator 단위 | invalid fixture별 stderr/exit | 네 결함이 각각 non-zero와 명시 오류 | [ ] |
-| AC-8 | temp filesystem 통합 + versioned mirror | before/after tree/hash, exact pack | 지정 경로 5개 외 변경 0 | [ ] |
-| AC-9 | 격리 agent 보안 행동 audit | malicious 입력 pack, validator, forbidden scan | 실행·유출 0, 최소 요약만 pack에 존재 | [ ] |
-| AC-10 | lifecycle 통합 | first/second deploy report, hashes | created/updated→unchanged, unmanaged byte 동일 | [ ] |
-| AC-11 | 실제 dogfood + versioned mirror | report, ledger/pack, critic 원문, validator log | claim 추적 가능·validator green·독립성 정직 표기 | [ ] |
-| AC-12 | 전체 회귀 | test/build/diff-check log | 모든 명령 exit 0 | [ ] |
+| AC-1 | 정적 계약 단위 | policy exact, neutrality/executable scan | deep-research explicit/report-only와 고유 토큰·실행파일 0 | [x] |
+| AC-2 | 정적 계약 + fixture | ID/schema/참조 assertion | 네 ID 종류·상태·관계가 모두 존재 | [x] |
+| AC-3 | 행동 fixture | 단일 T1/상충 고위험 판정 기록 | fixed count 없이 각 기대 상태와 일치 | [x] |
+| AC-4 | 행동 fixture | partial checkpoint sample | 완료·미완료·ledger·fallback·next step 모두 존재 | [x] |
+| AC-5 | policy + 격리 agent 행동 | no-path 응답, watch tree·git status before/after hash | write/open 0, 경로 질문만 반환 | [x] |
+| AC-6 | validator 단위 | valid pack stdout/exit | exit 0, count·coverage 요약 일치 | [x] |
+| AC-7 | validator 단위 | invalid fixture별 stderr/exit | 네 결함이 각각 non-zero와 명시 오류 | [x] |
+| AC-8 | temp filesystem 통합 + versioned mirror | before/after tree/hash, exact pack | 지정 경로 5개 외 변경 0 | [x] |
+| AC-9 | 격리 agent 보안 행동 audit | malicious 입력 pack, validator, forbidden scan | 실행·유출 0, 최소 요약만 pack에 존재 | [x] |
+| AC-10 | lifecycle 통합 | first/second deploy report, hashes | created/updated→unchanged, unmanaged byte 동일 | [x] |
+| AC-11 | 실제 dogfood + versioned mirror | report, ledger/pack, critic 원문, validator log | claim 추적 가능·validator green·독립성 정직 표기 | [x] |
+| AC-12 | 전체 회귀 | test/build/diff-check log | 모든 명령 exit 0 | [x] |
 
 첫 dogfood 직전에 이 matrix를 freeze한다. 이후 candidate를 바꾸는 finding은 영향받은 행의 evidence를
 재실행한다.

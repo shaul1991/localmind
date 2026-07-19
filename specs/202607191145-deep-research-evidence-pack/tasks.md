@@ -44,9 +44,9 @@ audience: ai
 ## Phase 5 — self-review·versioned closure
 > depends-on: Phase 4 · files: `specs/202607191145-deep-research-evidence-pack/goal.md`, `specs/202607191145-deep-research-evidence-pack/spec.md`, `specs/202607191145-deep-research-evidence-pack/plan.md`, `specs/202607191145-deep-research-evidence-pack/tasks.md`, `specs/202607191145-deep-research-evidence-pack/evidence/`
 
-- [ ] FR/AC 1:1, 테스트, 정확성, 단순성, 보안·저작권, Live-Verify를 적대적으로 검수한다.
-- [ ] 명백 결함을 수정·재검하고 AC matrix와 goal/spec/plan/tasks 검증 표기를 갱신한다.
-- [ ] clean candidate의 PR 본문용 변경·검증 요약을 준비한다.
+- [x] FR/AC 1:1, 테스트, 정확성, 단순성, 보안·저작권, Live-Verify를 적대적으로 검수한다.
+- [x] 명백 결함을 수정·재검하고 AC matrix와 goal/spec/plan/tasks 검증 표기를 갱신한다.
+- [x] clean candidate의 PR 본문용 변경·검증 요약을 준비한다.
 
 ## External handoff — tracked checkbox 범위 밖
 

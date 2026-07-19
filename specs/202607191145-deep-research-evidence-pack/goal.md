@@ -48,15 +48,15 @@ fallback을 제공한다. 실제 제품·아키텍처 결정을 뒷받침하는 
 
 ## Success metrics — 성공 지표
 
-- [ ] **SM-1:** 기존 `deep-research`의 explicit/report-only 정책과 provider/model/tool 중립성 회귀가 0건이다.
-- [ ] **SM-2:** 핵심 claim의 source/evidence 연결, 충돌, 인식 상태를 안정적 ID로 표현하는 계약이 자동
+- [x] **SM-1:** 기존 `deep-research`의 explicit/report-only 정책과 provider/model/tool 중립성 회귀가 0건이다.
+- [x] **SM-2:** 핵심 claim의 source/evidence 연결, 충돌, 인식 상태를 안정적 ID로 표현하는 계약이 자동
       검증된다.
-- [ ] **SM-3:** 별도 evidence-pack workflow가 명시 호출과 사용자 선택 경로 없이 파일을 쓰는 경우가 0건이다.
-- [ ] **SM-4:** 유효 fixture는 검증을 통과하고, 중복 ID·깨진 참조·미지원 확정 claim fixture는 각각
+- [x] **SM-3:** 별도 evidence-pack workflow가 명시 호출과 사용자 선택 경로 없이 파일을 쓰는 경우가 0건이다.
+- [x] **SM-4:** 유효 fixture는 검증을 통과하고, 중복 ID·깨진 참조·미지원 확정 claim fixture는 각각
       결정적으로 실패한다.
-- [ ] **SM-5:** 실제 대표 조사에서 report-only 결과와 선택적 evidence pack을 각각 dogfood하고,
+- [x] **SM-5:** 실제 대표 조사에서 report-only 결과와 선택적 evidence pack을 각각 dogfood하고,
       조사 결론과 원장의 추적성이 관찰된다.
-- [ ] **SM-6:** 전체 테스트·build·배포 멱등성·unmanaged 자산 보호 검증이 green이다.
+- [x] **SM-6:** 전체 테스트·build·배포 멱등성·unmanaged 자산 보호 검증이 green이다.
 
 ## Non-goals — 비목표
 
