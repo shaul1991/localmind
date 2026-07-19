@@ -1,0 +1,24 @@
+{"source_id":"S-001","run_id":"R-001","url":"https://www.postgresql.org/support/versioning/","title":"PostgreSQL Versioning Policy","authority":"T1","checked_at":"2026-07-19"}
+{"source_id":"S-002","run_id":"R-001","url":"https://www.postgresql.org/about/news/postgresql-19-beta-2-released-3350/","title":"PostgreSQL 19 Beta 2 Released","authority":"T2","checked_at":"2026-07-19"}
+{"source_id":"S-003","run_id":"R-001","url":"https://www.python.org/downloads/release/python-3146/","title":"Python 3.14.6","authority":"T1","checked_at":"2026-07-19"}
+{"source_id":"S-004","run_id":"R-001","url":"https://nodejs.org/en/about/previous-releases","title":"Node.js Releases","authority":"T1","checked_at":"2026-07-19"}
+{"source_id":"S-005","run_id":"R-001","url":"https://nextjs.org/blog/next-16-2","title":"Next.js 16.2","authority":"T2","checked_at":"2026-07-19"}
+{"source_id":"S-006","run_id":"R-001","url":"https://developer.apple.com/support/xcode/","title":"Xcode support matrix","authority":"T1","checked_at":"2026-07-19"}
+{"source_id":"S-007","run_id":"R-001","url":"https://kotlinlang.org/docs/gradle-configure-project.html","title":"Kotlin Gradle and AGP compatibility","authority":"T1","checked_at":"2026-07-19"}
+{"source_id":"S-008","run_id":"R-001","url":"https://developer.android.com/build/releases/agp-9-2-0-release-notes","title":"AGP 9.2.0 release notes","authority":"T1","checked_at":"2026-07-19"}
+{"source_id":"S-009","run_id":"R-001","url":"https://developer.android.com/build/migrate-to-built-in-kotlin","title":"Migrate to built-in Kotlin","authority":"T1","checked_at":"2026-07-19"}
+{"source_id":"S-010","run_id":"R-001","url":"https://developer.android.com/develop/ui/compose/bom","title":"Jetpack Compose BOM","authority":"T1","checked_at":"2026-07-19"}
+{"source_id":"S-011","run_id":"R-001","url":"https://developers.openai.com/api/docs/models/gpt-5.6-sol","title":"GPT-5.6 Sol model","authority":"T1","checked_at":"2026-07-19"}
+{"source_id":"S-012","run_id":"R-001","url":"https://developers.openai.com/api/docs/guides/migrate-to-responses","title":"Migrate to the Responses API","authority":"T1","checked_at":"2026-07-19"}
+{"source_id":"S-013","run_id":"R-001","url":"https://platform.openai.com/docs/models/default-usage-policies-by-endpoint","title":"Data controls in the OpenAI platform","authority":"T1","checked_at":"2026-07-19"}
+{"source_id":"S-014","run_id":"R-001","url":"https://www.postgresql.org/docs/current/sql-select.html","title":"PostgreSQL SELECT locking clauses","authority":"T1","checked_at":"2026-07-19"}
+{"source_id":"S-015","run_id":"R-001","url":"https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html","title":"Transactional outbox pattern","authority":"T1","checked_at":"2026-07-19"}
+{"source_id":"S-016","run_id":"R-001","url":"https://nextjs.org/docs/app/guides/backend-for-frontend","title":"Next.js Backend for Frontend","authority":"T1","checked_at":"2026-07-19"}
+{"source_id":"S-017","run_id":"R-001","url":"https://alembic.sqlalchemy.org/en/latest/autogenerate.html","title":"Alembic autogenerate","authority":"T1","checked_at":"2026-07-19"}
+{"source_id":"S-018","run_id":"R-001","url":"https://docs.github.com/en/actions/tutorials/use-containerized-services/use-docker-service-containers","title":"GitHub Actions Docker service containers","authority":"T1","checked_at":"2026-07-19"}
+{"source_id":"S-019","run_id":"R-001","url":"https://www.law.go.kr/LSW/lsInfoP.do?ancYnChk=0&chrClsCd=010202&efYd=20251002&lsiSeq=270351&urlMode=lsInfoP","title":"개인정보 보호법","authority":"T1","checked_at":"2026-07-19"}
+{"source_id":"S-020","run_id":"R-001","url":"https://www.pipc.go.kr/np/cop/bbs/selectBoardArticle.do?bbsId=BS217&mCode=D010030020&nttId=11439","title":"생성형 AI 개발 활용 개인정보 처리 안내서","authority":"T1","checked_at":"2026-07-19"}
+{"source_id":"S-021","run_id":"R-001","url":"https://www.law.go.kr/lsLinkCommonInfo.do?lsJoLnkSeq=1031810721","title":"인공지능기본법 제31조","authority":"T1","checked_at":"2026-07-19"}
+{"source_id":"S-022","run_id":"R-001","url":"https://www.law.go.kr/LSW/admRulInfoP.do?admRulSeq=2100000280130","title":"추천 보증 등에 관한 표시 광고 심사지침","authority":"T1","checked_at":"2026-07-19"}
+{"source_id":"S-023","run_id":"R-001","url":"https://law.go.kr/LSW/lsLinkCommonInfo.do?chrClsCd=010202&lsJoLnkSeq=1028699907","title":"의료법 제56조","authority":"T1","checked_at":"2026-07-19"}
+{"source_id":"S-024","run_id":"R-001","url":"local://innerview/toolchain-probe-2026-07-19","title":"Innerview local toolchain probe","authority":"T2","checked_at":"2026-07-19"}

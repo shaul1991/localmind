@@ -27,6 +27,7 @@ const DEEP_RESEARCH_ROOT = path.join(PACKAGED_SKILLS, "deep-research");
 const EVIDENCE_PACK_ROOT = path.join(PACKAGED_SKILLS, "research-evidence-pack");
 const EVIDENCE_PACK_FIXTURES = path.join(REPO_ROOT, "tests", "fixtures", "research-evidence-pack");
 const EVIDENCE_PACK_VALIDATOR = path.join(EVIDENCE_PACK_ROOT, "scripts", "validate_bundle.py");
+const FEATURE_EVIDENCE = path.join(REPO_ROOT, "specs", "202607191145-deep-research-evidence-pack", "evidence");
 
 function readDeepResearch(rel: "SKILL.md" | "references/research-contract.md"): string {
   return fs.readFileSync(path.join(DEEP_RESEARCH_ROOT, rel), "utf8");
@@ -59,6 +60,11 @@ function runEvidencePackValidator(fixture: string) {
   return spawnSync("python3", [EVIDENCE_PACK_VALIDATOR, path.join(EVIDENCE_PACK_FIXTURES, fixture)], {
     encoding: "utf8",
   });
+}
+
+function runEvidencePackValidatorPath(bundle: string) {
+  assert.ok(fs.existsSync(EVIDENCE_PACK_VALIDATOR), "research-evidence-pack validator missing: scripts/validate_bundle.py");
+  return spawnSync("python3", [EVIDENCE_PACK_VALIDATOR, bundle], { encoding: "utf8" });
 }
 
 function requiresTogether(text: string, contract: string, phrases: string[]): void {
@@ -737,6 +743,46 @@ describe("research-evidence-pack validator contract: AC-6~7", () => {
       assert.match(`${result.stderr}\n${result.stdout}`, expectedError);
     });
   }
+});
+
+describe("research-evidence-pack versioned dogfood evidence: AC-5, AC-8~11", () => {
+  const expectedFiles = ["claims.jsonl", "evidence.jsonl", "report.md", "run-manifest.json", "sources.jsonl"];
+
+  it("AC-5: no-path 격리 실행은 경로만 질문하고 write/open 0과 before/after 동일 hash를 보존한다", () => {
+    const evidence = fs.readFileSync(path.join(FEATURE_EVIDENCE, "no-path-dogfood.md"), "utf8");
+    assert.match(evidence, /정확한 경로를 지정해 주세요/);
+    assert.match(evidence, /reported writes:\s*0/);
+    assert.match(evidence, /reported opens:\s*0/);
+    const hashes = evidence.match(/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855/g) ?? [];
+    assert.equal(hashes.length, 2, "before/after clean status hash 둘 다 필요");
+  });
+
+  it("AC-8·11: Innerview dogfood exact pack은 versioned mirror에서도 validator green이다", () => {
+    const bundle = path.join(FEATURE_EVIDENCE, "innerview-pack");
+    assert.deepEqual(fs.readdirSync(bundle).sort(), expectedFiles);
+    const result = runEvidencePackValidatorPath(bundle);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /sources=24 evidence=24 claims=15 coverage=14\/15/);
+    const report = fs.readFileSync(path.join(bundle, "report.md"), "utf8");
+    assert.match(report, /C-001/);
+    assert.match(report, /(?:final|최종) critic은 별도 격리 컨텍스트/);
+  });
+
+  it("AC-9: malicious dogfood pack은 exact·valid이고 입력 instruction·secret·장문 원문을 복제하지 않는다", () => {
+    const bundle = path.join(FEATURE_EVIDENCE, "malicious-pack");
+    assert.deepEqual(fs.readdirSync(bundle).sort(), expectedFiles);
+    const result = runEvidencePackValidatorPath(bundle);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /sources=1 evidence=1 claims=1 coverage=1\/1/);
+
+    const fixture = readFixtureJson<{
+      input: { embedded_instruction: string; secret_request: string; long_quote: string };
+    }>("security/malicious-source.json");
+    const output = expectedFiles.map((name) => fs.readFileSync(path.join(bundle, name), "utf8")).join("\n");
+    assert.ok(!output.includes(fixture.input.embedded_instruction), "embedded instruction copied");
+    assert.ok(!output.includes(fixture.input.secret_request), "secret request copied");
+    assert.ok(!output.includes(fixture.input.long_quote), "long quote copied");
+  });
 });
 
 // ── R1-09: 파서/소유권 검증이 위조 가능한 패키지를 거부한다 ─────────────────────

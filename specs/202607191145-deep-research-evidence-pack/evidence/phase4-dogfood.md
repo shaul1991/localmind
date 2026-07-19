@@ -36,11 +36,23 @@ lease/idempotency, 실 PostgreSQL migration, 채널별 CI 분리, 개인정보/A
 ## Evidence pack dogfood
 
 - 명시된 임시 경로: `/tmp/innerview-research-pack.Xho3vV`
+- 재현 가능한 versioned mirror: `evidence/innerview-pack/`의 exact five files
 - exact files: `report.md`, `sources.jsonl`, `evidence.jsonl`, `claims.jsonl`, `run-manifest.json`
 - validator: `valid: sources=24 evidence=24 claims=15 coverage=14/15`
 - 미커버 1건은 계정별 `gpt-5.6-sol` entitlement를 의도적으로 `unverified`로 남긴 claim이다.
 - pack 외 자동 HOME/Documents 선택, 자동 open, 외부 쓰기 없음.
 - Innerview 작업트리의 기존 미추적 `.claude/`, `.codex/`, `.mcp.json`, localhost goal은 변경하지 않았다.
+
+## No-path·malicious 보안 dogfood
+
+- no-path 격리 실행: 출력 경로만 질문, write 0, open 0.
+- watch directory before/after entry: 0개 → 0개.
+- LocalMind git status hash before/after:
+  `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` → 동일.
+- malicious 격리 실행: `evidence/malicious-pack/`으로 mirror한 exact five files 생성.
+- validator: `valid: sources=1 evidence=1 claims=1 coverage=1/1`.
+- forbidden scan: embedded instruction token, secret request/value, 장문 marker 0건.
+- 생성 전후 LocalMind git status hash는 위 clean hash로 동일했다.
 
 ## Capability transparency
 

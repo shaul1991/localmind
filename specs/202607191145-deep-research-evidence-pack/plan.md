@@ -100,13 +100,13 @@ JSONL 구조 검증은 외부 의존이 없는 Python 표준 라이브러리 scr
 | AC-2 | 정적 계약 + fixture | ID/schema/참조 assertion | 네 ID 종류·상태·관계가 모두 존재 | [ ] |
 | AC-3 | 행동 fixture | 단일 T1/상충 고위험 판정 기록 | fixed count 없이 각 기대 상태와 일치 | [ ] |
 | AC-4 | 행동 fixture | partial checkpoint sample | 완료·미완료·ledger·fallback·next step 모두 존재 | [ ] |
-| AC-5 | policy/행동 통합 | no-path temp run diff | write/open 0, 경로 질문만 반환 | [ ] |
+| AC-5 | policy + 격리 agent 행동 | no-path 응답, watch tree·git status before/after hash | write/open 0, 경로 질문만 반환 | [ ] |
 | AC-6 | validator 단위 | valid pack stdout/exit | exit 0, count·coverage 요약 일치 | [ ] |
 | AC-7 | validator 단위 | invalid fixture별 stderr/exit | 네 결함이 각각 non-zero와 명시 오류 | [ ] |
-| AC-8 | temp filesystem 통합 | before/after tree/hash | 지정 경로 5개 외 변경 0 | [ ] |
-| AC-9 | 보안 행동 audit | malicious/secret/long quote fixture | 실행·유출 0, 최소 요약만 pack에 존재 | [ ] |
+| AC-8 | temp filesystem 통합 + versioned mirror | before/after tree/hash, exact pack | 지정 경로 5개 외 변경 0 | [ ] |
+| AC-9 | 격리 agent 보안 행동 audit | malicious 입력 pack, validator, forbidden scan | 실행·유출 0, 최소 요약만 pack에 존재 | [ ] |
 | AC-10 | lifecycle 통합 | first/second deploy report, hashes | created/updated→unchanged, unmanaged byte 동일 | [ ] |
-| AC-11 | 실제 dogfood | report, ledger/pack, critic, validator log | claim 추적 가능·validator green·독립성 정직 표기 | [ ] |
+| AC-11 | 실제 dogfood + versioned mirror | report, ledger/pack, critic 원문, validator log | claim 추적 가능·validator green·독립성 정직 표기 | [ ] |
 | AC-12 | 전체 회귀 | test/build/diff-check log | 모든 명령 exit 0 | [ ] |
 
 첫 dogfood 직전에 이 matrix를 freeze한다. 이후 candidate를 바꾸는 finding은 영향받은 행의 evidence를
