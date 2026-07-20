@@ -18,9 +18,9 @@ audience: both
   한 줄씩 설명.
 
 ## AC (Given-When-Then · 테스트 1:1)
-- [ ] **AC-1**: Given 개정 문서, When grep 하면, Then preflight·렌즈 병렬·승계·§8 컬럼 설명이
+- [x] **AC-1**: Given 개정 문서, When grep 하면, Then preflight·렌즈 병렬·승계·§8 컬럼 설명이
   각각 존재하고 AC-17 parity 테스트 등 기존 문서 계약이 green(전체 스위트).
-- [ ] **AC-2 (엣지)**: Given 개정 내용, When SKILL 정본과 대조하면, Then 수치·조건이 정본과
+- [x] **AC-2 (엣지)**: Given 개정 내용, When SKILL 정본과 대조하면, Then 수치·조건이 정본과
   일치(요약이되 모순 없음 — 3조건·2라운드 상한·round 산정 불변).
 
 ## 티어 근거

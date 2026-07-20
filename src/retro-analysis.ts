@@ -4,7 +4,7 @@
  * query-analysis/report-note 3분할 관례를 계승한다. 검색 품질 집계는 query-analysis의
  * analyze()를 재사용(중복 구현 금지)하고, 여기는 "작업 방식" 프록시 신호만 다룬다.
  */
-import { parse as parseYaml } from "yaml";
+import { REQUIRED_SELF_REVIEW_FIELDS, parseEvidenceFrontmatter } from "./evidence-schema.js";
 
 /** 자동화 후보 승격 임계 — 동일 패턴 3회 이상 관찰(2026-07-05 수동 회고의 판정 기준). */
 export const PROMOTE_THRESHOLD = 3;
@@ -177,13 +177,20 @@ export interface SelfReviewEvidenceFile {
 
 export type SelfReviewCompletion = "clean" | "blocked";
 
+/** specs/202607210846 AC-2 — reviewModes 항목 하나(실제 round 번호 + 형태). round는 evidence
+ *  frontmatter의 실제 값이며, 미준수 행이 빠져 배열 위치와 어긋나도(비연속 round) 정확하다. */
+export interface ReviewModeEntry {
+  round: number;
+  mode: string; // "병렬(N)" | "단일"
+}
+
 export interface SelfReviewSpecAggregate {
   spec: string;
   rounds: number;
   totalBlockers: number;
   finalCompletion: SelfReviewCompletion; // 최대 round 값 evidence의 completion(파일 순서 비의존)
   durationMinutesTotal: number | null; // duration-minutes 기재분 합 — 하나도 없으면 null
-  reviewModes: string[]; // specs/202607210028 — 라운드 순서대로(오름차순)의 리뷰 형태("병렬(N)"|"단일")
+  reviewModes: ReviewModeEntry[]; // specs/202607210028 — round 오름차순의 리뷰 형태(specs/202607210846 AC-2: 배열 위치가 아닌 실제 round 값)
   carriedCount: number; // specs/202607210545 FR-5 — carried-from 필드를 가진 행 수(선택 필드, 미준수 판정 불참여)
 }
 
@@ -192,47 +199,12 @@ export interface SelfReviewAggregate {
   nonCompliant: number; // FR-5 필수 7필드를 못 채운(또는 frontmatter 자체가 없는) 파일 수
 }
 
-/** FR-5 필수 7필드 — 하나라도 없으면 그 파일 전체를 스키마 미준수로 본다. */
-const REQUIRED_SELF_REVIEW_FIELDS = [
-  "candidate-id",
-  "round",
-  "independence",
-  "blockers",
-  "advisories",
-  "approval-needed",
-  "completion",
-] as const;
-
 /** completion 값 정규화(FR-6) — "clean" 포함→clean, "blocked" 포함→blocked, 그 외는 null(미준수).
  *  레거시 실사용값(예: `complete-clean`)도 부분 문자열로 흡수한다. */
 function normalizeCompletion(raw: string): SelfReviewCompletion | null {
   if (raw.includes("clean")) return "clean";
   if (raw.includes("blocked")) return "blocked";
   return null;
-}
-
-/** evidence 파일 frontmatter(`---`...`---`)를 yaml.parse로 파싱한다(A2 — review-preflight.ts의
- *  splitFrontmatter+parseYaml과 동일 파서로 통일, 정규식 라인 파서 대비 주석·따옴표 등 복합 YAML을
- *  동일하게 해석한다). frontmatter가 없거나 파싱 실패·비객체면 null. */
-function parseFrontmatter(text: string): Record<string, unknown> | null {
-  const norm = text.replace(/\r\n/g, "\n");
-  if (!norm.startsWith("---\n")) return null;
-  const lines = norm.split("\n");
-  let end = -1;
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i] === "---") {
-      end = i;
-      break;
-    }
-  }
-  if (end < 0) return null;
-  const fmText = lines.slice(1, end).join("\n");
-  try {
-    const parsed = parseYaml(fmText);
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
 }
 
 interface ParsedSelfReviewEvidence {
@@ -290,7 +262,7 @@ export function aggregateSelfReviewEvidence(files: SelfReviewEvidenceFile[]): Se
   const bySpec = new Map<string, ParsedSelfReviewEvidence[]>();
   let nonCompliant = 0;
   for (const f of files) {
-    const fm = parseFrontmatter(f.text);
+    const fm = parseEvidenceFrontmatter(f.text);
     const parsed = fm ? parseSelfReviewEvidence(fm, f.filename) : null;
     if (!parsed) {
       nonCompliant++;
@@ -314,9 +286,11 @@ export function aggregateSelfReviewEvidence(files: SelfReviewEvidenceFile[]): Se
       if (!byRound.has(item.round)) byRound.set(item.round, []);
       byRound.get(item.round)!.push(item);
     }
-    const reviewModes = [...byRound.entries()]
+    // specs/202607210846 AC-2 — 항목에 실제 round 번호를 담는다(위치 인덱스가 아님 — 비준수
+    // 행 제외 등으로 round가 비연속이어도 정확).
+    const reviewModes: ReviewModeEntry[] = [...byRound.entries()]
       .sort((a, b) => a[0] - b[0])
-      .map(([, group]) => group.reduce((a, b) => (b.filename > a.filename ? b : a)).reviewMode);
+      .map(([round, group]) => ({ round, mode: group.reduce((a, b) => (b.filename > a.filename ? b : a)).reviewMode }));
     const carriedCount = list.filter((x) => x.carriedFrom !== null).length;
     result.push({
       spec,

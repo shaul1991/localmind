@@ -9,6 +9,7 @@
  */
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
+import { REQUIRED_SELF_REVIEW_FIELDS, splitFrontmatter } from "./evidence-schema.js";
 
 /** 검사 대상 파일 하나(경로 + 본문). 실제 디스크 읽기는 진입점의 몫이다. */
 export interface EvidenceFile {
@@ -76,32 +77,8 @@ export function checkDiffCheckOutput(diffCheckOutput: string): PreflightViolatio
 
 // ── (c) merged report 필드 검사 (FR-3c·AC-5) ─────────────────────────────
 
-/** FR-5 필수 7필드(단일 필드셋 — FR-2와 공유). */
-const REQUIRED_MERGED_REPORT_FIELDS = [
-  "candidate-id",
-  "round",
-  "independence",
-  "blockers",
-  "advisories",
-  "approval-needed",
-  "completion",
-] as const;
-
-/** `---\n...\n---` frontmatter 블록을 분리한다. 닫는 구분자가 없으면 null. */
-function splitFrontmatter(text: string): { fm: string; body: string } | null {
-  const norm = text.replace(/\r\n/g, "\n");
-  if (!norm.startsWith("---\n")) return null;
-  const lines = norm.split("\n");
-  let end = -1;
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i] === "---") {
-      end = i;
-      break;
-    }
-  }
-  if (end < 0) return null;
-  return { fm: lines.slice(1, end).join("\n"), body: lines.slice(end + 1).join("\n") };
-}
+/** FR-5 필수 7필드(단일 필드셋 — FR-2와 공유, evidence-schema.ts가 SSoT). */
+const REQUIRED_MERGED_REPORT_FIELDS = REQUIRED_SELF_REVIEW_FIELDS;
 
 /** 파일명이 `self-review-round*.md` 패턴인 evidence의 frontmatter가 FR-5 필수 7필드를 갖췄는지 검사한다. */
 export function checkMergedReportFields(evidenceFiles: EvidenceFile[]): PreflightViolation[] {
