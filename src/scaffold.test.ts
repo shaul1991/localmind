@@ -26,6 +26,7 @@ describe("scaffoldSdd", () => {
       assert.ok(fs.existsSync(path.join(dir, "specs", "goal.template.md")));
       assert.ok(fs.existsSync(path.join(dir, "specs", "spec.template.md")));
       assert.ok(fs.existsSync(path.join(dir, "specs", "plan.template.md")));
+      assert.ok(fs.existsSync(path.join(dir, "specs", "change.template.md")));
       assert.ok(fs.existsSync(path.join(dir, "CLAUDE.md")));
       assert.ok(fs.existsSync(path.join(dir, "GEMINI.md")));
       assert.deepEqual(

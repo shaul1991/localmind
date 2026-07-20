@@ -4,7 +4,9 @@
 
 ## SDD 흐름 — 기본값
 
-모든 기능·변경은 `specs/{timestamp}-{feature-slug}/` 폴더에 3개 문서로 시작한다:
+**실질적(Tier 2) 변경**은 `specs/{timestamp}-{feature-slug}/` 폴더에 3개 문서로 시작한다(tasks.md는
+이후 goal-ready가 작성하거나 goal-impl이 생성한다). **Tier 0(트리비얼)·Tier 1(작음)은 이 3문서를
+만들지 않는다** — 아래 "변경 등급 티어" 절의 lane을 따른다:
 
 - `goal.md` — 왜(why): Background·Problem·Objective·Success metrics·Non-goals·Constraints·Stakeholders·Risks
 - `spec.md` — 무엇을(what): FR(각 FR은 goal 항목을 지지), Acceptance Criteria(Given-When-Then, 테스트와 1:1 매핑), Open questions
@@ -54,7 +56,10 @@
 | 2 실질적 | 현행 goal/spec/plan/tasks 4문서(아래 규약대로) | **격리** 적대 critic, self-review 자동 2라운드 상한 |
 
 Tier 1 문서·구현도 **TDD**(AC↔테스트 1:1)를 유지한다. **테스트 생략은 Tier 0에만** 허용된다.
-Tier 2는 이 문서의 `goal-impl` 흐름·DoD를 그대로 따른다.
+Tier 2는 이 문서의 `goal-impl` 흐름·DoD를 그대로 따른다. 여기서 Tier 2의 "4문서"는 **goal/spec/plan
+3문서로 시작하고 tasks.md는 goal-ready가 작성하거나 goal-impl이 생성**함을 뜻한다 — goal-impl의 진입
+하드스톱(§2)은 goal/spec/plan **3문서**이며 tasks.md는 없으면 생성된다(goal-impl §3). 따라서 Tier 1→2
+승격 시에도 tasks.md는 phase 의존·검증 선언과 함께 생성돼 우회되지 않는다.
 
 ### worked-example (대표 변경 → 티어 → 근거)
 
