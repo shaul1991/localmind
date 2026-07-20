@@ -308,6 +308,61 @@ describe("critic-efficiency FR-6 self-review 집계", () => {
     assert.equal(agg.nonCompliant, 0);
   });
 
+  it("A1/AC-1: 동일 round tie-break — filename 사전순 마지막 채택(입력 순서 비의존)", () => {
+    const fileA = {
+      spec: "specTie",
+      filename: "self-review-round2-a.md",
+      text: fmText({
+        "candidate-id": "shaA",
+        round: 2,
+        independence: "isolated-context",
+        blockers: 1,
+        advisories: 0,
+        "approval-needed": false,
+        completion: "blocked",
+      }),
+    };
+    const fileB = {
+      spec: "specTie",
+      filename: "self-review-round2-b.md",
+      text: fmText({
+        "candidate-id": "shaB",
+        round: 2,
+        independence: "isolated-context",
+        blockers: 0,
+        advisories: 0,
+        "approval-needed": false,
+        completion: "clean",
+      }),
+    };
+    const agg1 = aggregateSelfReviewEvidence([fileA, fileB]);
+    const agg2 = aggregateSelfReviewEvidence([fileB, fileA]);
+    const s1 = agg1.bySpec.find((s) => s.spec === "specTie")!;
+    const s2 = agg2.bySpec.find((s) => s.spec === "specTie")!;
+    assert.equal(s1.finalCompletion, "clean", "filename 사전순 마지막(-b)의 completion");
+    assert.equal(s2.finalCompletion, "clean", "입력 순서를 뒤집어도 동일 결과");
+  });
+
+  it("A2/AC-2: 복합 YAML frontmatter(주석·따옴표 값)를 preflight와 동일하게 인식", () => {
+    const text = [
+      "---",
+      'candidate-id: "shaZ" # 커밋 sha',
+      "round: 1 # 주석",
+      "independence: isolated-context",
+      "blockers: 0",
+      "advisories: 0",
+      "approval-needed: false",
+      'completion: "clean"',
+      "---",
+      "",
+      "# 본문",
+    ].join("\n");
+    const agg = aggregateSelfReviewEvidence([{ spec: "specYaml", filename: "self-review-round1.md", text }]);
+    assert.equal(agg.nonCompliant, 0, "복합 YAML(주석·따옴표)도 정상 인식 — 미준수 아님");
+    const s = agg.bySpec.find((sp) => sp.spec === "specYaml")!;
+    assert.equal(s.finalCompletion, "clean");
+  });
+
   it("AC-11: 레거시 내성 — 필드 누락 frontmatter·frontmatter 부재 둘 다 미준수로 구분 집계, 정상 spec은 유지", () => {
     const files = [
       // (a) 실측 202607191145 관례 — frontmatter에 title/audience만, self-review 필드는 본문 bullet

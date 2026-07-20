@@ -193,6 +193,47 @@ describe("FR-3d — matrix 전수 대응 검사 (AC-6)", () => {
   });
 });
 
+describe("A3 — matrix coverage: 인라인 AC-N을 Acceptance Criteria 절로 스코프", () => {
+  const SPEC_MD_INLINE_OUTSIDE_SECTION = [
+    "## Acceptance Criteria",
+    "",
+    "**AC-1** 첫 항목 — Given ...",
+    "",
+    "**AC-2** 둘째 항목 — Given ...",
+    "",
+    "## 검증 결과",
+    "",
+    "회고: **AC-9**는 지난 라운드에 이미 clean 처리됐다.",
+  ].join("\n");
+
+  const PLAN_MD_AC12 = [
+    "## Verification matrix",
+    "",
+    "| AC | 검증 방법 | evidence | 종료 조건 | 상태 |",
+    "|---|---|---|---|---|",
+    "| AC-1 | 단위 | 로그 | green | |",
+    "| AC-2 | 단위 | 로그 | green | |",
+  ].join("\n");
+
+  it("AC-3: Acceptance Criteria 절 밖 인라인 **AC-9**는 위반으로 보고되지 않는다", () => {
+    const violations = checkMatrixCoverage(SPEC_MD_INLINE_OUTSIDE_SECTION, PLAN_MD_AC12);
+    assert.equal(violations.length, 0, "절 밖 인라인은 무시 — AC-9 오탐 없음");
+  });
+
+  it("AC-3 역방향: 절 밖 인라인이 있어도 절 안의 AC-1·2 대응은 그대로 검증된다(누락 시 위반)", () => {
+    const planMissingAc2 = [
+      "## Verification matrix",
+      "",
+      "| AC | 검증 방법 | evidence | 종료 조건 | 상태 |",
+      "|---|---|---|---|---|",
+      "| AC-1 | 단위 | 로그 | green | |",
+    ].join("\n");
+    const violations = checkMatrixCoverage(SPEC_MD_INLINE_OUTSIDE_SECTION, planMissingAc2);
+    assert.equal(violations.length, 1);
+    assert.match(violations[0].detail, /AC-2/);
+  });
+});
+
 describe("runPreflight — 통합 진입 함수", () => {
   it("모든 검사가 clean이면 ok=true, violations=[]", () => {
     const result = runPreflight({

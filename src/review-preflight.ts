@@ -147,11 +147,35 @@ export function checkMergedReportFields(evidenceFiles: EvidenceFile[]): Prefligh
 
 // ── (d) matrix 전수 대응 검사 (FR-3d·AC-6) ───────────────────────────────
 
-/** spec.md의 AC 식별자를 `### AC-N` 헤딩과 `**AC-N**` 인라인 두 형식 모두에서 수집한다. */
+/** `## Acceptance Criteria` 헤딩부터 다음 `## ` 헤딩 전까지의 절 본문을 추출한다(A3).
+ *  헤딩이 없으면 빈 문자열(인라인 추출 대상 없음). */
+function extractAcceptanceCriteriaSection(specMdText: string): string {
+  const lines = specMdText.split("\n");
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^##\s+Acceptance Criteria\b/.test(lines[i])) {
+      start = i + 1;
+      break;
+    }
+  }
+  if (start < 0) return "";
+  let end = lines.length;
+  for (let i = start; i < lines.length; i++) {
+    if (/^##\s+/.test(lines[i])) {
+      end = i;
+      break;
+    }
+  }
+  return lines.slice(start, end).join("\n");
+}
+
+/** spec.md의 AC 식별자를 `### AC-N` 헤딩(전역)과 `**AC-N**` 인라인(A3 —
+ *  `## Acceptance Criteria` 절 범위 내로 한정, 산문 절의 회고성 언급 오검출 방지) 두 형식에서 수집한다. */
 function extractSpecAcIds(specMdText: string): Set<string> {
   const ids = new Set<string>();
   for (const m of specMdText.matchAll(/^###\s+AC-(\d+)/gm)) ids.add(m[1]);
-  for (const m of specMdText.matchAll(/\*\*AC-(\d+)\*\*/g)) ids.add(m[1]);
+  const acSection = extractAcceptanceCriteriaSection(specMdText);
+  for (const m of acSection.matchAll(/\*\*AC-(\d+)\*\*/g)) ids.add(m[1]);
   return ids;
 }
 
