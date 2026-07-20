@@ -57,14 +57,14 @@ audience: both
 
 | AC | 검증 방법·레벨 | 최소 evidence | 통과·종료 조건 | 상태 |
 |---|---|---|---|---|
-| AC-1 | 수동 텍스트 검사(critic 실파일 대조) | 개정 파일 인용 | 고위험 강제·저위험 진행·요약 불가생략·결정로그·개정 이력 존재 | |
-| AC-2 | 수동 텍스트 검사(critic 실파일 대조) | 개정 파일 인용 | 권고 동반·일괄 모드·종료/한도 유지·개정 이력 존재 | |
-| AC-3 | 계약(unit) — SKILL 텍스트 | workflow-policy 신규 테스트 로그 | 불변식 목록·권장 기본 표기·재량 문구 존재, green | |
-| AC-4 | 계약(unit) — 전체 스위트 | 전체 테스트 실행 로그 | 기존 문구 계약 전부 green(회귀 0) | |
-| AC-5 | 계약(unit) — AGENTS.md 텍스트 | workflow-policy 신규 테스트 로그 | 비가역성 신호·검증가능성 보조 축·기존 신호 보존·예시 행, green | |
-| AC-6 | 수동 텍스트 검사(critic 실파일 대조) | 신설 파일 인용 | 이동 원칙·트리거·사람 결정+ADR·비대상 명시 존재 | |
-| AC-7 | 통합 — `make rules-deploy` 실행 | 실행 출력 + 배포 파일 grep | exit 0 + `~/.claude/localmind-rules.md`에 개정 문구 출현 | |
-| AC-8 | 산출물 검사 | 파일 목록·capture 출력 | research-report.md·개정 이력·결정 노트 존재 | |
+| AC-1 | 수동 텍스트 검사(critic 실파일 대조) | 개정 파일 인용 | 고위험 강제·저위험 진행·요약 불가생략·결정로그·개정 이력 존재 | ✅ r2 clean |
+| AC-2 | 수동 텍스트 검사(critic 실파일 대조) | 개정 파일 인용 | 권고 동반·일괄 모드·종료/한도 유지·개정 이력 존재 | ✅ r2 clean |
+| AC-3 | 계약(unit) — SKILL 텍스트 | workflow-policy 신규 테스트 로그 | 불변식 목록·권장 기본 표기·재량 문구 존재, green | ✅ r2 clean |
+| AC-4 | 계약(unit) — 전체 스위트 | 전체 테스트 실행 로그 | 기존 문구 계약 전부 green(회귀 0) | ✅ r2 clean |
+| AC-5 | 계약(unit) — AGENTS.md 텍스트 | workflow-policy 신규 테스트 로그 | 비가역성 신호·검증가능성 보조 축·기존 신호 보존·예시 행, green | ✅ r2 clean |
+| AC-6 | 수동 텍스트 검사(critic 실파일 대조) | 신설 파일 인용 | 이동 원칙·트리거·사람 결정+ADR·비대상 명시 존재 | ✅ r2 clean |
+| AC-7 | 통합 — `make rules-deploy` 실행 | 실행 출력 + 배포 파일 grep | exit 0 + `~/.claude/localmind-rules.md`에 개정 문구 출현 | ✅ r2 clean |
+| AC-8 | 산출물 검사 | 파일 목록·capture 출력 | research-report.md·개정 이력·결정 노트 존재 | ✅ r2 clean |
 
 모든 AC가 정확히 한 행. AC-1·2·6은 자동 테스트가 아닌 수동 검사임을 명시(repo 계약 테스트의
 경로 범위 밖) — degraded가 아니라 검증 방법의 성격이며, critic이 실파일로 수행한다.

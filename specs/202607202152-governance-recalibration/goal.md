@@ -54,6 +54,8 @@ tier-rationale: >
 
 ## Success metrics
 
+(전 항목 달성 — 2026-07-20 self-review r2 clean. 4번째 지표는 정성·후속 retro 관찰 대상. 근거: spec.md 검증 결과 절)
+
 - 개정된 rules base가 `make rules-deploy`로 전 소비 표면(`~/.claude/localmind-rules.md` 등)에
   드리프트 없이 배포된다.
 - 유지 계층의 기존 문구 계약 테스트(localmind repo)가 전부 green — 검증 계층 무손상의 기계 확인.

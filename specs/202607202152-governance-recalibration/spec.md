@@ -147,3 +147,13 @@ rules base에 경량 규칙 `governance-recalibration.md`를 신설한다.
   없다 — 재보정 리듬의 첫 retro에서 필요성 판단.
 - **OQ-3 (overlay 연동)**: 이 base 개정이 기존 프로젝트 overlay와 충돌하는 사례가 있는지 —
   배포 후 각 프로젝트 첫 세션에서 관찰(충돌 시 overlay 우선 원칙 그대로).
+
+## 검증 결과 (2026-07-20, self-review round 2 clean)
+
+- [x] FR-1/AC-1 — 위험 보정형 재확인(고위험 강제·저위험 진행·요약 불가생략·결정로그·개정 이력) — r2 실파일 대조 충족
+- [x] FR-2/AC-2 — 권고 동반·일괄 모드·종료/한도 유지·개정 이력 — r2 실파일 대조 충족
+- [x] FR-3/AC-3·4 — 불변식/권장 기본 2층(핀 4 보존·EEXIST 정정·Live-Verify 포함), 스위트 1019 green — 계약 테스트 + r2 대조
+- [x] FR-4/AC-5 — 비가역성 단일 토큰(parity 10=10)·검증가능성 보조 축·예시 행 — 계약 green
+- [x] FR-5/AC-6 — 재보정 리듬 규칙 신설 — r2 실파일 대조 충족
+- [x] FR-6/AC-7·8 — rules-deploy exit 0·drift 0·개정 문구 배포 반영, 근거 3종(report·개정 이력·결정노트 receipt) — 실행 관찰
+- self-review: **round 1 렌즈 병렬 fan-out 첫 실전**(5렌즈, blocker 2·advisory 7, 렌즈 간 중복 0) → 수정 → round 2 전량 재검증 clean. advisory 3건(A-1 §4A 중복·A-3 핀 강도·A-4 AC-17 설계) 후속 이월 — evidence/self-review-round{1,2}.md
