@@ -9,11 +9,11 @@ plan의 5단계를 실행 task로 분해한다. phase 선언 문법은 `template
 ## Phase 1 — preflight 검사 모듈 (TDD)
 > depends-on: 없음 · files: `src/review-preflight.ts`, `src/review-preflight.test.ts`
 
-- [ ] **T1.1** AC-3(임시경로 evidence)·AC-4(diff --check 출력 판정 순수 함수)·AC-5(merged
+- [x] **T1.1** AC-3(임시경로 evidence)·AC-4(diff --check 출력 판정 순수 함수)·AC-5(merged
   report 필드)·AC-6(matrix 전수 대응) 실패 테스트를 인라인 픽스처로 작성한다(red).
-- [ ] **T1.2** `src/review-preflight.ts` 순수 검사 모듈을 구현해 green. diff 검사(FR-3b)는
+- [x] **T1.2** `src/review-preflight.ts` 순수 검사 모듈을 구현해 green. diff 검사(FR-3b)는
   `git diff --check` 출력 텍스트를 입력받아 판정하는 순수 함수로 둔다.
-- [ ] **T1.3** 경계 케이스 보강: versioned 사본 병기 pass, 빈 evidence 디렉토리, AC 식별자
+- [x] **T1.3** 경계 케이스 보강: versioned 사본 병기 pass, 빈 evidence 디렉토리, AC 식별자
   형식 변형(`### AC-N` 헤딩/인라인) — 실패 테스트로 재현 후 커버.
 
 ## Phase 2 — preflight 진입점·배선
