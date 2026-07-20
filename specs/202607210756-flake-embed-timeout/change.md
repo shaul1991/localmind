@@ -29,9 +29,9 @@ PID 포트. 다음 플레이크 포착 시 그 로그로 판정.
 
 ## AC (Given-When-Then · 테스트 1:1)
 
-- [ ] **AC-1**: Given 조정된 childEnv, When 프루닝 가드 describe를 포함한 brain.test.ts를
+- [x] **AC-1**: Given 조정된 childEnv, When 프루닝 가드 describe를 포함한 brain.test.ts를
   실행하면, Then 전부 green이고 childEnv에 두 값이 실제로 설정돼 있다(코드 검사).
-- [ ] **AC-2 (엣지)**: Given 전체 스위트, When 연속 3회 실행하면, Then 3회 모두 green
+- [x] **AC-2 (엣지)**: Given 전체 스위트, When 연속 3회 실행하면, Then 3회 모두 green
   (플레이크 재발 없음 관찰 — 부하 의존이라 결정적 재현은 불가, 관찰 근거로 기록).
 
 ## 티어 근거
