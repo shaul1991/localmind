@@ -23,7 +23,7 @@ export interface ScaffoldResult {
 }
 
 /**
- * targetDir에 AGENTS.md + specs/{goal,spec,plan}.template.md를 심는다.
+ * targetDir에 AGENTS.md + specs/{goal,spec,plan,change}.template.md를 심는다.
  * 기존 파일/폴더는 건드리지 않는다.
  *
  * targetDir는 반드시 절대경로여야 한다. MCP 서버는 장수명 프로세스라 "현재 작업
@@ -57,7 +57,7 @@ export function scaffoldSdd(targetDir: string): ScaffoldResult {
     items.push({ path: "specs/", status: "skipped" });
   } else {
     fs.mkdirSync(specsDir, { recursive: true });
-    for (const name of ["goal.template.md", "spec.template.md", "plan.template.md"]) {
+    for (const name of ["goal.template.md", "spec.template.md", "plan.template.md", "change.template.md"]) {
       createIfAbsent(path.join(specsDir, name), path.join(TEMPLATES_DIR, name));
     }
     items.push({ path: "specs/", status: "created" });

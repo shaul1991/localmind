@@ -7,7 +7,10 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { deployAgents, formatDeployResult, MANAGED_MARKER } from "./deploy.js";
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 const VALID = `---
 name: critic
@@ -302,6 +305,38 @@ describe("deployAgents — self-review 회귀", () => {
     assert.equal(result.problems.length, 0);
     const agent = fs.readFileSync(path.join(codexHome, "agents", "ctrl.toml"), "utf8");
     assert.ok(!/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/.test(agent), "TOML 산출물에 원시 제어문자가 남음");
+  });
+});
+
+// ── 변경 등급 티어링 + critic 콜드리드 캐싱 배포 드리프트 (specs/202607201059 AC-16) ──
+describe("deployAgents — 실제 정본(critic.md) 배포 멱등·드리프트 0(AC-16)", () => {
+  beforeEach(setup);
+  afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  it("templates/agents/critic.md 실제 정본(티어 캐싱 반영분)을 배포하면 새 matrix-as-map 문구가 그대로 실리고, 재배포는 unchanged·byte-identical이다", () => {
+    const realCritic = fs.readFileSync(path.join(REPO_ROOT, "templates", "agents", "critic.md"), "utf8");
+    // 이 slice가 critic.md에 실제로 추가한 문구 — 정본이 여전히 이 내용을 담고 있어야
+    // "변경된 정본"을 배포하는 시나리오가 성립한다(구식 fixture 아님).
+    assert.match(realCritic, /도장찍기 금지/, "templates/agents/critic.md에 새 tier-caching 문구가 없음 — 테스트 전제 무효");
+    fs.writeFileSync(path.join(registryDir, "critic.md"), realCritic);
+
+    const first = run();
+    assert.equal(first.problems.length, 0, `실제 critic.md 정본 배포에 문제 발생: ${JSON.stringify(first.problems)}`);
+    const deployed = fs.readFileSync(path.join(claudeAgentsDir, "critic.md"), "utf8");
+    const deployedFlat = deployed.replace(/\s+/g, " ");
+    assert.match(deployedFlat, /matrix 상태 셀\(구현자가 채운 주장\)만으로\s*통과시키지 않는다/, "배포 산출물에 독립성 가드레일 문구 누락");
+    assert.match(deployedFlat, /도장찍기 금지/, "배포 산출물에 도장찍기 금지 문구 누락");
+
+    const second = run();
+    assert.ok(
+      second.items.every((i) => i.status === "unchanged"),
+      `재배포가 unchanged가 아님(드리프트): ${JSON.stringify(second.items)}`,
+    );
+    assert.equal(
+      fs.readFileSync(path.join(claudeAgentsDir, "critic.md"), "utf8"),
+      deployed,
+      "재배포 산출물이 byte 단위로 달라짐(드리프트)",
+    );
   });
 });
 

@@ -19,6 +19,7 @@ import {
 import { loadSkillRegistry, scanPackagedNeutrality, type WorkflowPolicy } from "./skill-contract.js";
 
 const TEMPLATES = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "templates", "skills");
+const REPO_ROOT = path.resolve(TEMPLATES, "..", "..");
 function flatBody(name: string): string {
   return fs.readFileSync(path.join(TEMPLATES, name, "SKILL.md"), "utf8").replace(/\s+/g, " ");
 }
@@ -26,6 +27,22 @@ function has(name: string, ...phrases: string[]) {
   const flat = flatBody(name);
   for (const p of phrases) {
     assert.ok(flat.includes(p.replace(/\s+/g, " ")), `${name} 본문에 "${p}" 누락`);
+  }
+}
+/** AGENTS.md·docs/workflows.md·templates/agents/critic.md 등 templates/skills 밖 파일 로더(specs/202607201059 AC-5).
+ *  마크다운 blockquote(`> `) 줄바꿈 접두는 문장을 끊어놓으므로 whitespace 정규화 전에 제거한다. */
+function flatFile(relPath: string): string {
+  const raw = fs.readFileSync(path.join(REPO_ROOT, relPath), "utf8");
+  return raw
+    .split("\n")
+    .map((line) => line.replace(/^>\s?/, ""))
+    .join("\n")
+    .replace(/\s+/g, " ");
+}
+function hasIn(relPath: string, ...phrases: string[]) {
+  const flat = flatFile(relPath);
+  for (const p of phrases) {
+    assert.ok(flat.includes(p.replace(/\s+/g, " ")), `${relPath} 본문에 "${p}" 누락`);
   }
 }
 const policyOf = (name: string): WorkflowPolicy => {
@@ -329,5 +346,170 @@ describe("research-evidence-pack policy contract: AC-5", () => {
     assert.equal(enforcementFor("claude-skill", policy), "runtime-enforced");
     assert.equal(enforcementFor("agent-skill", policy), "runtime-enforced");
     assert.equal(enforcementFor("gemini-command", policy), "instruction-level");
+  });
+});
+
+// ── 변경 등급 티어링 + critic 콜드리드 캐싱 계약 (specs/202607201059 AC-5~13,15,17) ──
+
+describe("tier-contract: AC-5 — 티어별 의식 매핑 정합(AGENTS.md ↔ goal-ready ↔ goal-impl)", () => {
+  it("AGENTS.md 정본이 세 티어의 문서·critic 강도를 명문화한다", () => {
+    hasIn(
+      "AGENTS.md",
+      "경량 단일 문서 `change.md`(why·what·AC·티어 근거)",
+      "in-session** 적대 자기검증 1라운드, diff 스코프",
+      "현행 goal/spec/plan/tasks 4문서(아래 규약대로)",
+      "적대 critic, self-review 자동 2라운드 상한",
+    );
+  });
+  it("goal-ready가 같은 매핑(Tier 1 change.md lane / Tier 2 4문서)을 따른다", () => {
+    has("goal-ready", "경량 단일 문서 `change.md` lane", "이 워크플로의 나머지 단계(3~15)를 그대로 진행", "goal/spec/plan/tasks 네 문서를 만든다");
+  });
+  it("goal-impl이 같은 매핑(Tier 1 in-session 1라운드 / Tier 2 격리 2라운드)을 따른다", () => {
+    has(
+      "goal-impl",
+      "in-session 적대 자기검증 1라운드",
+      "격리 위임 없이 현재 세션이 결함을 찾으러 가는 자세로 diff 스코프를",
+      "격리 self-review 자동 2라운드 상한",
+    );
+  });
+});
+
+describe("tier-contract: AC-6 — Tier 1도 TDD 유지, 테스트 생략은 Tier 0에만", () => {
+  it("AGENTS.md 정본 문구", () => {
+    hasIn("AGENTS.md", "Tier 1 문서·구현도 **TDD**(AC↔테스트 1:1)를 유지한다", "테스트 생략은 Tier 0에만** 허용된다");
+  });
+  it("goal-ready에도 같은 규율이 명시된다", () => {
+    has("goal-ready", "Tier 1도 **TDD를 유지**한다(AC↔테스트 1:1)", "테스트 생략은 Tier 0에만** 허용되며 Tier 1에서는 허용되지 않는다");
+  });
+});
+
+describe("tier-contract: AC-7 — 티어 판정 근거 기록", () => {
+  it("AGENTS.md가 판정 근거를 산출물에 기록하도록 요구한다", () => {
+    hasIn("AGENTS.md", "근거(어느 트리거로 어느 티어인지)를 산출물에 기록");
+  });
+  it("goal-ready가 사용자 보고와 산출물(change.md의 티어 근거 절)에 남기도록 요구한다", () => {
+    has("goal-ready", "판정 근거(어느 트리거로 어느 티어인지)를 사용자 보고와 산출물", "티어 근거");
+  });
+});
+
+describe("tier-contract: AC-8 — 중간 승격(하향 금지)", () => {
+  it("AGENTS.md·goal-impl 모두 상위 티어 하드 신호 발견 시 승격 + 하향 재분류 금지를 명시한다", () => {
+    hasIn("AGENTS.md", "상위 티어로", "승격**하고 승격 사실·추가 의식을 보고한다", "하향 재분류는 하지 않는다");
+    has("goal-impl", "상위 티어로 승격**하고 승격 사실과 추가 의식", "하향 재분류는 하지 않는다");
+  });
+});
+
+describe("tier-contract: AC-9 — critic 조사 지도 스코프(matrix-as-map)", () => {
+  it("sdd-self-review·critic 모두 matrix 행을 AC↔코드 지도로 명시한다", () => {
+    has("sdd-self-review", "AC↔코드·evidence 대응을 조사 지도(map)", "로 물려받아");
+    hasIn("templates/agents/critic.md", "matrix 활용", "각 행을 AC↔코드", "조사 지도(map)", "삼아");
+  });
+});
+
+describe("tier-contract: AC-10 — 독립성 가드레일 문구(도장찍기 금지)", () => {
+  it("sdd-self-review와 critic.md 모두 실제 코드 검증 + 상태 셀만으로 통과 금지를 명시한다", () => {
+    has("sdd-self-review", "각 행을 실제 코드로", "검증**하며", "matrix 상태 셀(구현자가 채운 주장)만으로 통과시키지 않는다", "도장찍기 금지");
+    hasIn(
+      "templates/agents/critic.md",
+      "각 행을 실제 코드로 검증**한다",
+      "matrix 상태 셀(구현자가 채운 주장)만으로 통과시키지 않는다",
+      "도장찍기 금지",
+    );
+  });
+});
+
+describe("tier-contract: AC-11 — 라운드 전환 시 전량 재검증(보수형)", () => {
+  it("sdd-self-review·goal-impl 모두 전량 재검증 + verdict 승계·행 스킵 없음을 명시한다", () => {
+    has("sdd-self-review", "모든 matrix 행을 전량 재검증**한다", "verdict 승계·행 스킵은 하지 않는다");
+    has("goal-impl", "모든 verification matrix 행을 전량 재검증**한다", "verdict 승계·행 스킵은 하지 않는다");
+  });
+});
+
+describe("tier-contract: AC-12 — per-round 독립성 보존 + map은 통과근거 아님 + 적극형 미도입", () => {
+  it("sdd-self-review가 map만 재사용·적극형 미도입을 명시한다", () => {
+    has("sdd-self-review", "재사용되는 것은 **검증 결과가 아니라 map뿐**이다", "round-to-round 무효화-스킵(적극형)은", "도입하지 않는다");
+  });
+  it("goal-impl이 map은 통과 근거가 아님·적극형 미도입을 명시한다", () => {
+    has("goal-impl", "map은 \"어디를 보라\"만 정할 뿐 통과 근거가 아니다", "round-to-round 무효화-스킵(적극형");
+    has("goal-impl", "이 워크플로에 도입하지 않는다");
+  });
+});
+
+describe("tier-contract: AC-13 — map 재사용 범위(within-run only)", () => {
+  it("AGENTS.md·sdd-self-review 모두 within-run 유효·cross-session 금지를 명시한다", () => {
+    hasIn("AGENTS.md", "within-run(한 goal-impl 실행 내)", "cross-session) map 재사용은 금지");
+    has("sdd-self-review", "within-run(한 goal-impl 실행 내)", "cross-session) map 재사용은 금지");
+  });
+});
+
+describe("tier-contract: AC-15 — Tier 2 품질 규율 불변", () => {
+  it("AGENTS.md가 전 AC green·도그푸드·격리 critic·PR 게이트·Live-Verify를 불변으로 묶어 명시한다", () => {
+    hasIn(
+      "AGENTS.md",
+      "Tier 2 품질 규율(전 AC green·필수 도그푸드·격리 적대 critic·PR",
+      "게이트·Live-Verify)을 문구·의미상 약화하지 않는다",
+    );
+  });
+  it("goal-impl 자체 DoD에도 전 AC green·필수 도그푸드가 그대로 있다", () => {
+    has("goal-impl", "전 AC green** — spec의 모든 AC가", "도그푸드(필수)** — 테스트 green만으로 완료가 아니다");
+  });
+});
+
+describe("tier-contract: AC-17 — docs/workflows.md 사용자 대면 parity", () => {
+  const AGENTS_FLAT = flatFile("AGENTS.md");
+  const DOCS_FLAT = flatFile("docs/workflows.md");
+
+  it("세 티어 lane이 평이한 한국어로 설명되어 있다(Tier 0/1/2 + change.md + escalate)", () => {
+    hasIn(
+      "docs/workflows.md",
+      "Tier 0(트리비얼)",
+      "Tier 1(작음)",
+      "Tier 2(실질적)",
+      "change.md",
+      "판단이 애매할 때는 **항상 더 무거운 등급 쪽으로** 올립니다",
+    );
+  });
+
+  it("instruction-level 같은 개발자 전용 표기 없이 사람말로 같은 취지를 설명한다", () => {
+    assert.ok(!DOCS_FLAT.includes("instruction-level"), "docs/workflows.md에 비개발자 대상 부적합 영어 전문용어가 남음");
+    hasIn("docs/workflows.md", "세션이 매번 읽고 사람이 검토하듯 적용");
+  });
+
+  // 하드 신호의 AGENTS.md ↔ docs/workflows.md 대응표. "·"는 목록 구분자이자 "인증·보안"류
+  // 복합어 내부 연결자로도 쓰여 순수 split만으로는 토큰 경계를 못 잡는다 — 그래서 원문에서
+  // 직접 파싱한 **개별 나열 단위** 개수(split("·") 결과)와 이 표의 길이가 어긋나면(신호
+  // 추가/삭제인데 문서 미갱신) 먼저 실패하도록, split 결과 하나하나에 대응 항목을 둔다.
+  it("AGENTS.md 하드 신호 목록과 docs/workflows.md Tier 2 설명이 누락 없이 대응한다", () => {
+    const hardSignalMatch = AGENTS_FLAT.match(/\*\*하드 신호:\*\*\s*(.+?)\.\s*-\s*\*\*escalate-on-doubt/);
+    assert.ok(hardSignalMatch, "AGENTS.md에서 하드 신호 목록 문자열을 찾지 못함");
+    const parsedSignals = hardSignalMatch![1]
+      .split("·")
+      .map((s) => s.replace(/\*\*/g, "").trim())
+      .filter((s) => s.length > 0);
+
+    // split("·") 결과 토큰 → docs/workflows.md의 사람말 대응 정규식. 토큰 순서·개수는
+    // AGENTS.md 원문에서 파싱된 것이므로(하드코딩 아님), 여기 배열 길이가 parsedSignals와
+    // 다르면 매핑 자체가 안 맞다는 뜻 — 곧바로 아래 length assert가 잡는다.
+    const DOCS_EQUIVALENT: RegExp[] = [
+      /새로운 도메인 개념/, // 신규 도메인 개념
+      /계약\*\* 변경/, // 계약(API/스키마/이벤트) 변경
+      /인증·보안 표면/, // 인증
+      /인증·보안 표면/, // 보안 표면
+      /마이그레이션/, // 마이그레이션
+      /데이터 모델 변경/, // 데이터 모델 변경
+      /전역 상태나 직렬화 형식 변경/, // 전역 상태
+      /전역 상태나 직렬화 형식 변경/, // 직렬화 형식 변경
+      /여러 영역에 걸친 변경/, // 크로스커팅 변경
+    ];
+
+    assert.equal(
+      parsedSignals.length,
+      DOCS_EQUIVALENT.length,
+      `AGENTS.md 하드 신호 파싱 토큰 개수(${parsedSignals.length})와 대응표 길이(${DOCS_EQUIVALENT.length})가 다름 — ` +
+        `AGENTS.md 하드 신호 목록이 바뀌었으면 이 대응표와 docs/workflows.md도 함께 갱신해야 함: ${JSON.stringify(parsedSignals)}`,
+    );
+    parsedSignals.forEach((signal, i) => {
+      assert.match(DOCS_FLAT, DOCS_EQUIVALENT[i], `docs/workflows.md에 하드 신호 "${signal}"의 사람말 설명이 없음(parity 깨짐)`);
+    });
   });
 });

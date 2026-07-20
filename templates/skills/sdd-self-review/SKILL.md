@@ -23,6 +23,23 @@ SDD 구현이 끝나면 이 절차로 self-review를 수행한다. 역할은 능
 SHA 또는 diff/evidence를 결정적으로 식별하는 값이어야 하며, round 예산과 추가 승인 여부는 이
 워크플로가 아니라 호출한 SDD 구현 워크플로가 소유한다.
 
+## 2A. critic 조사 지도 — matrix-as-map + 라운드 전량 재검증 (보수형)
+
+위 2단계 입력(`FR/AC + diff + 테스트 근거`) 위에, verification matrix 각 행이 가리키는
+**AC↔코드·evidence 대응을 조사 지도(map)** 로 물려받아 critic이 그 대응을 매번 재구성하지 않게
+한다.
+
+- **독립성 가드레일**: map은 "어디를 보라"만 정한다. critic은 검토하는 **각 행을 실제 코드로
+  검증**하며, **matrix 상태 셀(구현자가 채운 주장)만으로 통과시키지 않는다**(도장찍기 금지).
+  읽기 효율만 높이고 검증 깊이는 줄이지 않는다.
+- **라운드 전량 재검증(보수형)**: review round가 전환돼도(blocker 수정으로 새 candidate)
+  **모든 matrix 행을 전량 재검증**한다. **verdict 승계·행 스킵은 하지 않는다** — round 2 격리
+  리뷰어는 round 1 verdict를 물려받지 않고 각 행을 독립 재검증한다(per-round 독립성 완전 보존).
+  재사용되는 것은 **검증 결과가 아니라 map뿐**이다. round-to-round 무효화-스킵(적극형)은
+  도입하지 않는다.
+- **map 재사용 범위**: matrix map 재사용은 **within-run(한 goal-impl 실행 내)** 으로만 유효하다.
+  **세션·실행 간(cross-session) map 재사용은 금지**한다.
+
 ## 3. 적대적 크리틱 검토(필수)
 
 적대적 크리틱(critic) 검토는 필수 최소선이다. **구현 컨텍스트와 분리된 격리 리뷰 능력이 있으면 반드시
