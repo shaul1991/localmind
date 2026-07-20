@@ -426,8 +426,22 @@ describe("critic-efficiency FR-6 self-review 집계", () => {
       insufficient: false,
       selfReview: {
         bySpec: [
-          { spec: "specA", rounds: 2, totalBlockers: 4, finalCompletion: "clean", durationMinutesTotal: 35 },
-          { spec: "specB", rounds: 1, totalBlockers: 0, finalCompletion: "clean", durationMinutesTotal: null },
+          {
+            spec: "specA",
+            rounds: 2,
+            totalBlockers: 4,
+            finalCompletion: "clean",
+            durationMinutesTotal: 35,
+            reviewModes: ["단일", "단일"],
+          },
+          {
+            spec: "specB",
+            rounds: 1,
+            totalBlockers: 0,
+            finalCompletion: "clean",
+            durationMinutesTotal: null,
+            reviewModes: ["단일"],
+          },
         ],
         nonCompliant: 2,
       },
@@ -436,5 +450,99 @@ describe("critic-efficiency FR-6 self-review 집계", () => {
     assert.ok(md.includes("self-review 라운드 집계"), "절 제목 존재");
     assert.ok(md.includes("specA") && md.includes("specB"), "spec별 행");
     assert.ok(md.includes("미준수") && md.includes("2건"), "미준수 건수 표기(은폐 금지)");
+  });
+});
+
+// specs/202607210028-retro-lenses-column — self-review 집계에 리뷰 형태(lenses) 컬럼 추가
+describe("202607210028 retro-lenses-column", () => {
+  /** FR-5 표준 frontmatter + 선택 lenses 필드를 가진 evidence 텍스트를 만든다. */
+  function fmTextWithLenses(fields: Record<string, string | number | boolean>, lenses?: unknown, body = "본문"): string {
+    const lines = ["---"];
+    for (const [k, v] of Object.entries(fields)) lines.push(`${k}: ${v}`);
+    if (lenses !== undefined) {
+      if (Array.isArray(lenses)) {
+        lines.push("lenses:");
+        for (const l of lenses) lines.push(`  - ${JSON.stringify(l)}`);
+      } else {
+        lines.push(`lenses: ${JSON.stringify(lenses)}`);
+      }
+    }
+    lines.push("---", "", `# ${body}`);
+    return lines.join("\n");
+  }
+
+  const baseFields = {
+    "candidate-id": "shaL",
+    independence: "isolated-context",
+    advisories: 0,
+    "approval-needed": false,
+  };
+
+  it("AC-1: r1 lenses 5개(병렬) · r2 lenses 부재(단일) — 라운드 순서대로 형태 목록", () => {
+    const files = [
+      {
+        spec: "specLens",
+        filename: "self-review-round1.md",
+        text: fmTextWithLenses(
+          { ...baseFields, round: 1, blockers: 2, completion: "blocked" },
+          ["accuracy", "security", "simplicity", "spec-ac", "live-verify"],
+        ),
+      },
+      {
+        spec: "specLens",
+        filename: "self-review-round2.md",
+        text: fmTextWithLenses({ ...baseFields, round: 2, blockers: 0, completion: "clean" }),
+      },
+    ];
+    const agg = aggregateSelfReviewEvidence(files);
+    const s = agg.bySpec.find((sp) => sp.spec === "specLens")!;
+    assert.deepEqual(s.reviewModes, ["병렬(5)", "단일"], "r1 병렬(5) · r2 단일 순서");
+    const md = renderRetro(
+      {
+        days: 14,
+        repoLabel: "fixture",
+        isGitRepo: true,
+        commits: parseCommits(""),
+        openQuestions: [],
+        hasSpecsDir: true,
+        decisions: [],
+        query: null,
+        guides: [],
+        projects: [],
+        insufficient: false,
+        selfReview: agg,
+      },
+      null,
+      new Date("2026-07-21T10:00:00Z"),
+    );
+    assert.ok(md.includes("r1 병렬(5) · r2 단일"), "§8 표에 형태 컬럼 렌더");
+  });
+
+  it("AC-2 (엣지): lenses 비배열(문자열/숫자)·빈 배열은 단일 취급 + 기존 집계·미준수 판정 불변", () => {
+    const files = [
+      {
+        spec: "specEdge",
+        filename: "self-review-round1.md",
+        text: fmTextWithLenses({ ...baseFields, round: 1, blockers: 1, completion: "blocked" }, "not-an-array"),
+      },
+      {
+        spec: "specEdge",
+        filename: "self-review-round2.md",
+        text: fmTextWithLenses({ ...baseFields, round: 2, blockers: 0, completion: "clean" }, 42),
+      },
+      {
+        spec: "specEdge",
+        filename: "self-review-round3.md",
+        text: fmTextWithLenses({ ...baseFields, round: 3, blockers: 0, completion: "clean" }, []),
+      },
+    ];
+    const agg = aggregateSelfReviewEvidence(files);
+    const s = agg.bySpec.find((sp) => sp.spec === "specEdge")!;
+    assert.deepEqual(s.reviewModes, ["단일", "단일", "단일"], "비배열·빈배열 전부 단일");
+    // 기존 집계 값·미준수 판정 불변
+    assert.equal(s.rounds, 3);
+    assert.equal(s.totalBlockers, 1);
+    assert.equal(s.finalCompletion, "clean");
+    assert.equal(agg.nonCompliant, 0, "lenses는 선택 필드 — 미준수 판정에 불참여");
   });
 });
