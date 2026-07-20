@@ -17,7 +17,9 @@ import {
   extractOpenQuestions,
   collectDecisionNotes,
   isInsufficient,
+  aggregateSelfReviewEvidence,
   type InventoryEntry,
+  type SelfReviewEvidenceFile,
 } from "../src/retro-analysis.js";
 import { renderRetro, type RetroAggregate } from "../src/retro-note.js";
 import { guardedWriteFileSync } from "../src/retro-guard.js";
@@ -52,6 +54,24 @@ function readSpecFiles(): { hasSpecsDir: boolean; files: { spec: string; text: s
     if (fs.existsSync(p)) files.push({ spec: d.name, text: fs.readFileSync(p, "utf8") });
   }
   return { hasSpecsDir: true, files };
+}
+
+/** specs/*/evidence/self-review-round*.md를 glob·읽어온다(specs/202607201808-critic-efficiency
+ *  FR-6 — 집계 자체는 순수 함수라 여기서만 IO를 담당). */
+function readSelfReviewEvidenceFiles(): SelfReviewEvidenceFile[] {
+  const specsDir = path.join(REPO, "specs");
+  if (!fs.existsSync(specsDir)) return [];
+  const files: SelfReviewEvidenceFile[] = [];
+  for (const d of fs.readdirSync(specsDir, { withFileTypes: true })) {
+    if (!d.isDirectory()) continue;
+    const evidenceDir = path.join(specsDir, d.name, "evidence");
+    if (!fs.existsSync(evidenceDir)) continue;
+    for (const ef of fs.readdirSync(evidenceDir, { withFileTypes: true })) {
+      if (!ef.isFile() || !/^self-review-round.*\.md$/.test(ef.name)) continue;
+      files.push({ spec: d.name, filename: ef.name, text: fs.readFileSync(path.join(evidenceDir, ef.name), "utf8") });
+    }
+  }
+  return files;
 }
 
 function readNoteFiles(dir: string, out: { path: string; text: string }[], depth = 0): void {
@@ -97,6 +117,9 @@ async function main(): Promise<void> {
   const records = readRecords(LOG_PATH);
   const query = records ? analyze(records, { days: DAYS, minSamples: 10 }) : null;
 
+  const selfReviewFiles = readSelfReviewEvidenceFiles();
+  const selfReview = selfReviewFiles.length > 0 ? aggregateSelfReviewEvidence(selfReviewFiles) : null;
+
   const agg: RetroAggregate = {
     days: DAYS,
     repoLabel: path.basename(REPO),
@@ -109,6 +132,7 @@ async function main(): Promise<void> {
     guides: inventory(path.join(first.dir, "guides")),
     projects: inventory(path.join(first.dir, "projects")),
     insufficient: isInsufficient(commits.total, decisions.length, query?.searches ?? 0),
+    selfReview,
   };
 
   // 분석가 해석(017 위임 패턴) — 표본 부족이면 생략(personaChat 미호출, AC-8b)

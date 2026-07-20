@@ -12,6 +12,7 @@ import {
   collectDecisionNotes,
   classifyPatterns,
   isInsufficient,
+  aggregateSelfReviewEvidence,
 } from "./retro-analysis.js";
 import { renderRetro, type RetroAggregate } from "./retro-note.js";
 import { guardedWriteFileSync } from "./retro-guard.js";
@@ -115,6 +116,7 @@ describe("032 회고 집계", () => {
       guides: [],
       projects: [],
       insufficient: false,
+      selfReview: null,
     };
     const md = renderRetro(agg, null, new Date("2026-07-05T10:00:00Z"));
     assert.ok(md.includes("제안까지만"), "게이트 고지");
@@ -234,5 +236,150 @@ describe("retro timestamp 프리픽스 대응", () => {
     assert.equal(c.specCadence["031"], 1);
     assert.equal(c.specCadence["100"], undefined, "spec 앵커 없는 3자리 미집계 유지");
     for (const n of ["022", "023", "024"]) assert.equal(c.specCadence[n], 1);
+  });
+});
+
+// specs/202607201808-critic-efficiency FR-6 — self-review evidence 텔레메트리 집계
+describe("critic-efficiency FR-6 self-review 집계", () => {
+  /** FR-5 표준 frontmatter를 가진 evidence 텍스트를 만든다. */
+  function fmText(fields: Record<string, string | number | boolean>, body = "본문"): string {
+    const lines = ["---"];
+    for (const [k, v] of Object.entries(fields)) lines.push(`${k}: ${v}`);
+    lines.push("---", "", `# ${body}`);
+    return lines.join("\n");
+  }
+
+  it("AC-10: spec별 라운드 수·총 blocker·최종 completion(파일 순서 비의존) + duration 합", () => {
+    const files = [
+      // specA: round2를 round1보다 먼저 넣어 순서 비의존을 검증
+      {
+        spec: "specA",
+        filename: "self-review-round2.md",
+        text: fmText({
+          "candidate-id": "shaB",
+          round: 2,
+          independence: "isolated-context",
+          blockers: 1,
+          advisories: 0,
+          "approval-needed": true,
+          completion: "clean",
+          "duration-minutes": 20,
+        }),
+      },
+      {
+        spec: "specA",
+        filename: "self-review-round1.md",
+        text: fmText({
+          "candidate-id": "shaA",
+          round: 1,
+          independence: "isolated-context",
+          blockers: 3,
+          advisories: 1,
+          "approval-needed": false,
+          completion: "blocked",
+          "duration-minutes": 15,
+        }),
+      },
+      {
+        spec: "specB",
+        filename: "self-review-round1.md",
+        text: fmText({
+          "candidate-id": "shaC",
+          round: 1,
+          independence: "cross-runtime",
+          blockers: 0,
+          advisories: 0,
+          "approval-needed": false,
+          completion: "clean",
+        }),
+      },
+    ];
+    const agg = aggregateSelfReviewEvidence(files);
+    const a = agg.bySpec.find((s) => s.spec === "specA")!;
+    const b = agg.bySpec.find((s) => s.spec === "specB")!;
+    assert.equal(a.rounds, 2);
+    assert.equal(a.totalBlockers, 4, "3 + 1");
+    assert.equal(a.finalCompletion, "clean", "round2(최대 round)의 completion — round1이 먼저 와도 무관");
+    assert.equal(a.durationMinutesTotal, 35, "15 + 20");
+    assert.equal(b.rounds, 1);
+    assert.equal(b.totalBlockers, 0);
+    assert.equal(b.finalCompletion, "clean");
+    assert.equal(b.durationMinutesTotal, null, "duration-minutes 미기재 spec은 null");
+    assert.equal(agg.nonCompliant, 0);
+  });
+
+  it("AC-11: 레거시 내성 — 필드 누락 frontmatter·frontmatter 부재 둘 다 미준수로 구분 집계, 정상 spec은 유지", () => {
+    const files = [
+      // (a) 실측 202607191145 관례 — frontmatter에 title/audience만, self-review 필드는 본문 bullet
+      {
+        spec: "legacyA",
+        filename: "self-review-round1.md",
+        text: [
+          "---",
+          "title: Self-review round 1 merged report",
+          "audience: both",
+          "---",
+          "",
+          "# Self-review round 1",
+          "",
+          "- candidate: `d4ac538`",
+          "- completion: blocked",
+        ].join("\n"),
+      },
+      // (b) frontmatter 자체가 없는 합성 케이스
+      {
+        spec: "legacyB",
+        filename: "self-review-round1.md",
+        text: "# Self-review round 1\n\n본문만 있고 frontmatter 없음.",
+      },
+      // 정상 파일 — 미준수 판정 옆에서도 집계 유지돼야 함
+      {
+        spec: "specA",
+        filename: "self-review-round1.md",
+        text: fmText({
+          "candidate-id": "shaA",
+          round: 1,
+          independence: "isolated-context",
+          blockers: 2,
+          advisories: 0,
+          "approval-needed": false,
+          completion: "clean",
+        }),
+      },
+    ];
+    const agg = aggregateSelfReviewEvidence(files);
+    assert.equal(agg.nonCompliant, 2, "레거시 2종 모두 예외 없이 미준수로 집계");
+    assert.equal(agg.bySpec.find((s) => s.spec === "legacyA"), undefined, "미준수 spec은 bySpec에 없음");
+    assert.equal(agg.bySpec.find((s) => s.spec === "legacyB"), undefined);
+    const a = agg.bySpec.find((s) => s.spec === "specA")!;
+    assert.equal(a.rounds, 1, "정상 파일 집계는 유지");
+    assert.equal(a.finalCompletion, "clean");
+  });
+
+  it("AC-12: retro 렌더 — self-review 라운드 집계 절이 spec별 행으로 렌더된다", () => {
+    const agg: RetroAggregate = {
+      days: 14,
+      repoLabel: "fixture",
+      isGitRepo: true,
+      commits: parseCommits(""),
+      openQuestions: [],
+      hasSpecsDir: true,
+      decisions: [],
+      query: null,
+      guides: [],
+      projects: [],
+      insufficient: false,
+      selfReview: {
+        bySpec: [
+          { spec: "specA", rounds: 2, totalBlockers: 4, finalCompletion: "clean", durationMinutesTotal: 35 },
+          { spec: "specB", rounds: 1, totalBlockers: 0, finalCompletion: "clean", durationMinutesTotal: null },
+        ],
+        nonCompliant: 2,
+      },
+    };
+    const md = renderRetro(agg, null, new Date("2026-07-20T10:00:00Z"));
+    assert.ok(md.includes("self-review 라운드 집계"), "절 제목 존재");
+    assert.ok(md.includes("specA") && md.includes("specB"), "spec별 행");
+    assert.ok(md.includes("미준수") && md.includes("2건"), "미준수 건수 표기(은폐 금지)");
   });
 });

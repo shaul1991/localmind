@@ -29,15 +29,15 @@ plan의 5단계를 실행 task로 분해한다. phase 선언 문법은 `template
 ## Phase 3 — 텔레메트리 (TDD)
 > depends-on: 없음 · files: `src/retro-analysis.ts`, `src/retro-analysis.test.ts`, `src/retro-note.ts`, `scripts/retro-report.ts`, `templates/sdd/self-review-evidence.template.md`
 
-- [ ] **T3.1** AC-10(집계 정확성)·AC-11(레거시 내성 — 필드 누락·frontmatter 부재 2종) 실패
+- [x] **T3.1** AC-10(집계 정확성)·AC-11(레거시 내성 — 필드 누락·frontmatter 부재 2종) 실패
   테스트 작성(red).
-- [ ] **T3.2** `retro-analysis.ts`에 self-review evidence frontmatter 집계 함수 추가(순수 —
+- [x] **T3.2** `retro-analysis.ts`에 self-review evidence frontmatter 집계 함수 추가(순수 —
   `completion` 정규화·미준수 구분 포함) → green.
-- [ ] **T3.3** `retro-note.ts`에 "self-review 라운드 집계" 절 렌더 추가(AC-12, 미준수 건수
+- [x] **T3.3** `retro-note.ts`에 "self-review 라운드 집계" 절 렌더 추가(AC-12, 미준수 건수
   표기, 테스트 포함).
-- [ ] **T3.4** `templates/sdd/self-review-evidence.template.md` 작성(FR-5 필수 7·선택 2필드 —
+- [x] **T3.4** `templates/sdd/self-review-evidence.template.md` 작성(FR-5 필수 7·선택 2필드 —
   FR-2와 단일 필드셋).
-- [ ] **T3.5** `scripts/retro-report.ts`에 evidence 파일(`specs/*/evidence/self-review-round*.md`)
+- [x] **T3.5** `scripts/retro-report.ts`에 evidence 파일(`specs/*/evidence/self-review-round*.md`)
   glob·읽기 배선을 추가하고 순수 집계 함수에 텍스트로 전달(RetroAggregate 확장 포함).
 
 ## Phase 4 — 스킬·규약 문구 + 계약 테스트

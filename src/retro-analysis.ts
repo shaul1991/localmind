@@ -165,3 +165,113 @@ export function classifyPatterns(patterns: { pattern: string; count: number }[])
 export function isInsufficient(commits: number, decisions: number, queries: number): boolean {
   return commits < MIN_COMMITS && decisions < MIN_DECISIONS && queries < MIN_QUERIES;
 }
+
+// specs/202607201808-critic-efficiency FR-6 — self-review evidence 텔레메트리 집계.
+
+export interface SelfReviewEvidenceFile {
+  spec: string;
+  filename: string;
+  text: string;
+}
+
+export type SelfReviewCompletion = "clean" | "blocked";
+
+export interface SelfReviewSpecAggregate {
+  spec: string;
+  rounds: number;
+  totalBlockers: number;
+  finalCompletion: SelfReviewCompletion; // 최대 round 값 evidence의 completion(파일 순서 비의존)
+  durationMinutesTotal: number | null; // duration-minutes 기재분 합 — 하나도 없으면 null
+}
+
+export interface SelfReviewAggregate {
+  bySpec: SelfReviewSpecAggregate[];
+  nonCompliant: number; // FR-5 필수 7필드를 못 채운(또는 frontmatter 자체가 없는) 파일 수
+}
+
+/** FR-5 필수 7필드 — 하나라도 없으면 그 파일 전체를 스키마 미준수로 본다. */
+const REQUIRED_SELF_REVIEW_FIELDS = [
+  "candidate-id",
+  "round",
+  "independence",
+  "blockers",
+  "advisories",
+  "approval-needed",
+  "completion",
+] as const;
+
+/** completion 값 정규화(FR-6) — "clean" 포함→clean, "blocked" 포함→blocked, 그 외는 null(미준수).
+ *  레거시 실사용값(예: `complete-clean`)도 부분 문자열로 흡수한다. */
+function normalizeCompletion(raw: string): SelfReviewCompletion | null {
+  if (raw.includes("clean")) return "clean";
+  if (raw.includes("blocked")) return "blocked";
+  return null;
+}
+
+/** evidence 파일 frontmatter(`---`...`---`)를 key: value 맵으로 파싱한다. frontmatter가 없으면 null. */
+function parseFrontmatter(text: string): Record<string, string> | null {
+  if (!text.startsWith("---")) return null;
+  const end = text.indexOf("\n---", 3);
+  if (end < 0) return null;
+  const fm = text.slice(0, end);
+  const out: Record<string, string> = {};
+  for (const line of fm.split("\n")) {
+    const m = line.match(/^([\w-]+):\s*(.*)$/);
+    if (m) out[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
+  }
+  return out;
+}
+
+interface ParsedSelfReviewEvidence {
+  round: number;
+  blockers: number;
+  completion: SelfReviewCompletion;
+  durationMinutes: number | null;
+}
+
+/** frontmatter 맵을 스키마 검증하며 파싱한다. 필수 필드 누락·비정상 값이면 null(미준수). */
+function parseSelfReviewEvidence(fm: Record<string, string>): ParsedSelfReviewEvidence | null {
+  for (const f of REQUIRED_SELF_REVIEW_FIELDS) if (!fm[f]) return null;
+  const round = Number(fm["round"]);
+  const blockers = Number(fm["blockers"]);
+  if (!Number.isFinite(round) || !Number.isFinite(blockers)) return null;
+  if (!/^(true|false)$/i.test(fm["approval-needed"])) return null;
+  const completion = normalizeCompletion(fm["completion"]);
+  if (!completion) return null;
+  const durationRaw = fm["duration-minutes"];
+  const durationMinutes = durationRaw !== undefined && Number.isFinite(Number(durationRaw)) ? Number(durationRaw) : null;
+  return { round, blockers, completion, durationMinutes };
+}
+
+/** self-review evidence 파일들을 spec별로 집계한다(FR-6, 순수 — IO 없음).
+ *  "최종" completion = 최대 round 값 evidence의 completion(파일 읽기 순서 비의존).
+ *  스키마 미준수(frontmatter 부재·필수 필드 누락)는 예외 없이 nonCompliant로 구분 집계하고
+ *  해당 spec의 bySpec 집계에서 제외한다 — 정상 파일 집계는 그대로 유지된다(AC-11). */
+export function aggregateSelfReviewEvidence(files: SelfReviewEvidenceFile[]): SelfReviewAggregate {
+  const bySpec = new Map<string, ParsedSelfReviewEvidence[]>();
+  let nonCompliant = 0;
+  for (const f of files) {
+    const fm = parseFrontmatter(f.text);
+    const parsed = fm ? parseSelfReviewEvidence(fm) : null;
+    if (!parsed) {
+      nonCompliant++;
+      continue;
+    }
+    if (!bySpec.has(f.spec)) bySpec.set(f.spec, []);
+    bySpec.get(f.spec)!.push(parsed);
+  }
+  const result: SelfReviewSpecAggregate[] = [];
+  for (const [spec, list] of [...bySpec.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const totalBlockers = list.reduce((s, x) => s + x.blockers, 0);
+    const final = list.reduce((a, b) => (b.round > a.round ? b : a));
+    const durations = list.map((x) => x.durationMinutes).filter((d): d is number => d !== null);
+    result.push({
+      spec,
+      rounds: list.length,
+      totalBlockers,
+      finalCompletion: final.completion,
+      durationMinutesTotal: durations.length > 0 ? durations.reduce((s, x) => s + x, 0) : null,
+    });
+  }
+  return { bySpec: result, nonCompliant };
+}
