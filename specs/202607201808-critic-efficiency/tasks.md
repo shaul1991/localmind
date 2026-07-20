@@ -58,7 +58,7 @@ plan의 5단계를 실행 task로 분해한다. phase 선언 문법은 `template
 - [x] **T5.1** 이 spec 자체를 대상으로 `npm run review:preflight` 실제 실행·관찰(자기 적용
   dogfood — 위반 검출·clean 양쪽 시나리오).
 - [x] **T5.2** retro 진입점 실행으로 집계 절 출현 확인(dogfood).
-- [ ] **T5.3** self-review evidence를 FR-5 스키마로 저장하고, 세 문서 검증 표기([x]·근거)와
+- [x] **T5.3** self-review evidence를 FR-5 스키마로 저장하고, 세 문서 검증 표기([x]·근거)와
   matrix 상태 열을 채워 versioned closure를 준비한다.
 
 ## External handoff — tracked checkbox 범위 밖

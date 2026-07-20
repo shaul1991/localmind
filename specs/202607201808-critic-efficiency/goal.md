@@ -56,6 +56,8 @@ critic의 **검증 깊이를 유지한 채** — (1) 렌즈별 병렬 fan-out으
 
 ## Success metrics
 
+(전 항목 달성 — 2026-07-20 self-review r1 clean. 근거: spec.md 검증 결과 절)
+
 - 실측에서 후반 라운드를 만든 형식 blocker 3유형(evidence 비보존 경로 참조, `git diff --check`
   실패, merged report 필수 필드 누락)이 preflight에서 기계적으로 검출된다(테스트로 실증).
 - 렌즈 병렬 절차가 스킬 정본에 명문화되고, merged report 규약(round 산정·필수 필드)이 그대로
