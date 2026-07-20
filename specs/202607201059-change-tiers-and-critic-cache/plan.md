@@ -34,6 +34,7 @@ audience: both
 | 파일 | 변경 | 관련 FR |
 |---|---|---|
 | `AGENTS.md` | "변경 등급 티어" 절 + worked-example 표 + critic 캐싱 규칙(map 재사용·전량 재검증, 가드레일 2) | FR-1·2·4·5·6·7·8 |
+| `templates/sdd/AGENTS.md` | 위 규칙의 **generic 전파**(새 프로젝트 scaffold — localmind 고유 문구 금지). 202607181125 전파 선례. | FR-1·2·5·8 |
 | `templates/skills/goal-ready/SKILL.md` | 진입 티어 판정, Tier 0/1은 4문서 미강제, Tier 1 경량 문서 경로 | FR-1·2·3 |
 | `templates/skills/goal-impl/SKILL.md` | 티어 인지 의식, 라운드 전량 재검증·map 재사용(§7A 인근 — 핀 문장 보존) | FR-3·5·6·7 |
 | `templates/skills/sdd-self-review/SKILL.md` | critic 조사 지도(matrix-as-map), 전량 재검증, within-run map 재사용, 독립성 문구 | FR-4·5·6 |
@@ -64,8 +65,8 @@ audience: both
 
 ## 단계 (Phase)
 
-## Phase 1 — AGENTS.md 티어·캐싱 정본 + worked-example
-> depends-on: 없음 · files: `AGENTS.md`
+## Phase 1 — AGENTS.md 티어·캐싱 정본 + worked-example (+ scaffold 전파)
+> depends-on: 없음 · files: `AGENTS.md`, `templates/sdd/AGENTS.md`
 
 - [ ] "변경 등급 티어" 절: Tier 0/1/2 객관적 트리거(하드 신호 목록, config 값 Tier0 제외) + **worked-example 표** (FR-1)
 - [ ] 티어별 문서·critic 매핑 표 + Tier 1 TDD 유지·Tier 0만 테스트 생략 (FR-2, AC-6)
@@ -73,6 +74,7 @@ audience: both
 - [ ] critic 캐싱 규칙 절: matrix-as-map(FR-4)·라운드 전량 재검증(FR-5, 보수형: 승계·스킵 없음)·within-run map 재사용(FR-6)
 - [ ] 가드레일 2(독립성·map 재사용 범위) + instruction-level 정직 표기 (C-2, R-6, AC-10·11·12·13)
 - [ ] `202607181125` 확정 참조 + 불약화 명시 + Tier 2 규율 불변 (FR-7, AC-15)
+- [ ] **scaffold 전파**: `templates/sdd/AGENTS.md`에 티어·캐싱 규칙 generic 버전 반영(localmind 고유 문구 금지 — scaffold.test AC-5) (FR-8)
 - RED 기대: Phase 5의 텍스트 완결성·worked-example 테스트가 이 문구 부재로 먼저 실패한다.
 
 ## Phase 2 — goal-ready 티어 인지 + Tier 1 경량 문서 + 사용자 문서
