@@ -44,8 +44,11 @@ audience: both
 - **불변식으로 유지(재량 불가)**: TDD·RED 실제 관찰·회귀 핀 유효성·base freshness 2게이트·
   EEXIST 생성 규약·round 예산·preflight 게이트·DoD 순서·PR 게이트·Live-Verify·정직 보고.
 - **불변식 요약 목록의 배치**: 재서술 구역(§4·§4A·§5) 밖에 사는 불변식(base freshness §3A·
-  EEXIST §3·round 예산 §7A·preflight/DoD/PR §8)은 재서술하지 않고, §5에 신설하는 불변식 요약
-  소절에서 **참조로 연결**만 한다(구역 밖 절 본문은 이 FR의 변경 대상이 아님).
+  round 예산 §7A·preflight/DoD/PR §8·Live-Verify §8)은 재서술하지 않고, §5에 신설하는 불변식
+  요약 소절에서 **참조로 연결**만 한다(구역 밖 절 본문은 이 FR의 변경 대상이 아님).
+  ~~EEXIST §3~~ → **정정(2026-07-20 self-review r1, 렌즈③)**: EEXIST 생성 규약은 goal-impl
+  §3이 아니라 AGENTS.md "SDD 흐름" 절 소재이며, 폴더 생성은 goal-impl 소관이 아니므로 요약
+  목록에서 제외한다(영향 AC: AC-3 목록 문언 — 무효화 evidence 없음, 문언 정정).
 - 기존 문구 계약 테스트가 핀한 문구는 깨지 않는다(깨야 하면 테스트와 함께 개정하되 의미 유지).
   재서술 구역 내 살아있는 핀 4개 — `끊김 방어`(§4)·`TDD 강제`·`RED 확인 생략 금지`·
   `실패 테스트 먼저(red)`(§5) — 는 정확 문자열로 보존한다.
@@ -101,8 +104,9 @@ rules base에 경량 규칙 `governance-recalibration.md`를 신설한다.
 ### AC-3 (FR-3) 불변식/권장 기본 2층 구조
 - Given 개정된 `templates/skills/goal-impl/SKILL.md`
 - When 텍스트를 검사하면
-- Then 불변식 목록(TDD red 관찰·base freshness·EEXIST·round 예산·preflight·DoD·PR·Live-Verify)이
+- Then 불변식 목록(TDD red 관찰·base freshness·round 예산·preflight·DoD·PR·Live-Verify)이
   재량 불가로 명시되고, 수단 세목이 "권장 기본"으로 표기되며, 실행자 재량 문구가 존재한다.
+  (~~EEXIST~~ — r1 렌즈③ 정정으로 목록에서 제외, FR-3 배치 규칙 참조)
 
 ### AC-4 (FR-3·FR-6) 기존 계약 비회귀
 - Given 개정된 SKILL·AGENTS.md
