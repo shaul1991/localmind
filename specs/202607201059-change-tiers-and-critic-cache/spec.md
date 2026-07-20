@@ -222,3 +222,22 @@ candidate 생성) **모든 matrix 행을 전량 재검증**한다.
 - ~~**OQ-5** — 라운드 간 무영향 행 verdict 승계 여부(보수형 vs 적극형).~~ → **사용자 확정
   (2026-07-20): 보수형.** 라운드마다 전량 재검증하고 map만 재사용 → per-round 독립성 완전 보존.
   적극형(verdict 승계·무효화-스킵)은 도입하지 않는다. FR-5·6·AC-11·12·13에 반영 완료.
+
+---
+
+## 검증 결과 (self-review round 1 clean · 2026-07-20)
+
+격리 적대 critic이 candidate `e5debda` 위에서 AC-1~17을 전량 재검증(보수형)했다. **치명·중대 0**,
+경미 1건(goal-impl §2A↔§2 정합 공백)은 즉시 수정·회귀 검증 완료. 전체 스위트 **991/991 green**.
+
+- **FR-1~9** — 전부 goal 항목(O-/C-/R-/SM)을 지지, scope creep 0. ✅
+- **AC-1~17** — 전부 충족. 검증 근거는 `plan.md`의 verification matrix(상태 열 "충족(self-review r1)")
+  참조. tautology 아님을 mutation 3건(worked-example Tier2→Tier0, critic.md 도장찍기 제거, goal-impl
+  보수형→적극형 오염)으로 실증 — 모두 예상대로 red 후 원복. ✅
+  - AC-1~4: `tier-classification.test.ts`(12) — AGENTS.md worked-example 실제 파싱·내부정합.
+  - AC-5~13·15·17: `workflow-policy.test.ts` tier-contract 블록 — AGENTS.md↔skill↔docs parity.
+  - AC-14: `skill-contract.test.ts`(94)+`workflow-docs.test.ts`(32) green — 202607181125 불약화 없음.
+  - AC-16: `deploy.test.ts` — critic.md 티어 문구 멱등 배포·드리프트 0.
+- **도그푸드** — Tier 2는 이 slice 자체가 풀 코스를 라이브 통과. Tier 0/1 라우팅은 worked-example
+  파싱 테스트로 관찰(instruction-level 규칙이라 실행이 아닌 규약 무모호성 관찰 — R-6 정직 표기).
+- **미충족 항목: 없음.**

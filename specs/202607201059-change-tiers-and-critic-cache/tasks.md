@@ -63,8 +63,8 @@ audience: ai
 ## Phase 6 — versioned closure·publish handoff 준비
 > depends-on: Phase 5 · files: `specs/202607201059-change-tiers-and-critic-cache/goal.md`, `specs/202607201059-change-tiers-and-critic-cache/spec.md`, `specs/202607201059-change-tiers-and-critic-cache/plan.md`, `specs/202607201059-change-tiers-and-critic-cache/tasks.md`
 
-- [ ] **T6.1** self-review clean 후 세 문서에 검증 표기(`[x]` + 근거), 미충족은 사유 부기
-- [ ] **T6.2** PR 본문 요약(두 축 + 202607181125 불약화 근거 + OQ-5 결정) 준비
+- [x] **T6.1** self-review clean 후 세 문서에 검증 표기(`[x]` + 근거), 미충족은 사유 부기
+- [x] **T6.2** PR 본문 요약(두 축 + 202607181125 불약화 근거 + OQ-5 결정) 준비
 
 ## External handoff — tracked checkbox 범위 밖
 
