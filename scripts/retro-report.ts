@@ -56,8 +56,8 @@ function readSpecFiles(): { hasSpecsDir: boolean; files: { spec: string; text: s
   return { hasSpecsDir: true, files };
 }
 
-/** specs/*/evidence/self-review-round*.md를 glob·읽어온다(specs/202607201808-critic-efficiency
- *  FR-6 — 집계 자체는 순수 함수라 여기서만 IO를 담당). */
+/** specs 하위 각 폴더의 evidence/self-review-round N .md를 glob·읽어온다
+ *  (specs/202607201808-critic-efficiency FR-6 — 집계 자체는 순수 함수라 여기서만 IO를 담당). */
 function readSelfReviewEvidenceFiles(): SelfReviewEvidenceFile[] {
   const specsDir = path.join(REPO, "specs");
   if (!fs.existsSync(specsDir)) return [];
