@@ -1059,7 +1059,12 @@ async function runReindexCli(
     BRAIN_INDEX: idxPath,
     EMBEDDINGS_URL: base,
     EMBEDDINGS_KEY: "test-key",
-    EMBED_RETRIES: "1",
+    // 플레이크 방어(specs/202607210756): 전체 스위트 병렬(10-way + cold tsx 자식 컴파일)
+    // 경합에서 단발 fetch가 굶으면 120s 즉사하던 것을 짧은 타임아웃 × 재시도로 흡수한다.
+    // 로컬 스텁 정상 응답은 ms 단위 — 15s는 10배 이상 여유. (retry 횟수를 assert하는
+    // 테스트는 runReindexCli를 쓰지 않아 판정 오염 없음.)
+    EMBED_TIMEOUT_MS: "15000",
+    EMBED_RETRIES: "3",
   };
   // 상속 env의 잔여값이 판정을 오염시키지 않게 관련 키를 먼저 비운다.
   delete childEnv.NOTES_DIR;
