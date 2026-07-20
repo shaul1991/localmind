@@ -4,6 +4,19 @@ localmind의 주요 변경 이력. 최신이 위.
 
 > 버전 체계: **CalVer `YYYY.MM.MICRO`** — 버전은 **릴리스(PR 머지) 시점** 기준. 확정 규칙은 `AGENTS.md`의 버전·릴리스 절이 정본이다.
 
+## 2026.07.6 — 2026-07-21 — P4: 라운드 간 hermetic evidence 조건부 승계 (specs/202607210545)
+
+- **조건부 승계 규약** — self-review 라운드 전환 시 "적극형 무효화-스킵 미도입"을 조건부로
+  개정: **verdict 승계는 여전히 금지**(전량 재검증·도장찍기 금지·2라운드 상한·cross-session
+  금지 전부 불변)하되, **hermetic·고비용·수정 diff∩선언 의존=∅**(3조건 전부)인 evidence 실행
+  결과만 출처 표기(`승계: rN@<SHA7>`)와 함께 승계 가능. 선언 부재·애매·저비용(스위트·preflight)은
+  무조건 재실행(보수 기본). 루트 AGENTS.md + templates/sdd 스캐폴드 + 양 SKILL 동반 개정,
+  존재+부재 대칭 핀.
+- **judgeEvidenceCarryOver** — 승계 판정 순수 참조 구현(6케이스 + mutation 실증) +
+  `carried-from` 텔레메트리(retro §8 승계 컬럼).
+- 소급 적용 실증: 202607202152 r1→r2에서 rules-deploy 관찰이 "승계 가능했을 행"으로 판정.
+  되돌림 신호(승계 결함 1건 또는 3회 연속 retro 승계 0건) 규약 명기.
+
 ## 2026.07.5 — 2026-07-21 — retro 집계 리뷰 형태(lenses) 컬럼 (specs/202607210028)
 
 - self-review 라운드 집계 표에 **형태** 컬럼 추가 — evidence의 선택 필드 `lenses`를 읽어

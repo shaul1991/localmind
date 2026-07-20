@@ -97,8 +97,12 @@ critic의 콜드리드(cold read) 비용을 낮추되 검증 깊이는 낮추지
   **모든 matrix 행을 전량 재검증**한다. **verdict 승계·행 스킵은 하지 않는다** — round 2 격리
   리뷰어는 round 1 verdict를 물려받지 않고 각 행을 독립 재검증한다(per-round 독립성 완전 보존).
   재사용되는 것은 **검증 결과가 아니라 map뿐**이다.
-- **round-to-round 무효화-스킵(적극형)은 도입하지 않는다.** base 통합 재평가의 무효화는 기존
-  bounded-verification 규약(frozen matrix 영향 행 재평가) 소관으로 남으며 이 규약은 재정의하지 않는다.
+- **일부 행만 재검증하는 verification skip(verdict 스킵)은 여전히 금지한다.** 이것과 별개로,
+  **hermetic(결정적)·고비용·수정 diff와 선언 의존의 교집합이 공집합**(3조건 전부)인 evidence
+  **실행 결과**는 직전 라운드에서 승계할 수 있다(specs/202607210545) — 출처(`승계: rN@<candidate
+  7자 SHA>`) 표기 의무, 선언 부재·조건 애매·저비용(전체 스위트·preflight)은 재실행(보수 기본),
+  cross-session 금지 불변. base 통합 재평가의 무효화는 기존 bounded-verification 규약(frozen
+  matrix 영향 행 재평가) 소관으로 남으며 이 규약은 재정의하지 않는다.
 - **map 재사용 범위:** matrix map 재사용은 **within-run(한 goal-impl 실행 내)** 으로만 유효하다.
   **세션·실행 간(cross-session) map 재사용은 금지**한다(base·의존성 이동으로 map이 낡을 수 있다).
 

@@ -184,6 +184,7 @@ export interface SelfReviewSpecAggregate {
   finalCompletion: SelfReviewCompletion; // 최대 round 값 evidence의 completion(파일 순서 비의존)
   durationMinutesTotal: number | null; // duration-minutes 기재분 합 — 하나도 없으면 null
   reviewModes: string[]; // specs/202607210028 — 라운드 순서대로(오름차순)의 리뷰 형태("병렬(N)"|"단일")
+  carriedCount: number; // specs/202607210545 FR-5 — carried-from 필드를 가진 행 수(선택 필드, 미준수 판정 불참여)
 }
 
 export interface SelfReviewAggregate {
@@ -241,12 +242,19 @@ interface ParsedSelfReviewEvidence {
   completion: SelfReviewCompletion;
   durationMinutes: number | null;
   reviewMode: string; // specs/202607210028 — "병렬(N)" | "단일"
+  carriedFrom: string | null; // specs/202607210545 FR-5 — 선택 필드(예: "r1@5fc57b6"), 부재는 null
 }
 
 /** 선택 필드 `lenses`로 리뷰 형태를 판정한다(specs/202607210028 FR-1) — 문자열 배열이고
  *  길이>0이면 병렬(N), 부재·비배열·빈 배열이면 단일. 미준수 판정에는 불참여(선택 필드). */
 function computeReviewMode(lenses: unknown): string {
   return Array.isArray(lenses) && lenses.length > 0 ? `병렬(${lenses.length})` : "단일";
+}
+
+/** 선택 필드 `carried-from`(specs/202607210545 FR-5)을 읽는다 — 비문자열·빈 문자열·부재는
+ *  전부 null(미승계). 미준수 판정에는 불참여(선택 필드). */
+function computeCarriedFrom(carriedFrom: unknown): string | null {
+  return typeof carriedFrom === "string" && carriedFrom.length > 0 ? carriedFrom : null;
 }
 
 /** frontmatter 맵을 스키마 검증하며 파싱한다. 필수 필드 누락·비정상 값이면 null(미준수).
@@ -269,7 +277,8 @@ function parseSelfReviewEvidence(fm: Record<string, unknown>, filename: string):
   const durationMinutes =
     durationRaw !== undefined && durationRaw !== null && Number.isFinite(Number(durationRaw)) ? Number(durationRaw) : null;
   const reviewMode = computeReviewMode(fm["lenses"]);
-  return { filename, round, blockers, completion, durationMinutes, reviewMode };
+  const carriedFrom = computeCarriedFrom(fm["carried-from"]);
+  return { filename, round, blockers, completion, durationMinutes, reviewMode, carriedFrom };
 }
 
 /** self-review evidence 파일들을 spec별로 집계한다(FR-6, 순수 — IO 없음).
@@ -308,6 +317,7 @@ export function aggregateSelfReviewEvidence(files: SelfReviewEvidenceFile[]): Se
     const reviewModes = [...byRound.entries()]
       .sort((a, b) => a[0] - b[0])
       .map(([, group]) => group.reduce((a, b) => (b.filename > a.filename ? b : a)).reviewMode);
+    const carriedCount = list.filter((x) => x.carriedFrom !== null).length;
     result.push({
       spec,
       rounds: list.length,
@@ -315,6 +325,7 @@ export function aggregateSelfReviewEvidence(files: SelfReviewEvidenceFile[]): Se
       finalCompletion: final.completion,
       durationMinutesTotal: durations.length > 0 ? durations.reduce((s, x) => s + x, 0) : null,
       reviewModes,
+      carriedCount,
     });
   }
   return { bySpec: result, nonCompliant };

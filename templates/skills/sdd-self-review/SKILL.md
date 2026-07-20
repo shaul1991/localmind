@@ -35,10 +35,29 @@ SHA 또는 diff/evidence를 결정적으로 식별하는 값이어야 하며, ro
 - **라운드 전량 재검증(보수형)**: review round가 전환돼도(blocker 수정으로 새 candidate)
   **모든 matrix 행을 전량 재검증**한다. **verdict 승계·행 스킵은 하지 않는다** — round 2 격리
   리뷰어는 round 1 verdict를 물려받지 않고 각 행을 독립 재검증한다(per-round 독립성 완전 보존).
-  재사용되는 것은 **검증 결과가 아니라 map뿐**이다. round-to-round 무효화-스킵(적극형)은
-  도입하지 않는다.
+  재사용되는 것은 **검증 결과가 아니라 map뿐**이다. **일부 행만 재검증하는 verification
+  skip(verdict 스킵)은 여전히 금지한다** — 이것과 **evidence 실행 결과의 승계는 별개**다(아래
+  "승계 절차" 참조).
 - **map 재사용 범위**: matrix map 재사용은 **within-run(한 goal-impl 실행 내)** 으로만 유효하다.
   **세션·실행 간(cross-session) map 재사용은 금지**한다.
+
+### 승계 절차 — hermetic evidence 조건부 재사용 (specs/202607210545)
+
+- **선언**: plan verification matrix의 행은 evidence 셀에 선택적으로 `의존: \`파일1\`, \`파일2\``를
+  병기할 수 있다(tasks-format의 `files:` 선언과 같은 백틱·쉼표 문법).
+- **판정(라운드 전환 시)**: 직전 candidate → 새 candidate의 수정 diff 파일 목록과 행의 선언
+  의존을 대조한다. **hermetic(결정적)·고비용·수정 diff와 선언 의존의 교집합이 공집합**(3조건
+  전부)일 때만 그 행의 **실행 evidence를 승계 가능**하다 — ① 수정 diff 파일 목록과 선언 의존의
+  교집합이 공집합 ② evidence 산출이 hermetic(스크립트 실행·배포 관찰 등 결정적) ③ 재실행이
+  고비용(전체 스위트 실행 대비 유의미하게 비쌈). 하나라도 미충족·애매하거나 선언이 없으면
+  **재실행이 기본**이다(보수 기본).
+- **저비용은 항상 재실행**: 전체 스위트·typecheck·preflight 같은 저비용 유형은 3조건과 무관하게
+  항상 재실행한다.
+- **표기**: 승계 시 새 라운드 merged report·evidence에 `승계: rN@<candidate 7자 SHA>`
+  (evidence frontmatter의 `carried-from`과 동일 표기)로 출처를 명시한다 — **무표기 승계는 금지**한다.
+- **critic 검증(도장찍기 금지 연장)**: 승계된 행도 critic이 검토를 생략하지 않는다 — verdict는
+  새로 내리고, 승계 타당성(선언이 실제 의존을 덮는지)을 행 검토에 포함한다.
+- **cross-session 승계는 여전히 금지**한다(위 map 재사용 범위와 동일 불변).
 
 ## 2B. Preflight — critic 착수 전 결정적 사전 게이트
 
