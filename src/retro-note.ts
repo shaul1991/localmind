@@ -2,7 +2,7 @@
  * specs/032 FR-6·7 — 회고 노트 렌더(순수). 6섹션 + reports/ 주의 + 자기 개정 게이트 고지.
  * 쓰기는 여기서 하지 않는다 — 유일 쓰기 지점은 src/retro-guard.ts(FR-7).
  */
-import type { CommitAggregate, DecisionNote, OpenQuestionItem, InventoryEntry } from "./retro-analysis.js";
+import type { CommitAggregate, DecisionNote, OpenQuestionItem, InventoryEntry, SelfReviewAggregate } from "./retro-analysis.js";
 import { classifyPatterns, PROMOTE_THRESHOLD } from "./retro-analysis.js";
 import type { QueryAnalysis } from "./query-analysis.js";
 
@@ -18,6 +18,7 @@ export interface RetroAggregate {
   guides: InventoryEntry[];
   projects: InventoryEntry[];
   insufficient: boolean;
+  selfReview: SelfReviewAggregate | null; // specs/202607201808-critic-efficiency FR-6
 }
 
 export function renderRetro(a: RetroAggregate, interpretation: string | null, generatedAt: Date): string {
@@ -138,6 +139,27 @@ export function renderRetro(a: RetroAggregate, interpretation: string | null, ge
     for (const p of promoted.slice(0, 5))
       L.push(`- 제안: \`${p.pattern}\` 반복(${p.count}회)의 자동화/규약화 검토 — 채택 여부는 사용자 결정, 개정은 SDD 스펙 경유.`);
     if (promoted.length > 5) L.push(`- (그 외 ${promoted.length - 5}건은 §2 참조)`);
+  }
+  L.push("");
+
+  // 8. self-review 라운드 집계(specs/202607201808-critic-efficiency FR-6)
+  L.push("## 8. self-review 라운드 집계");
+  L.push("");
+  if (!a.selfReview) {
+    L.push("- self-review evidence(`specs/*/evidence/self-review-round*.md`)가 없어요 — 집계를 건너뜁니다.");
+  } else {
+    const { bySpec, nonCompliant } = a.selfReview;
+    if (bySpec.length === 0) {
+      L.push("- 스키마(FR-5) 준수 evidence가 없어요.");
+    } else {
+      L.push("| spec | 라운드 | 총 blocker | 최종 completion | duration(분) |");
+      L.push("|---|---|---|---|---|");
+      for (const s of bySpec)
+        L.push(
+          `| ${s.spec} | ${s.rounds} | ${s.totalBlockers} | ${s.finalCompletion} | ${s.durationMinutesTotal ?? "-"} |`,
+        );
+    }
+    L.push(`- 스키마 미준수 evidence: ${nonCompliant}건 (레거시 forward-only — 소급 개정 없음, FR-5)`);
   }
   L.push("");
   return L.join("\n");

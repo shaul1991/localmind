@@ -513,3 +513,31 @@ describe("tier-contract: AC-17 — docs/workflows.md 사용자 대면 parity", (
     });
   });
 });
+
+// ── specs/202607201808 critic 효율화 — 렌즈 병렬·preflight·evidence 스키마 문구 계약 ──
+
+describe("critic-efficiency: AC-1 — 렌즈별 병렬 fan-out", () => {
+  it("sdd-self-review가 렌즈 병렬 절차·fallback·round 불변을 명시한다", () => {
+    has("sdd-self-review", "렌즈별 격리 리뷰어로 동시 실행", "기본 fallback", "merged report 하나 = round 1개");
+  });
+});
+
+describe("critic-efficiency: AC-2 — 렌즈 병합 규칙", () => {
+  it("sdd-self-review가 dedup·심각도 보수 병합·발견 렌즈 표기를 명시한다", () => {
+    has("sdd-self-review", "같은 파일:줄 + 동일 결함 서술", "높은 쪽을 채택", "발견 렌즈를 병기");
+  });
+});
+
+describe("critic-efficiency: AC-8 — preflight 게이트", () => {
+  it("sdd-self-review·goal-impl이 critic 전 preflight·비근거·instruction-level을 명시한다", () => {
+    has("sdd-self-review", "critic을 시작하지 않고 기계 수정", "AC의 green 근거도 아니다", "instruction-level");
+    has("goal-impl", "review:preflight", "green 근거도 아니다");
+  });
+});
+
+describe("critic-efficiency: AC-9 — evidence frontmatter 스키마(단일 필드셋)", () => {
+  it("템플릿에 필수 7필드·선택 2필드가 있고 스킬 §5가 completion을 포함한다", () => {
+    hasIn("templates/sdd/self-review-evidence.template.md", "candidate-id", "approval-needed", "completion", "duration-minutes", "lenses");
+    has("sdd-self-review", "`approval-needed`, `completion`", "self-review-evidence.template.md");
+  });
+});

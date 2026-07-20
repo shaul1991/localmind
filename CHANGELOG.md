@@ -4,7 +4,18 @@ localmind의 주요 변경 이력. 최신이 위.
 
 > 버전 체계: **CalVer `YYYY.MM.MICRO`** — 버전은 **릴리스(PR 머지) 시점** 기준. 확정 규칙은 `AGENTS.md`의 버전·릴리스 절이 정본이다.
 
-## 미릴리스
+## 2026.07.2 — 2026-07-20 — critic 효율화(렌즈 병렬·preflight·텔레메트리) 외
+
+### critic 효율화 — 렌즈 병렬 fan-out·preflight 게이트·self-review 텔레메트리 (specs/202607201808)
+
+- **렌즈별 병렬 fan-out** — sdd-self-review가 격리 위임 능력이 있을 때 5개 점검 축을 렌즈별
+  격리 리뷰어로 동시 실행할 수 있다(선택적 실행 형태, merged report 하나 = round 1개 불변).
+  병합 규칙(dedup·심각도 보수 병합·발견 렌즈 표기) 명문화.
+- **preflight 게이트** — `npm run review:preflight -- specs/{spec}`가 critic 착수 전 형식
+  항목(임시경로 evidence·`git diff --check`·merged report 필수 필드·matrix 전수 대응)을
+  결정적으로 검사한다. 통과는 critic 시작의 전제일 뿐 AC green 근거가 아니다.
+- **self-review 텔레메트리** — evidence frontmatter 표준 스키마(필수 7필드·선택 2) +
+  retro 리포트의 "self-review 라운드 집계" 절(레거시 미준수 forward-only 정직 표기).
 
 ### Deep Research evidence pack·적응형 충분성 (specs/202607191145)
 
