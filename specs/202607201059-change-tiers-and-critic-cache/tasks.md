@@ -58,7 +58,7 @@ audience: ai
 - [x] **T5.2** (RED 먼저) `workflow-policy.test.ts`에 AC-5~13·15·17 문구 대조 + **AGENTS.md 로더 추가**(AC-5)
 - [x] **T5.3** 배포 드리프트 0 확인 — `deploy.test.ts` 멱등 재배포 (AC-16)
 - [x] **T5.4** 기존 bounded-verification 계약 테스트 green 재확인 (AC-14) + 전체 스위트 회귀
-- [ ] **T5.5** 도그푸드 — 각 티어 1건씩 실제 흐름 관찰(Tier 0 직접 / Tier 1 change.md / Tier 2 4문서)
+- [x] **T5.5** 도그푸드 — 각 티어 1건씩 실제 흐름 관찰(Tier 0 직접 / Tier 1 change.md / Tier 2 4문서)
 
 ## Phase 6 — versioned closure·publish handoff 준비
 > depends-on: Phase 5 · files: `specs/202607201059-change-tiers-and-critic-cache/goal.md`, `specs/202607201059-change-tiers-and-critic-cache/spec.md`, `specs/202607201059-change-tiers-and-critic-cache/plan.md`, `specs/202607201059-change-tiers-and-critic-cache/tasks.md`
