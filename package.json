@@ -1,6 +1,6 @@
 {
   "name": "localmind",
-  "version": "2026.07.3",
+  "version": "2026.07.4",
   "description": "메터드 API 0원의 완결형 로컬 AI 스택 — Claude/Codex CLI 구독으로 OpenAI·Anthropic 호환 API + 임베딩 + mem0 메모리 + second-brain RAG + MCP",
   "type": "module",
   "main": "dist/index.js",

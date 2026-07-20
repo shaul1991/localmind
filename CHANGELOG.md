@@ -4,6 +4,16 @@ localmind의 주요 변경 이력. 최신이 위.
 
 > 버전 체계: **CalVer `YYYY.MM.MICRO`** — 버전은 **릴리스(PR 머지) 시점** 기준. 확정 규칙은 `AGENTS.md`의 버전·릴리스 절이 정본이다.
 
+## 2026.07.4 — 2026-07-21 — critic advisory 3건 해소: 집계 tie-break·파서 통일·AC-id 절 스코프 (specs/202607202105)
+
+- **집계 결정성** — self-review 텔레메트리의 최종 completion 선정에서 동일 최대 round가 복수면
+  filename 사전순 마지막을 결정적으로 채택(파일 읽기 순서 의존 제거).
+- **파서 통일** — retro 집계의 frontmatter 파싱을 preflight와 동일한 yaml.parse로 통일(복합
+  YAML 판정 일치). 부수 교정: `blockers: 0`을 누락으로 오판하던 truthy 판정을 `in`+null 체크로.
+- **preflight 오검출 제거** — 인라인 `**AC-N**` 추출을 `## Acceptance Criteria` 절 범위로
+  한정(산문 절의 회고성 언급이 matrix 대응 요구로 오검출되지 않음).
+- Tier 1 lane(change.md) 첫 완주 — TDD 3 AC·in-session 자기검증 1라운드(비독립 명시).
+
 ## 2026.07.3 — 2026-07-20 — 거버넌스 재보정: 위험 보정형 확인 루프·불변식 2층·티어 축 (specs/202607202152)
 
 - **확인 루프 위험 보정형 전환** — interview-protocol(rules base)이 검수 대기를 고위험 분기
