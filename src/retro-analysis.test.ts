@@ -433,6 +433,7 @@ describe("critic-efficiency FR-6 self-review 집계", () => {
             finalCompletion: "clean",
             durationMinutesTotal: 35,
             reviewModes: ["단일", "단일"],
+            carriedCount: 0,
           },
           {
             spec: "specB",
@@ -441,6 +442,7 @@ describe("critic-efficiency FR-6 self-review 집계", () => {
             finalCompletion: "clean",
             durationMinutesTotal: null,
             reviewModes: ["단일"],
+            carriedCount: 0,
           },
         ],
         nonCompliant: 2,
@@ -544,5 +546,108 @@ describe("202607210028 retro-lenses-column", () => {
     assert.equal(s.totalBlockers, 1);
     assert.equal(s.finalCompletion, "clean");
     assert.equal(agg.nonCompliant, 0, "lenses는 선택 필드 — 미준수 판정에 불참여");
+  });
+});
+
+// specs/202607210545-hermetic-evidence-reuse FR-5·AC-6 — carried-from 텔레메트리
+describe("202607210545 carried-from 텔레메트리 (AC-6)", () => {
+  /** FR-5 표준 frontmatter + 선택 carried-from 필드를 가진 evidence 텍스트를 만든다. */
+  function fmTextWithCarriedFrom(fields: Record<string, string | number | boolean>, carriedFrom?: string, body = "본문"): string {
+    const lines = ["---"];
+    for (const [k, v] of Object.entries(fields)) lines.push(`${k}: ${v}`);
+    if (carriedFrom !== undefined) lines.push(`carried-from: "${carriedFrom}"`);
+    lines.push("---", "", `# ${body}`);
+    return lines.join("\n");
+  }
+
+  const baseFields = {
+    "candidate-id": "shaC",
+    independence: "isolated-context",
+    advisories: 0,
+    "approval-needed": false,
+  };
+
+  it("carried-from 있는 행만 승계 건수로 집계, 기존 집계(라운드 수 등)는 불변", () => {
+    const files = [
+      {
+        spec: "specCarry",
+        filename: "self-review-round1.md",
+        text: fmTextWithCarriedFrom({ ...baseFields, round: 1, blockers: 2, completion: "blocked" }),
+      },
+      {
+        spec: "specCarry",
+        filename: "self-review-round2.md",
+        text: fmTextWithCarriedFrom({ ...baseFields, round: 2, blockers: 0, completion: "clean" }, "r1@5fc57b6"),
+      },
+    ];
+    const agg = aggregateSelfReviewEvidence(files);
+    const s = agg.bySpec.find((sp) => sp.spec === "specCarry")!;
+    assert.equal(s.carriedCount, 1, "carried-from 있는 행 1건만 집계");
+    assert.equal(s.rounds, 2, "기존 집계(라운드 수) 불변");
+    assert.equal(s.totalBlockers, 2, "기존 집계(총 blocker) 불변");
+    assert.equal(agg.nonCompliant, 0, "carried-from은 선택 필드 — 미준수 판정 불참여");
+  });
+
+  it("carried-from 필드가 전부 부재면 승계 건수 0(기존 집계에 영향 없음)", () => {
+    const files = [
+      {
+        spec: "specNoCarry",
+        filename: "self-review-round1.md",
+        text: fmTextWithCarriedFrom({ ...baseFields, round: 1, blockers: 0, completion: "clean" }),
+      },
+    ];
+    const agg = aggregateSelfReviewEvidence(files);
+    const s = agg.bySpec.find((sp) => sp.spec === "specNoCarry")!;
+    assert.equal(s.carriedCount, 0);
+    assert.equal(s.rounds, 1);
+    assert.equal(agg.nonCompliant, 0);
+  });
+
+  it("§8 렌더 — 승계 건수 컬럼 표기(0이면 '-', 있으면 숫자)", () => {
+    const md = renderRetro(
+      {
+        days: 14,
+        repoLabel: "fixture",
+        isGitRepo: true,
+        commits: parseCommits(""),
+        openQuestions: [],
+        hasSpecsDir: true,
+        decisions: [],
+        query: null,
+        guides: [],
+        projects: [],
+        insufficient: false,
+        selfReview: {
+          bySpec: [
+            {
+              spec: "specA",
+              rounds: 2,
+              totalBlockers: 1,
+              finalCompletion: "clean",
+              durationMinutesTotal: null,
+              reviewModes: ["단일", "단일"],
+              carriedCount: 1,
+            },
+            {
+              spec: "specB",
+              rounds: 1,
+              totalBlockers: 0,
+              finalCompletion: "clean",
+              durationMinutesTotal: null,
+              reviewModes: ["단일"],
+              carriedCount: 0,
+            },
+          ],
+          nonCompliant: 0,
+        },
+      },
+      null,
+      new Date("2026-07-21T10:00:00Z"),
+    );
+    assert.ok(md.includes("승계"), "헤더에 승계 컬럼 존재");
+    const rowA = md.split("\n").find((l) => l.startsWith("| specA "));
+    const rowB = md.split("\n").find((l) => l.startsWith("| specB "));
+    assert.ok(rowA?.trimEnd().endsWith("| 1 |"), "specA 승계 1건 표기");
+    assert.ok(rowB?.trimEnd().endsWith("| - |"), "specB 승계 0건은 '-' 표기");
   });
 });

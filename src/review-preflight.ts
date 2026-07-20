@@ -210,6 +210,83 @@ export function checkMatrixCoverage(specMdText: string, planMdText: string): Pre
   return violations;
 }
 
+// ── 라운드 간 hermetic evidence 조건부 승계 판정 (specs/202607210545 FR-5·AC-5) ──────
+
+export type EvidenceType = "hermetic-costly" | "cheap" | "non-hermetic";
+
+export interface EvidenceCarryOverInput {
+  /** 행에 선언된 의존 파일 목록. 선언 자체가 없으면 null(보수 기본 — 재실행). */
+  declaredDeps: string[] | null;
+  /** 직전 candidate → 새 candidate 사이 변경된 diff 파일 목록. */
+  diffFiles: string[];
+  /** evidence 산출 유형 — hermetic-costly만 승계 후보(그 외는 항상 재실행). */
+  evidenceType: EvidenceType;
+}
+
+export interface EvidenceCarryOverResult {
+  carryOver: boolean;
+  reason: string;
+}
+
+/** 경로 정규화(trailing slash 제거) — tasks-format.md disjoint 판정과 표기 통일. */
+function normalizeEvidencePath(p: string): string {
+  return p.replace(/\/+$/, "");
+}
+
+/** 두 경로가 같거나 한쪽이 다른 쪽의 디렉토리 접두면 겹침으로 본다
+ *  (`templates/skills/goal-impl/references/tasks-format.md` disjoint 판정과 동형). */
+function pathsOverlap(a: string, b: string): boolean {
+  const na = normalizeEvidencePath(a);
+  const nb = normalizeEvidencePath(b);
+  if (na === nb) return true;
+  return na.startsWith(`${nb}/`) || nb.startsWith(`${na}/`);
+}
+
+/** 선언 의존과 diff 파일 목록 사이에 겹침이 하나라도 있으면 true. */
+function hasDependencyOverlap(declaredDeps: string[], diffFiles: string[]): boolean {
+  return declaredDeps.some((dep) => diffFiles.some((file) => pathsOverlap(dep, file)));
+}
+
+/**
+ * 라운드 간 hermetic evidence 조건부 승계 판정 함수(순수 — LLM 판단 없음).
+ *
+ * instruction-level 승계 절차(sdd-self-review 2A)의 결정적 참조 구현 — 초기에는 production
+ * 호출부 없이 규칙 인코딩+테스트로 존재(후속 preflight 통합 후보), specs/202607210545 FR-5.
+ *
+ * 승계 3조건(전부 충족해야 승계 가능): ① evidenceType이 hermetic-costly ② declaredDeps가
+ * 선언돼 있음(null이 아님 — 선언 부재는 보수 기본으로 재실행) ③ declaredDeps와 diffFiles의
+ * 교집합이 공집합. 하나라도 미충족이면 재실행 + 사유를 반환한다.
+ */
+export function judgeEvidenceCarryOver(input: EvidenceCarryOverInput): EvidenceCarryOverResult {
+  const { declaredDeps, diffFiles, evidenceType } = input;
+
+  if (evidenceType !== "hermetic-costly") {
+    return {
+      carryOver: false,
+      reason: `evidence 유형이 ${evidenceType}입니다 — hermetic-costly가 아니면 항상 재실행합니다`,
+    };
+  }
+
+  if (declaredDeps === null) {
+    return {
+      carryOver: false,
+      reason: "의존 선언이 없습니다 — 선언 부재는 보수적으로 재실행 대상입니다",
+    };
+  }
+
+  if (hasDependencyOverlap(declaredDeps, diffFiles)) {
+    return {
+      carryOver: false,
+      reason: `선언된 의존과 diff 파일이 겹칩니다: 의존[${declaredDeps.join(", ")}] / diff[${diffFiles.join(", ")}]`,
+    };
+  }
+
+  return {
+    carryOver: true,
+    reason: "hermetic·고비용이고 의존과 diff의 교집합이 공집합이라 이전 실행 evidence를 승계합니다",
+  };
+}
+
 // ── 진입 함수 ─────────────────────────────────────────────────────────────
 
 /** 4종 검사를 모두 실행해 위반 목록과 ok 여부를 반환한다. Phase 2 진입점이 이 함수를 호출한다. */
