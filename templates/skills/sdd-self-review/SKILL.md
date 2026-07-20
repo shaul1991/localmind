@@ -40,11 +40,28 @@ SHA 또는 diff/evidence를 결정적으로 식별하는 값이어야 하며, ro
 - **map 재사용 범위**: matrix map 재사용은 **within-run(한 goal-impl 실행 내)** 으로만 유효하다.
   **세션·실행 간(cross-session) map 재사용은 금지**한다.
 
+## 2B. Preflight — critic 착수 전 결정적 사전 게이트
+
+critic 착수 전에, 저장소가 결정적 preflight 검사를 제공하면(예: localmind의
+`npm run review:preflight -- specs/{spec}` — 임시경로 evidence·diff 형식·merged report 필드·
+matrix 전수 대응 검사) 먼저 실행한다. 실패하면 critic을 시작하지 않고 기계 수정 먼저 한 뒤
+preflight를 재실행한다. preflight 통과는 critic 시작의 전제일 뿐 **어떤 AC의 green 근거도
+아니다**(형식 통과 ≠ 내용 검증 — 도장찍기 금지와 동일 결). 이 게이트는 instruction-level이며
+런타임이 기술적으로 강제하지 않는다(스크립트 자체는 결정적이지만 실행 여부는 워크플로 지침이
+담당한다).
+
 ## 3. 적대적 크리틱 검토(필수)
 
 적대적 크리틱(critic) 검토는 필수 최소선이다. **구현 컨텍스트와 분리된 격리 리뷰 능력이 있으면 반드시
 우선 사용**하되 특정 공급자나 모델을 요구하지 않는다. 격리 능력이 없으면 저장소 `AGENTS.md`가 허용하는
 현재 세션 체크리스트 fallback을 쓰고 이를 독립(independent) 검토라고 부르지 않는다.
+
+**렌즈별 병렬 fan-out(선택적 실행 형태)** — 격리 위임 능력이 있으면 아래 5개 점검 축(①~⑤)을
+**렌즈별 격리 리뷰어로 동시 실행**할 수 있다. 각 리뷰어는 전체 diff + matrix map을 입력으로
+받되 자기 렌즈의 점검 축에 집중한다. 병렬 실행은 의무가 아니다 — 격리 능력이 없거나 비용
+여건이 맞지 않으면 단일 리뷰어(5축 직렬)가 기본 fallback이며, 어떤 형태로 실행했는지 보고에
+명시한다. 렌즈 병렬이든 단일 리뷰어든 round 산정 규칙은 불변이다 — 같은 candidate에 대한
+모든 리뷰어의 findings를 병합한 **merged report 하나 = round 1개**.
 
 크리틱 프롬프트에 반드시 포함할 것:
 
@@ -69,12 +86,18 @@ SHA 또는 diff/evidence를 결정적으로 식별하는 값이어야 하며, ro
   이것이 **review round 하나**다. reviewer 수·finding 수는 round 수를 늘리지 않는다. 서로 다른
   candidate의 findings를 같은 report에 섞지 않는다.
 
+- 렌즈 병렬 실행 시 병합 규칙: 서로 다른 렌즈가 같은 결함(**같은 파일:줄 + 동일 결함 서술**)을
+  보고하면 하나로 합치고 **발견 렌즈를 병기**한다(dedup). 같은 결함에 렌즈 간 심각도가 갈리면
+  **높은 쪽을 채택**한다(심각도 보수 병합). 각 finding에 발견 렌즈(축)를 표기한다.
+
 - **차단(blocking)**: 어느 쪽이 찾았든 치명·중대 결함과 미충족 AC — SDD 구현 워크플로의 수정→재검
   루프로 넘긴다(이 워크플로는 보고까지만).
 - **조언(advisory)**: 참고 표기만 한다.
 - 축을 함께 표기한다: 추적성·커버리지·정확성·단순성/보안·사실 정확성.
 - merged report에는 다음 필드를 항상 포함한다:
-  `candidate-id`, `round`, `independence`, `blockers`, `advisories`, `approval-needed`.
+  `candidate-id`, `round`, `independence`, `blockers`, `advisories`, `approval-needed`, `completion`.
+  merged report는 `templates/sdd/self-review-evidence.template.md`의 frontmatter 표준 스키마
+  (필수 7필드 + 선택 `duration-minutes`·`lenses`)를 따라 evidence 파일로 저장한다.
   `approval-needed`는 호출자가 전달한 자동 예산 상태와 blocker 여부를 다음 상태표로 판정한다.
   **round 1 + blocker → false; round 2 + blocker → true; round 3+ + blocker → true; 어느 round든
   clean → false**다. round 3+에 blocker가 남으면 **새 승인(fresh approval)을 다시 요청**한다.

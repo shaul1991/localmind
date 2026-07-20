@@ -101,6 +101,10 @@ critic의 콜드리드(cold read) 비용을 낮추되 검증 깊이는 낮추지
   않는다.
 - **map 재사용 범위:** matrix map 재사용은 **within-run(한 goal-impl 실행 내)** 으로만 유효하다.
   **세션·실행 간(cross-session) map 재사용은 금지**한다(base·의존성 이동으로 map이 낡을 수 있다).
+- **렌즈 병렬·preflight(specs/202607201808):** self-review는 5개 점검 축을 렌즈별 격리 리뷰어로
+  병렬 실행할 수 있다 — 같은 candidate의 findings를 병합한 merged report 하나 = round 1개(round
+  산정 불변). critic 착수 전 결정적 preflight(형식 검사, `npm run review:preflight`)를 실행하며,
+  preflight 통과는 어떤 AC의 green 근거도 아니다. 절차 정본은 sdd-self-review 스킬.
 
 이 티어·캐싱 도입은 `202607181125`의 확정(self-review 자동 2라운드 상한·matrix 동결·두 시점 base
 freshness·외부 완료 상태 SSoT)과 **Tier 2 품질 규율(전 AC green·필수 도그푸드·격리 적대 critic·PR

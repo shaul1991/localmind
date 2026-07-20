@@ -43,13 +43,13 @@ plan의 5단계를 실행 task로 분해한다. phase 선언 문법은 `template
 ## Phase 4 — 스킬·규약 문구 + 계약 테스트
 > depends-on: Phase 1, Phase 2, Phase 3 · files: `templates/skills/sdd-self-review/SKILL.md`, `templates/skills/goal-impl/SKILL.md`, `src/agents/workflow-policy.test.ts`, `AGENTS.md`
 
-- [ ] **T4.1** sdd-self-review SKILL 개정: 렌즈 병렬 절차(FR-1)·병합 규칙(FR-2 — **§5 필수
+- [x] **T4.1** sdd-self-review SKILL 개정: 렌즈 병렬 절차(FR-1)·병합 규칙(FR-2 — **§5 필수
   필드 목록에 `completion` 추가, FR-5와 단일 필드셋으로 정합**)·preflight 게이트(FR-4)·
   frontmatter 스키마 준수(FR-5).
-- [ ] **T4.2** goal-impl SKILL 개정: self-review 위임 직전 preflight 실행 게이트(FR-4).
-- [ ] **T4.3** AGENTS.md critic 캐싱 절에 최소 포인터(렌즈 병렬 round 불변·preflight 게이트) —
+- [x] **T4.2** goal-impl SKILL 개정: self-review 위임 직전 preflight 실행 게이트(FR-4).
+- [x] **T4.3** AGENTS.md critic 캐싱 절에 최소 포인터(렌즈 병렬 round 불변·preflight 게이트) —
   OQ-3 확정 반영.
-- [ ] **T4.4** workflow-policy 계약 테스트 추가(AC-1·2·8·9) 후 전체 스위트 실행으로 기존 계약
+- [x] **T4.4** workflow-policy 계약 테스트 추가(AC-1·2·8·9) 후 전체 스위트 실행으로 기존 계약
   green 확인(AC-13).
 
 ## Phase 5 — dogfood·versioned closure
