@@ -17,8 +17,8 @@ specs/202607210545 self-review r1 advisory 2건 — 둘 다 오류 방향이 **f
 (2) `declaredDeps`가 빈 배열이면 null과 동일하게 재실행(보수 기본) + 사유 명시.
 
 ## AC (Given-When-Then · 테스트 1:1)
-- [ ] **AC-1**: Given `./src/x.ts` 선언 vs `src/x.ts` diff(및 `src//x.ts` 변형), When 판정하면, Then 겹침으로 재실행.
-- [ ] **AC-2**: Given `declaredDeps: []` + hermetic-costly, When 판정하면, Then 재실행(사유에 빈 선언 명시). 기존 6케이스 green 유지.
+- [x] **AC-1**: Given `./src/x.ts` 선언 vs `src/x.ts` diff(및 `src//x.ts` 변형), When 판정하면, Then 겹침으로 재실행.
+- [x] **AC-2**: Given `declaredDeps: []` + hermetic-costly, When 판정하면, Then 재실행(사유에 빈 선언 명시). 기존 6케이스 green 유지.
 
 ## 티어 근거
 **Tier 1.** 순수 함수 1개의 경계 수정(하드 신호 무해당·가역·결정적 테스트 전체 커버). Tier 0 아님: 행동 변화 있음.
