@@ -30,13 +30,13 @@ spec 산문의 인라인 `**AC-N**` 언급을 과검출해 false-positive 위반
 
 ## AC (Given-When-Then · 테스트 1:1)
 
-- [ ] **AC-1 (A1)**: Given 같은 spec에 `round: 2` evidence 2개(completion 상이·filename 상이)
+- [x] **AC-1 (A1)**: Given 같은 spec에 `round: 2` evidence 2개(completion 상이·filename 상이)
   픽스처, When 집계 함수를 입력 순서를 뒤집어 2회 호출하면, Then 두 호출 모두 filename
   사전순 마지막 파일의 completion을 반환한다(순서 비의존).
-- [ ] **AC-2 (A2)**: Given `round: 1 # 주석`·따옴표 값 등 복합 YAML frontmatter 픽스처,
+- [x] **AC-2 (A2)**: Given `round: 1 # 주석`·따옴표 값 등 복합 YAML frontmatter 픽스처,
   When 집계 함수를 호출하면, Then preflight의 yaml.parse 해석과 동일하게 필드가 인식되고
   기존 정상·레거시 픽스처 집계 결과는 불변이다(기존 테스트 green 유지).
-- [ ] **AC-3 (A3)**: Given `## Acceptance Criteria` 절에는 AC-1·2만 있고 그 밖 절(검증 결과
+- [x] **AC-3 (A3)**: Given `## Acceptance Criteria` 절에는 AC-1·2만 있고 그 밖 절(검증 결과
   등)에 `**AC-9**` 인라인 언급이 있는 spec.md + AC-1·2만 담은 plan.md matrix 픽스처,
   When `checkMatrixCoverage`를 실행하면, Then AC-9는 위반으로 보고되지 않고 통과한다.
   (역방향 보존: AC 절 안의 인라인·헤딩 AC는 현행대로 검출 — 기존 테스트 green 유지.)

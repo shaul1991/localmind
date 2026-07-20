@@ -4,6 +4,7 @@
  * query-analysis/report-note 3분할 관례를 계승한다. 검색 품질 집계는 query-analysis의
  * analyze()를 재사용(중복 구현 금지)하고, 여기는 "작업 방식" 프록시 신호만 다룬다.
  */
+import { parse as parseYaml } from "yaml";
 
 /** 자동화 후보 승격 임계 — 동일 패턴 3회 이상 관찰(2026-07-05 수동 회고의 판정 기준). */
 export const PROMOTE_THRESHOLD = 3;
@@ -208,43 +209,63 @@ function normalizeCompletion(raw: string): SelfReviewCompletion | null {
   return null;
 }
 
-/** evidence 파일 frontmatter(`---`...`---`)를 key: value 맵으로 파싱한다. frontmatter가 없으면 null. */
-function parseFrontmatter(text: string): Record<string, string> | null {
-  if (!text.startsWith("---")) return null;
-  const end = text.indexOf("\n---", 3);
-  if (end < 0) return null;
-  const fm = text.slice(0, end);
-  const out: Record<string, string> = {};
-  for (const line of fm.split("\n")) {
-    const m = line.match(/^([\w-]+):\s*(.*)$/);
-    if (m) out[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
+/** evidence 파일 frontmatter(`---`...`---`)를 yaml.parse로 파싱한다(A2 — review-preflight.ts의
+ *  splitFrontmatter+parseYaml과 동일 파서로 통일, 정규식 라인 파서 대비 주석·따옴표 등 복합 YAML을
+ *  동일하게 해석한다). frontmatter가 없거나 파싱 실패·비객체면 null. */
+function parseFrontmatter(text: string): Record<string, unknown> | null {
+  const norm = text.replace(/\r\n/g, "\n");
+  if (!norm.startsWith("---\n")) return null;
+  const lines = norm.split("\n");
+  let end = -1;
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i] === "---") {
+      end = i;
+      break;
+    }
   }
-  return out;
+  if (end < 0) return null;
+  const fmText = lines.slice(1, end).join("\n");
+  try {
+    const parsed = parseYaml(fmText);
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
 }
 
 interface ParsedSelfReviewEvidence {
+  filename: string; // A1 — 동일 round tie-break에 쓰는 사전순 키
   round: number;
   blockers: number;
   completion: SelfReviewCompletion;
   durationMinutes: number | null;
 }
 
-/** frontmatter 맵을 스키마 검증하며 파싱한다. 필수 필드 누락·비정상 값이면 null(미준수). */
-function parseSelfReviewEvidence(fm: Record<string, string>): ParsedSelfReviewEvidence | null {
-  for (const f of REQUIRED_SELF_REVIEW_FIELDS) if (!fm[f]) return null;
+/** frontmatter 맵을 스키마 검증하며 파싱한다. 필수 필드 누락·비정상 값이면 null(미준수).
+ *  필드 존재 판정은 truthy가 아니라 `in`+undefined/null(review-preflight.ts와 동일) —
+ *  yaml.parse는 `blockers: 0`을 숫자 0으로 파싱하므로 truthy 판정이면 0을 누락으로 오판한다. */
+function parseSelfReviewEvidence(fm: Record<string, unknown>, filename: string): ParsedSelfReviewEvidence | null {
+  for (const f of REQUIRED_SELF_REVIEW_FIELDS) {
+    if (!(f in fm) || fm[f] === undefined || fm[f] === null) return null;
+  }
   const round = Number(fm["round"]);
   const blockers = Number(fm["blockers"]);
   if (!Number.isFinite(round) || !Number.isFinite(blockers)) return null;
-  if (!/^(true|false)$/i.test(fm["approval-needed"])) return null;
-  const completion = normalizeCompletion(fm["completion"]);
+  const approvalNeeded = fm["approval-needed"];
+  const approvalValid =
+    typeof approvalNeeded === "boolean" || (typeof approvalNeeded === "string" && /^(true|false)$/i.test(approvalNeeded));
+  if (!approvalValid) return null;
+  const completion = normalizeCompletion(String(fm["completion"]));
   if (!completion) return null;
   const durationRaw = fm["duration-minutes"];
-  const durationMinutes = durationRaw !== undefined && Number.isFinite(Number(durationRaw)) ? Number(durationRaw) : null;
-  return { round, blockers, completion, durationMinutes };
+  const durationMinutes =
+    durationRaw !== undefined && durationRaw !== null && Number.isFinite(Number(durationRaw)) ? Number(durationRaw) : null;
+  return { filename, round, blockers, completion, durationMinutes };
 }
 
 /** self-review evidence 파일들을 spec별로 집계한다(FR-6, 순수 — IO 없음).
- *  "최종" completion = 최대 round 값 evidence의 completion(파일 읽기 순서 비의존).
+ *  "최종" completion = 최대 round 값 evidence의 completion(파일 읽기 순서 비의존). 동일 round가
+ *  복수면 filename 사전순 마지막을 결정적 tie-break로 채택한다(A1).
  *  스키마 미준수(frontmatter 부재·필수 필드 누락)는 예외 없이 nonCompliant로 구분 집계하고
  *  해당 spec의 bySpec 집계에서 제외한다 — 정상 파일 집계는 그대로 유지된다(AC-11). */
 export function aggregateSelfReviewEvidence(files: SelfReviewEvidenceFile[]): SelfReviewAggregate {
@@ -252,7 +273,7 @@ export function aggregateSelfReviewEvidence(files: SelfReviewEvidenceFile[]): Se
   let nonCompliant = 0;
   for (const f of files) {
     const fm = parseFrontmatter(f.text);
-    const parsed = fm ? parseSelfReviewEvidence(fm) : null;
+    const parsed = fm ? parseSelfReviewEvidence(fm, f.filename) : null;
     if (!parsed) {
       nonCompliant++;
       continue;
@@ -263,7 +284,11 @@ export function aggregateSelfReviewEvidence(files: SelfReviewEvidenceFile[]): Se
   const result: SelfReviewSpecAggregate[] = [];
   for (const [spec, list] of [...bySpec.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
     const totalBlockers = list.reduce((s, x) => s + x.blockers, 0);
-    const final = list.reduce((a, b) => (b.round > a.round ? b : a));
+    // A1 — 동일 round 값이 복수면 filename 사전순(코드포인트 비교) 마지막을 결정적으로 채택.
+    const final = list.reduce((a, b) => {
+      if (b.round !== a.round) return b.round > a.round ? b : a;
+      return b.filename > a.filename ? b : a;
+    });
     const durations = list.map((x) => x.durationMinutes).filter((d): d is number => d !== null);
     result.push({
       spec,
