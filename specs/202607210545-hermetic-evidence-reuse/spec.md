@@ -124,3 +124,15 @@ sdd-self-review 정본 참조로 연결. **같은 문단의 §3A base-통합 재
   축적 후 재보정.
 - **OQ-2 (되돌림 관찰)**: goal Risks의 되돌림 신호(승계 결함 1건 또는 3회 retro 승계 0건)를
   retro가 자동 감지·제안할지 — 재보정 리듬 규칙의 일반 절차에 맡기고 이번 범위 제외.
+
+## 검증 결과 (2026-07-21, self-review round 1 clean)
+
+- [x] FR-1/AC-1 — 루트+스캐폴드 조건부 개정·구 문구 부재(신규 핀, mutation 실증) — green
+- [x] FR-2/AC-2 — 승계 절차 5요소·표기·구 문구 부재 — green
+- [x] FR-3/AC-3 — §7A 정합·carve-out 보존·정본 참조 — green
+- [x] FR-4/AC-4 — 핀 교체 2·신규 핀·AC-11/13 불변, 전체 1036/1036 ×3 — green
+- [x] FR-5/AC-5·6 — judge 판정 함수(6케이스+mutation)·carried-from 집계·§8 승계 컬럼 — green
+- dogfood: preflight exit 0·승계 컬럼 출현·소급 적용(202607202152 rules-deploy 관찰 = 승계
+  가능했을 행 1건 실증). 실전 승계는 첫 라운드라 미발생(후속 텔레메트리 소관 — 정직 보고).
+- advisory 2건(경로 정규화·빈 배열 처리 — reference impl 경계) 후속 preflight 통합 시 수정
+  조건으로 이월 — evidence/self-review-round1.md
