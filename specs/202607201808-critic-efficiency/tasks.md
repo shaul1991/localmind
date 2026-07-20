@@ -19,10 +19,10 @@ plan의 5단계를 실행 task로 분해한다. phase 선언 문법은 `template
 ## Phase 2 — preflight 진입점·배선
 > depends-on: Phase 1 · files: `scripts/review-preflight.ts`, `scripts/review-preflight.test.mjs`, `package.json`
 
-- [ ] **T2.1** `scripts/review-preflight.ts` 얇은 IO 진입점(spec 경로 인자 → 파일 읽기·
+- [x] **T2.1** `scripts/review-preflight.ts` 얇은 IO 진입점(spec 경로 인자 → 파일 읽기·
   `git diff --check` 실행 → 순수 모듈 호출 → 위반 목록 출력·exit code).
-- [ ] **T2.2** `package.json`에 `review:preflight` script 추가.
-- [ ] **T2.3** `scripts/review-preflight.test.mjs` 통합 테스트 작성(AC-4·AC-7): 일회용 픽스처
+- [x] **T2.2** `package.json`에 `review:preflight` script 추가.
+- [x] **T2.3** `scripts/review-preflight.test.mjs` 통합 테스트 작성(AC-4·AC-7): 일회용 픽스처
   디렉토리/저장소에서 진입점을 실제 실행해 위반 시 비0·clean 시 0을 검증한다(테스트 러너의
   `scripts/*.test.mjs` glob에 포착되는 자동 회귀로 남긴다).
 

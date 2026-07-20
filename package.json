@@ -33,6 +33,7 @@
     "retro-report": "tsx scripts/retro-report.ts",
     "retrieval:quality": "tsx scripts/retrieval-quality.ts",
     "skills:deploy": "tsx scripts/skills-deploy.ts",
+    "review:preflight": "tsx scripts/review-preflight.ts",
     "test": "node --import tsx/esm --test src/*.test.ts src/agents/*.test.ts src/rules/*.test.ts src/backends/*.test.ts scripts/*.test.mjs"
   },
   "keywords": [
