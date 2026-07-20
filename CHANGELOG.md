@@ -4,6 +4,24 @@ localmind의 주요 변경 이력. 최신이 위.
 
 > 버전 체계: **CalVer `YYYY.MM.MICRO`** — 버전은 **릴리스(PR 머지) 시점** 기준. 확정 규칙은 `AGENTS.md`의 버전·릴리스 절이 정본이다.
 
+## 2026.07.3 — 2026-07-20 — 거버넌스 재보정: 위험 보정형 확인 루프·불변식 2층·티어 축 (specs/202607202152)
+
+- **확인 루프 위험 보정형 전환** — interview-protocol(rules base)이 검수 대기를 고위험 분기
+  (하드 신호·비가역 행동·범위 변경·설계 갈림)에만 강제하고, 저위험은 "이해 요약(생략 불가)+
+  권고 제시 후 진행"(decision-by-exception)으로 완화. deep-interview는 권장 기본값 동반 필수 +
+  일괄 제시·예외 교정 모드. 근거: deep research(105 에이전트, 3표 적대 검증 — evidence 동봉).
+- **goal-impl 불변식/권장 기본 2층** — §4·§4A·§5를 "불변식(재량 불가) 1급 + 수단 세목은 권장
+  기본"으로 재서술. 검증 계층(TDD red 관찰·base freshness·round 예산·preflight·DoD·PR·
+  Live-Verify)은 문구·의미 무손상(계약 테스트 1019 green으로 기계 확인).
+- **티어 트리거 정교화** — AGENTS.md 하드 신호에 비가역성(외부 발행/데이터 파괴/비가역
+  마이그레이션) 추가, 검증가능성 보조 축(하드 신호 우선 불변) 명시. AC-17 parity 동반 갱신.
+- **재보정 리듬 규칙 신설** — governance-recalibration(rules base): 거버넌스 파라미터는
+  retro·모델 세대마다 재검토 제안(사람 결정+ADR), 검증 계층 존재 자체는 비대상.
+- **렌즈 병렬 self-review 첫 실전** — r1 5렌즈 격리 critic 동시(중복 finding 0, Live-Verify
+  렌즈가 인용 수치 출처 미추적을 검출·철회) → r2 전량 재검증 clean.
+- 참고: rules base 실변경은 데이터 폴더 소관(PR diff 밖) — 검증 근거는 spec evidence의 리뷰어
+  실파일 대조 로그.
+
 ## 2026.07.2 — 2026-07-20 — critic 효율화(렌즈 병렬·preflight·텔레메트리) 외
 
 ### critic 효율화 — 렌즈 병렬 fan-out·preflight 게이트·self-review 텔레메트리 (specs/202607201808)
