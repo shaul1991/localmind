@@ -54,10 +54,10 @@ audience: ai
 ## Phase 5 — 계약·worked-example·드리프트 테스트 (TDD 게이트)
 > depends-on: Phase 2, Phase 3, Phase 4 · files: `src/agents/tier-classification.test.ts`, `src/agents/workflow-policy.test.ts`, `src/agents/deploy.test.ts`
 
-- [ ] **T5.1** (RED 먼저) `tier-classification.test.ts` — AGENTS.md worked-example 내부정합·무모호(AC-1~4)
-- [ ] **T5.2** (RED 먼저) `workflow-policy.test.ts`에 AC-5~13·15·17 문구 대조 + **AGENTS.md 로더 추가**(AC-5)
-- [ ] **T5.3** 배포 드리프트 0 확인 — `deploy.test.ts` 멱등 재배포 (AC-16)
-- [ ] **T5.4** 기존 bounded-verification 계약 테스트 green 재확인 (AC-14) + 전체 스위트 회귀
+- [x] **T5.1** (RED 먼저) `tier-classification.test.ts` — AGENTS.md worked-example 내부정합·무모호(AC-1~4)
+- [x] **T5.2** (RED 먼저) `workflow-policy.test.ts`에 AC-5~13·15·17 문구 대조 + **AGENTS.md 로더 추가**(AC-5)
+- [x] **T5.3** 배포 드리프트 0 확인 — `deploy.test.ts` 멱등 재배포 (AC-16)
+- [x] **T5.4** 기존 bounded-verification 계약 테스트 green 재확인 (AC-14) + 전체 스위트 회귀
 - [ ] **T5.5** 도그푸드 — 각 티어 1건씩 실제 흐름 관찰(Tier 0 직접 / Tier 1 change.md / Tier 2 4문서)
 
 ## Phase 6 — versioned closure·publish handoff 준비
