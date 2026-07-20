@@ -15,15 +15,15 @@ audience: ai
 ## Phase 1 — AGENTS.md 티어·캐싱 정본 + worked-example (+ scaffold 전파)
 > depends-on: 없음 · files: `AGENTS.md`, `templates/sdd/AGENTS.md`
 
-- [ ] **T1.1** "변경 등급 티어" 절 — Tier 0/1/2 객관적 트리거(하드 신호 목록, **config 값 Tier0 제외**) (FR-1)
-- [ ] **T1.2** 대표 변경→티어→근거 **worked-example 표** 신설(AC-1~4 검증 대상) (FR-1)
-- [ ] **T1.3** 티어별 문서·critic 매핑 표 + Tier 1 TDD 유지·Tier 0만 테스트 생략 (FR-2, AC-6)
-- [ ] **T1.4** 티어 판정 기록·중간 승격(하향 금지)·**escalate-on-doubt 양 경계(0↔1·1↔2)** (FR-3, AC-4·7·8)
-- [ ] **T1.5** critic 캐싱 규칙 절 — matrix-as-map(FR-4)·**라운드 전량 재검증(보수형: 승계·스킵 없음)**(FR-5)·within-run map 재사용(FR-6) (AC-11·12·13)
-- [ ] **T1.6** round-to-round 무효화-스킵 미도입 명시 + base-통합 재평가는 202607181125 정본 소관 불변 (FR-5)
-- [ ] **T1.7** 가드레일 2(독립성·map 재사용 범위) + instruction-level 정직 표기(문구 존재=작동 과장 금지) (C-2, R-6, AC-10·13)
-- [ ] **T1.8** `202607181125` 확정 참조 + 불약화 명시 + Tier 2 규율 불변 (FR-7, AC-15)
-- [ ] **T1.9** `templates/sdd/AGENTS.md`에 티어·캐싱 규칙 generic 전파(localmind 고유 문구 금지 — scaffold.test AC-5) (FR-8)
+- [x] **T1.** "변경 등급 티어" 절 — Tier 0/1/2 객관적 트리거(하드 신호 목록, **config 값 Tier0 제외**) (FR-1)
+- [x] **T1.** 대표 변경→티어→근거 **worked-example 표** 신설(AC-1~4 검증 대상) (FR-1)
+- [x] **T1.** 티어별 문서·critic 매핑 표 + Tier 1 TDD 유지·Tier 0만 테스트 생략 (FR-2, AC-6)
+- [x] **T1.** 티어 판정 기록·중간 승격(하향 금지)·**escalate-on-doubt 양 경계(0↔1·1↔2)** (FR-3, AC-4·7·8)
+- [x] **T1.** critic 캐싱 규칙 절 — matrix-as-map(FR-4)·**라운드 전량 재검증(보수형: 승계·스킵 없음)**(FR-5)·within-run map 재사용(FR-6) (AC-11·12·13)
+- [x] **T1.** round-to-round 무효화-스킵 미도입 명시 + base-통합 재평가는 202607181125 정본 소관 불변 (FR-5)
+- [x] **T1.** 가드레일 2(독립성·map 재사용 범위) + instruction-level 정직 표기(문구 존재=작동 과장 금지) (C-2, R-6, AC-10·13)
+- [x] **T1.** `202607181125` 확정 참조 + 불약화 명시 + Tier 2 규율 불변 (FR-7, AC-15)
+- [x] **T1.** `templates/sdd/AGENTS.md`에 티어·캐싱 규칙 generic 전파(localmind 고유 문구 금지 — scaffold.test AC-5) (FR-8)
 
 ## Phase 2 — goal-ready 티어 인지 + Tier 1 경량 문서 + 사용자 문서
 > depends-on: Phase 1 · files: `templates/skills/goal-ready/SKILL.md`, `templates/sdd/change.template.md`, `docs/workflows.md`
