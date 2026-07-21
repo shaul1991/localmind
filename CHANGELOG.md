@@ -4,6 +4,29 @@ localmind의 주요 변경 이력. 최신이 위.
 
 > 버전 체계: **CalVer `YYYY.MM.MICRO`** — 버전은 **릴리스(PR 머지) 시점** 기준. 확정 규칙은 `AGENTS.md`의 버전·릴리스 절이 정본이다.
 
+## 2026.07.9 — 2026-07-22 — 전면 재개편: great-reduction + living-memory (PR #43·#44)
+
+product-vision(docs/product-vision.md — "살아있는 why 저장소") 확정에 따른 재개편 1·2탄.
+
+**great-reduction (#43, specs/202607211617)** — 감량 -31k줄(src 29.7k→~8k):
+- **메타 계층 추출**: SDD 스킬·페르소나·rules·retro·critic 인프라·templates 48파일 →
+  별도 repo [`sdd-toolkit`](https://github.com/shaul1991/sdd-toolkit)(배포 3런타임 해시
+  수렴으로 무중단 실증). localmind는 코어(노트·검색·백업·동기화)만.
+- **MCP 도구 15→3**: `capture_note`·`search_notes`·`whoami` (실사용 실측 기반).
+- **게이트웨이 서브시스템·openmemory 제거**: 외부 로컬 서비스 의존 소멸(임베딩 Ollama만).
+  openmemory 데이터 13건 선회수(손실 0). 설치 마법사·setup은 Ollama 직결로 재작성.
+- **검색 실험(Phase D, specs/202607211621-search-experiment)**: 실쿼리 20개 임베딩 vs
+  구조검색 A/B = 6:6:8 동률 — 판정 기록, 임베딩은 유지(제거는 후속 판단).
+
+**living-memory (#44, specs/202607211621)** — vision 핵심 가치 구현:
+- **결정 3층 캡처**: `type: decision` — 선택(choice)/이유(why)/전제(assumptions —
+  volatility·last_verified). forward-only.
+- **`brief` 도구 신설**: 주제 힌트 → 관련 결정 브리핑(노트 경로 포함) — 세션 시작 주입 v1.
+- **재접촉 낡음 신호**: brief·search 응답 끝 ⏳ 한 줄(비차단·본문 byte-equal 불변) —
+  stale 전제 재검증 권장. `BRIEF_STALE_DAYS`(기본 30).
+- 검증: self-review 총 4라운드(렌즈 5축 병렬 포함) · 스위트 255/255 · 실 Ollama 풀 사이클
+  도그푸드.
+
 ## 2026.07.8 — 2026-07-21 — local-first 기본 재확정: 위상 선언·복귀 절차·Ollama 직결 (specs/202607211015)
 
 - **하이브리드 위상 선언** — 기본 = 각 기기 로컬(stdio, `make mcp-install`) · 원격(http,
