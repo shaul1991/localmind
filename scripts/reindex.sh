@@ -23,6 +23,15 @@ fi
 
 key="${LITELLM_MASTER_KEY:-$(read_env_val LITELLM_MASTER_KEY "$ENV_FILE")}"
 
+# 임베딩 엔드포인트 옵션 패스스루(specs/202607211015 FR-2) — 설정된 경우에만 자식 env로 전달.
+# (VAR=val 형태의 조건부 프리픽스는 파라미터 확장 결과에 재적용되지 않아 assignment로
+# 인식되지 않는다 — bash 3.2 실측. env 배열 인자로 명시 전달한다.)
+embeddings_url="${EMBEDDINGS_URL:-$(read_env_val EMBEDDINGS_URL "$ENV_FILE")}"
+embeddings_model="${EMBEDDINGS_MODEL:-$(read_env_val EMBEDDINGS_MODEL "$ENV_FILE")}"
+extra_env=()
+[ -n "$embeddings_url" ] && extra_env+=("EMBEDDINGS_URL=$embeddings_url")
+[ -n "$embeddings_model" ] && extra_env+=("EMBEDDINGS_MODEL=$embeddings_model")
+
 # specs/021 FR-3 — 임베딩 라우팅이 호스트(GPU)면 배치 기본 상향(명시 env가 항상 우선).
 # 판정 입력은 $ENV_FILE 하나(LOCALMIND_ENV_FILE 격리 존중) — litellm.config.yaml은
 # os.environ 참조라 리터럴이 존재할 수 없는 죽은 가지(spec FR-3)라 보지 않는다.
@@ -39,9 +48,11 @@ cd "$PROJECT_DIR"
 if [ -n "$resolved" ]; then
   NOTES_DIR="$resolved" LITELLM_MASTER_KEY="$key" \
     REINDEX_FALLBACK="$FALLBACK" REINDEX_PRUNE_LABELS="${REINDEX_PRUNE_LABELS:-}" \
-    REINDEX_ADOPT_REBIND="${REINDEX_ADOPT_REBIND:-}" npm run reindex
+    REINDEX_ADOPT_REBIND="${REINDEX_ADOPT_REBIND:-}" \
+    env ${extra_env[@]+"${extra_env[@]}"} npm run reindex
 else
   LITELLM_MASTER_KEY="$key" \
     REINDEX_FALLBACK="$FALLBACK" REINDEX_PRUNE_LABELS="${REINDEX_PRUNE_LABELS:-}" \
-    REINDEX_ADOPT_REBIND="${REINDEX_ADOPT_REBIND:-}" npm run reindex
+    REINDEX_ADOPT_REBIND="${REINDEX_ADOPT_REBIND:-}" \
+    env ${extra_env[@]+"${extra_env[@]}"} npm run reindex
 fi

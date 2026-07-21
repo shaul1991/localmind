@@ -65,6 +65,9 @@ USER_ID="${USER_ID:-localmind}"
 # 인증된다(specs/014 FR-7 — 키가 랜덤화되면서 하드코딩 폴백이 사라짐).
 MASTER_KEY="$(read_env_val LITELLM_MASTER_KEY "$ENV_FILE")"
 [ -z "$MASTER_KEY" ] && warn "게이트웨이 키가 .env에 없어요 — 'make init-env' 후 다시 실행하면 노트 검색이 인증돼요."
+# 임베딩 엔드포인트 옵션 패스스루(specs/202607211015 FR-2) — 설정된 경우에만 등록 env로 전달.
+EMBEDDINGS_URL="$(read_env_val EMBEDDINGS_URL "$ENV_FILE")"
+EMBEDDINGS_MODEL="$(read_env_val EMBEDDINGS_MODEL "$ENV_FILE")"
 ok "사용자 이름: $(b "$USER_ID")"
 ok "노트 폴더  : $(b "$NOTES_DIR")"
 say "  (노트 폴더를 바꾸려면: $(b 'make mcp-install NOTES_DIR=/내/노트경로'), 여러 개는 쉼표로)"
@@ -81,6 +84,8 @@ add_localmind() {
   claude mcp add "$1" -s user \
     -e OPENMEMORY_USER="$USER_ID" -e NOTES_DIR="$NOTES_DIR" \
     ${MASTER_KEY:+-e LITELLM_MASTER_KEY="$MASTER_KEY"} \
+    ${EMBEDDINGS_URL:+-e EMBEDDINGS_URL="$EMBEDDINGS_URL"} \
+    ${EMBEDDINGS_MODEL:+-e EMBEDDINGS_MODEL="$EMBEDDINGS_MODEL"} \
     -- node "$PROJECT_DIR/dist/mcp.js" >/dev/null 2>&1
 }
 if ! add_localmind "$PROBE"; then
