@@ -4,6 +4,19 @@ localmind의 주요 변경 이력. 최신이 위.
 
 > 버전 체계: **CalVer `YYYY.MM.MICRO`** — 버전은 **릴리스(PR 머지) 시점** 기준. 확정 규칙은 `AGENTS.md`의 버전·릴리스 절이 정본이다.
 
+## 2026.07.8 — 2026-07-21 — local-first 기본 재확정: 위상 선언·복귀 절차·Ollama 직결 (specs/202607211015)
+
+- **하이브리드 위상 선언** — 기본 = 각 기기 로컬(stdio, `make mcp-install`) · 원격(http,
+  specs/045)은 노트를 중앙 1대에 두는 사용자용 옵션. README·docs/home-server.md에 명시.
+- **로컬 복귀 절차 6단계** — 홈서버로 이관했던 사용자가 로컬 두뇌로 되돌아오는 절차를
+  docs/home-server.md에 신설(M5 실복원으로 실증 — 재색인 1200파일/13분, 실행 로그와 1:1).
+- **Ollama 직결 일급화** — litellm 게이트웨이 없이 `EMBEDDINGS_URL=http://localhost:11434/v1`
+  직결 가능(bge-m3·1024차원 실증). `.env.example` 예시 추가(단수/복수 변수 레이어 구분 주석),
+  설치·Desktop·재색인 스크립트에 `EMBEDDINGS_URL`/`EMBEDDINGS_MODEL` 옵션 패스스루 배선
+  (미설정 시 기존과 동일 — 하위호환).
+- 첫 **코어(second-brain) 릴리스** — 메타 동결·코어 재초점(specs/202607210912) 이후 방향 B의
+  첫 결실. 측정 루프(로컬 query-log) 자연 복원 포함.
+
 ## 2026.07.7 — 2026-07-21 — 완성도 스윕 + 플레이크 수정 (specs/202607210846-*·202607210756)
 
 ### 완성도 스윕 — P4 경계 강건화·§4A 중복 정리·스키마 SSoT·문서 parity (specs/202607210846-*)
