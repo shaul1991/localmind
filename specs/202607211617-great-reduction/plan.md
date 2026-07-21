@@ -49,3 +49,8 @@ P1과 P2는 순차(추출 확인 후 절제 — 데이터 안전). P2 내부는 
 | AC-6 | stdio 실호출 로그 | evidence/dogfood.md | 3도구 정상+로그 증가 |
 | AC-7 | 회수 로그 | evidence/memory-recovery.md | export==회수(또는 0) |
 | AC-8 | critic diff 유형 검토 | merged report | 개입 지점 0 |
+
+## 검증 표기 (self-review clean 후 — 2026-07-22)
+matrix 전 행 green: AC-1~8 전부 r3 격리 critic이 독립 재실행으로 PASS(evidence/self-review-r3.md).
+단계 P0~P5 전부 집행 완료(tasks.md 체크·evidence 7종). 테스트 전략 이행: 스위트 234/234·셸 19파일·
+typecheck·결정적 grep/tree 스크립트·도그푸드(stdio 3도구·make report·setup DRY_RUN·헤드리스 위저드).
