@@ -30,34 +30,34 @@ audience: both
 
 ## Acceptance Criteria (Given-When-Then — 테스트 1:1)
 
-- [ ] **AC-1** (FR-1) Given 결정 파라미터(choice·why·assumptions 2건: high 1·low 1), When
+- [x] **AC-1** (FR-1) Given 결정 파라미터(choice·why·assumptions 2건: high 1·low 1), When
   capture_note 호출, Then 노트 파일 frontmatter에 `type: decision`·choice·why·assumptions
   (각 fact·volatility·last_verified=캡처 시각)가 기록된다.
-- [ ] **AC-2** (FR-1) Given 결정 파라미터 없이 종전 방식 호출, When capture_note, Then 생성
+- [x] **AC-2** (FR-1) Given 결정 파라미터 없이 종전 방식 호출, When capture_note, Then 생성
   노트가 현행과 동일 구조다(비정형 경로 무변 — 회귀 테스트. **"현행" baseline은
   great-reduction 이후**(suggestTags 자동 태깅 제거 후)의 capture 출력이다 — advisory ④).
-- [ ] **AC-3** (FR-1) Given assumptions 항목에 volatility 누락, When capture_note, Then 평이한
+- [x] **AC-3** (FR-1) Given assumptions 항목에 volatility 누락, When capture_note, Then 평이한
   한국어 안내 에러를 반환하고 파일을 만들지 않는다.
-- [ ] **AC-4** (FR-2) Given 스키마 없는 기존 노트만 있는 폴더, When search_notes·brief 호출,
+- [x] **AC-4** (FR-2) Given 스키마 없는 기존 노트만 있는 폴더, When search_notes·brief 호출,
   Then 에러 없이 종전과 동일하게 동작한다(신호·결정 요약 없음).
-- [ ] **AC-5** (FR-3) Given 힌트와 일치하는 결정 노트 존재, When brief(hint), Then 응답에 그
+- [x] **AC-5** (FR-3) Given 힌트와 일치하는 결정 노트 존재, When brief(hint), Then 응답에 그
   결정의 선택·이유 요지·전제 상태·**노트 경로**가 포함된다(advisory ③).
-- [ ] **AC-6** (FR-3) Given 힌트와 관련된 노트 없음, When brief(hint), Then 빈 브리핑 안내
+- [x] **AC-6** (FR-3) Given 힌트와 관련된 노트 없음, When brief(hint), Then 빈 브리핑 안내
   (한국어, 에러 아님)를 반환한다 — 흐름 비차단.
-- [ ] **AC-7** (FR-4) Given volatility high 전제의 last_verified가 임계 초과한 결정 노트,
+- [x] **AC-7** (FR-4) Given volatility high 전제의 last_verified가 임계 초과한 결정 노트,
   When 그 노트가 brief 또는 search_notes 결과에 포함, Then 응답 끝에 한 줄 신호가 부가되고
   결과 본문은 신호 유무와 무관하게 동일하다. **기계 판정(advisory ①): 신호 포함 응답에서
   말미 신호 라인(들)을 strip한 결과가 신호 비활성(임계 미초과) 조건의 응답과 byte-equal**.
-- [ ] **AC-8** (FR-4) Given 전제가 전부 low이거나 전부 최근 검증됨, When 조회, Then 신호가
+- [x] **AC-8** (FR-4) Given 전제가 전부 low이거나 전부 최근 검증됨, When 조회, Then 신호가
   붙지 않는다(오탐 0).
-- [ ] **AC-9** (FR-4, §6-2) Given 결정 노트 frontmatter가 깨져 신호 계산 불가, When
+- [x] **AC-9** (FR-4, §6-2) Given 결정 노트 frontmatter가 깨져 신호 계산 불가, When
   search_notes, Then 검색 결과는 정상 반환되고 신호만 생략된다(신호 실패가 기능을 막지 않음).
-- [ ] **AC-10** (FR-5) Given stale high 전제가 2건인 결정 노트에서 1건만 last_verified를
+- [x] **AC-10** (FR-5) Given stale high 전제가 2건인 결정 노트에서 1건만 last_verified를
   오늘로 갱신, When 다음 brief 조회, Then 신호가 유지된다(잔여 stale 1건). **모든 stale high
   전제가 최근화된 뒤에만** 신호가 사라진다(재검증 반영 — advisory ⑤).
-- [ ] **AC-11** (§6-1) 결정 캡처 전 과정이 capture_note 1회 호출로 완료된다 — 후속 확인·승인
+- [x] **AC-11** (§6-1) 결정 캡처 전 과정이 capture_note 1회 호출로 완료된다 — 후속 확인·승인
   요구 없음(테스트: 단일 호출 후 파일 완성 상태 검증).
-- [ ] **AC-12** (docs) 사용 문서에 결정 캡처·brief 세션 연결(CLAUDE.md 한 줄 패턴)·재검증
+- [x] **AC-12** (docs) 사용 문서에 결정 캡처·brief 세션 연결(CLAUDE.md 한 줄 패턴)·재검증
   관례가 안내된다.
 
 ## Open questions

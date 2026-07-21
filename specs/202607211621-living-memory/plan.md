@@ -62,3 +62,8 @@ audience: both
 | AC-10 | decision.test(전량 최근화) + probe(brief 3단계) | 스위트 출력 | green |
 | AC-11 | probe — 단일 호출 완결 | 스위트 출력 | green |
 | AC-12 | docs/usage.md·docs/mcp.md 개정 확인 + 도그푸드 | evidence/dogfood.md | 문서 반영 |
+
+## 검증 표기 (self-review clean 후 — 2026-07-22)
+matrix 12행 전부 green — 격리 critic이 실코드·실행으로 독립 재검증(evidence/self-review-r1.md).
+스위트 255/255·셸 21파일·typecheck·preflight·실 Ollama 풀 사이클 도그푸드. advisory 5건은
+경미 후속 백로그로 기록.
