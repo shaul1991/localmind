@@ -30,7 +30,8 @@ capture/search는 비정형 노트만 다룬다 — 결정(선택/이유/전제)
 ## Expected outcome
 
 결정 노트가 구조를 갖고 쌓이기 시작하고, 세션 시작 브리핑(주입)과 전제 낡음 신호가
-실동작한다 — vision의 핵심 가치 3종이 최소 형태로 가동된다.
+실동작한다 — vision의 핵심 가치 3종이 최소 형태로 가동된다. (단 vision §5의 "재검증 **이력**
+누적(결정의 생애 타임라인)"은 v1 범위 밖 — last_verified 단일 값만, OQ-C3. advisory ⑥)
 
 ## Success metrics
 

@@ -12,7 +12,7 @@ import fs from "node:fs";
 
 export interface QueryLogRecord {
   ts: string;
-  tool: "search_notes" | "ask_brain" | "capture_note"; // ask_brain=역사 레코드 호환(great-reduction 이전 로그)
+  tool: "search_notes" | "ask_brain" | "capture_note" | "brief"; // ask_brain=역사 레코드 호환(great-reduction 이전 로그) · brief=living-memory 브리핑(검색 재사용이지만 도구를 구분해 기록)
   query: string;
   hitCount: number;
   success: boolean;

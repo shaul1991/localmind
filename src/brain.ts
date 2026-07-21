@@ -12,6 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { type QueryLogRecord } from "./query-analysis.js";
+import { buildDecisionFrontmatterLines, type DecisionInput } from "./decision.js";
 
 export interface NoteFolder {
   label: string;
@@ -1103,8 +1104,14 @@ export interface NoteHit {
   score: number;
 }
 
-/** 노트 의미검색. folder(라벨)를 주면 그 폴더로 한정. */
-export async function searchNotes(query: string, limit = 5, folder?: string): Promise<NoteHit[]> {
+/** 노트 의미검색. folder(라벨)를 주면 그 폴더로 한정.
+ *  tool은 query-log 기록용 구분(living-memory: brief가 검색을 재사용하되 측정은 구분). */
+export async function searchNotes(
+  query: string,
+  limit = 5,
+  folder?: string,
+  tool: "search_notes" | "brief" = "search_notes",
+): Promise<NoteHit[]> {
   let out: NoteHit[];
   try {
     out = await searchNotesInternal(query, limit, folder);
@@ -1113,7 +1120,7 @@ export async function searchNotes(query: string, limit = 5, folder?: string): Pr
     // (삼키지 않음). 로깅 실패는 검색 예외를 가리거나 바꾸지 않는다(logQuery는 throw 안 함).
     logQuery({
       ts: new Date().toISOString(),
-      tool: "search_notes",
+      tool,
       query,
       hitCount: 0,
       success: false,
@@ -1135,7 +1142,7 @@ export async function searchNotes(query: string, limit = 5, folder?: string): Pr
   const topScores = out.slice(0, 3).map((h) => h.score).filter((s) => Number.isFinite(s));
   logQuery({
     ts: new Date().toISOString(),
-    tool: "search_notes",
+    tool,
     query,
     hitCount: out.length,
     success: out.length > 0,
@@ -1296,11 +1303,20 @@ export function createNoteFile(dir: string, fname: string, body: string): string
 /** specs/032 FR-3 — 캡처 노트 frontmatter 조립(순수 — AC-3b 테스트 대상).
  *  tags는 각 항목을 JSON 문자열화로 이스케이프해 frontmatter가 깨지지 않게 한다(032 R5).
  *  tags 미지정이면 기존과 동일한 `tags: []`(큐레이터 자동 태깅 대상 — 하위호환). */
-export function buildNoteFrontmatter(title: string, isoDate: string, tags?: string[]): string {
+export function buildNoteFrontmatter(title: string, isoDate: string, tags?: string[], extraLines?: string[]): string {
   const tagsLine = tags && tags.length > 0 ? `tags: [${tags.map((t) => JSON.stringify(t)).join(", ")}]` : "tags: []";
-  return ["---", `title: "${title.replace(/"/g, "'")}"`, `date: ${isoDate}`, tagsLine, "source: localmind", "---", ""].join(
-    "\n",
-  );
+  // extraLines(living-memory: 결정 frontmatter)는 닫는 --- 직전에 삽입 — 미지정 시 종전과
+  // 바이트 동일(AC-2 비정형 경로 무변).
+  return [
+    "---",
+    `title: "${title.replace(/"/g, "'")}"`,
+    `date: ${isoDate}`,
+    tagsLine,
+    "source: localmind",
+    ...(extraLines ?? []),
+    "---",
+    "",
+  ].join("\n");
 }
 
 export async function capture(
@@ -1308,6 +1324,7 @@ export async function capture(
   title?: string,
   folder?: string,
   noteTags?: string[],
+  decision?: DecisionInput,
 ): Promise<CaptureResult> {
   ensureDirs();
   const target = (folder && FOLDER_BY_LABEL.get(folder)) || FOLDERS[0];
@@ -1319,7 +1336,9 @@ export async function capture(
       .trim()
       .replace(/\s+/g, "-") || "note";
   const isoDate = new Date().toISOString().slice(0, 19);
-  const frontmatter = buildNoteFrontmatter(title ?? slug, isoDate, noteTags);
+  // living-memory FR-1 — 결정이면 3층 구조를 frontmatter에 직렬화(전제 last_verified=캡처 시각).
+  const decisionLines = decision ? buildDecisionFrontmatterLines(decision, isoDate) : undefined;
+  const frontmatter = buildNoteFrontmatter(title ?? slug, isoDate, noteTags, decisionLines);
   const body = title ? `${frontmatter}# ${title}\n\n${text}\n` : `${frontmatter}${text}\n`;
   // 배타적 생성 — 같은 초에 같은 제목으로 캡처해도 먼저 저장된 노트를 덮어쓰지 않는다(013 FR-8).
   const fname = createNoteFile(target.dir, `${ts}-${slug}`.slice(0, 80) + ".md", body);

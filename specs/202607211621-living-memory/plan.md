@@ -45,3 +45,25 @@ audience: both
 - 통합(mcp-server 계약 테스트, 임시 노트 폴더): AC-2·4·5·6·9·11 + 신호 부가의 응답 형태(AC-7).
 - 문서/도그푸드: AC-12 + Success metrics의 brief 실증.
 - **§6 불변식은 AC-6·7(본문 무변)·9·11이 테스트로 강제** — 비차단·사이드이펙트 성립.
+
+## verification matrix
+
+| AC | 검증 방법 | evidence | 종료 조건 |
+|---|---|---|---|
+| AC-1 | decision.test(직렬화 구조) + mcp-server.test probe(AC-1·11) | 스위트 출력 | green |
+| AC-2 | mcp-server.test probe — baseline(great-reduction 이후) 구조 대조 | 스위트 출력 | green |
+| AC-3 | decision.test(검증) + probe(파일 미생성·한국어) | 스위트 출력 | green |
+| AC-4 | probe — 비정형 노트 전 경로 비회귀 | 스위트 출력 | green |
+| AC-5 | probe — brief 요약(선택·이유·전제·경로) | 스위트 출력 | green |
+| AC-6 | probe — 빈 브리핑 한국어·에러 아님 | 스위트 출력 | green |
+| AC-7 | decision.test(판정) + probe(신호 strip byte-equal) | 스위트 출력 | green |
+| AC-8 | decision.test + probe(오탐 0) | 스위트 출력 | green |
+| AC-9 | decision.test(내성 null) + probe(깨진 노트 신호 생략) | 스위트 출력 | green |
+| AC-10 | decision.test(전량 최근화) + probe(brief 3단계) | 스위트 출력 | green |
+| AC-11 | probe — 단일 호출 완결 | 스위트 출력 | green |
+| AC-12 | docs/usage.md·docs/mcp.md 개정 확인 + 도그푸드 | evidence/dogfood.md | 문서 반영 |
+
+## 검증 표기 (self-review clean 후 — 2026-07-22)
+matrix 12행 전부 green — 격리 critic이 실코드·실행으로 독립 재검증(evidence/self-review-r1.md).
+스위트 255/255·셸 21파일·typecheck·preflight·실 Ollama 풀 사이클 도그푸드. advisory 5건은
+경미 후속 백로그로 기록.
