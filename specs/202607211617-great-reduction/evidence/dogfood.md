@@ -23,3 +23,8 @@
   전수 green · typecheck OK · `npm run smoke:mcp` 통과(도구 3종 표면).
 - desktop 쪽 EMBEDDINGS_KEY 패스스루는 동일 관용구(`${VAR:+…}`+`if(LM_EMB_KEY)`)로 배선 —
   단 mcp-desktop.sh는 .env 격리 훅이 없어 결정적 테스트는 install 쪽만(정직 기록).
+
+## r2 도그푸드 (2026-07-22, B-NEW 수정 검증)
+- `bash scripts/embedding-up.sh` → `✓ 임베딩 엔진이 이미 켜져 있어요 (http://localhost:11434)` · exit 0 (기존 Ollama 감지 — 비파괴 통과 경로).
+- 헤드리스 위저드: `LOCALMIND_NO_OPEN=1 GUIDE_PORT=8931 node scripts/install-wizard.mjs` → `POST /api/run {"id":"up"}` 스트림 종료 센티넬 `__STATUS__:{"ok":true,"code":0}` · `GET /` 200. **exit 127 재현 소멸**(r2 이전: 삭제된 up.sh spawn 실패).
+- 재발 방지: install-wizard.test.mjs에 COMMANDS 스크립트 실존 단언 추가(RED 관찰 후 GREEN — 18/18).

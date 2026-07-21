@@ -25,7 +25,7 @@ assert "FR-6: make backup-cron이 커스텀 변수를 전달" 'grep -qE "BACKUP_
 assert "FR-9: init-env(Makefile)에 chmod 600" 'grep -A3 "cp .env.example .env" "$ROOT/Makefile" | grep -q "chmod 600 .env"'
 assert "FR-9: recover.sh 생성 경로에 chmod 600" 'grep -q "chmod 600" "$ROOT/scripts/recover.sh"'
 
-# AC-13의 동작 검증은 실제 코드 경로(init-env·up.sh 기동)가 docker·repo 루트 .env를
+# AC-13의 동작 검증은 실제 코드 경로(init-env 등 .env 생성 경로)가 repo 루트 .env를
 # 요구해 여기서 재현하지 않는다 — 위 정적 grep 4건으로 회귀를 막고, 실동작은 BACKLOG
 # A12 라이브 항목에서 확인한다. (자기충족 assert는 self-review 지적으로 제거)
 
