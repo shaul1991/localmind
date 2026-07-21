@@ -88,6 +88,18 @@ printf 'NOTES_DIR="%s/from-env-file"\n' "$TMP" > "$ENV5"
 run_install 0 "$LOG5" "-" "$ENV5"
 assert "FR-6: 환경변수 부재 시 .env 값으로 등록" 'grep -q -- "-e NOTES_DIR=$TMP/from-env-file" "$LOG5"'
 
+# ── great-reduction r1 B4: EMBEDDINGS_KEY 패스스루(설정 시에만) ──────────────
+LOG7="$TMP/calls7.log"; ENV7="$TMP/embkey.env"
+printf 'EMBEDDINGS_URL=http://localhost:11434/v1\nEMBEDDINGS_MODEL=bge-m3\nEMBEDDINGS_KEY=dummy-key\n' > "$ENV7"
+run_install 0 "$LOG7" "$TMP/notes" "$ENV7"
+assert "B4: EMBEDDINGS_KEY가 등록 env로 전달된다" 'grep -q -- "-e EMBEDDINGS_KEY=dummy-key" "$LOG7"'
+assert "B4: EMBEDDINGS_URL/MODEL도 함께 전달된다(기존 202607211015 유지)" \
+  'grep -q -- "-e EMBEDDINGS_URL=http://localhost:11434/v1" "$LOG7" && grep -q -- "-e EMBEDDINGS_MODEL=bge-m3" "$LOG7"'
+LOG8="$TMP/calls8.log"; ENV8="$TMP/nokey.env"
+printf '# empty\n' > "$ENV8"
+run_install 0 "$LOG8" "$TMP/notes" "$ENV8"
+assert "B4: 미설정 시 EMBEDDINGS_KEY 인자 없음(하위호환 — 바이트 동일)" '! grep -q -- "-e EMBEDDINGS_KEY=" "$LOG8"'
+
 # ── 019 FR-6: 등록 실패 시 .env를 기록하지 않는다 ───────────────────────────
 LOG6="$TMP/calls6.log"; ENV6="$TMP/nofail.env"
 rm -f "$ENV6"

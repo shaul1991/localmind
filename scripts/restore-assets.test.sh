@@ -201,7 +201,7 @@ git -C "$BKR" init -q 2>/dev/null; echo "노트" > "$BKR/note.md"; echo "m" > "$
 echo "p" > "$BKR/agents/p.md"    # 마커 없음(기본 구성 백업) → recover가 배포 시도
 run_recover "$BKR" DEPLOY_FAIL=1
 assert "AC-14(recover 실행): 중간 abort 없이 복구 완료 도달" 'printf %s "$OUT" | grep -q "복구 완료"'
-assert "AC-14(recover 실행): 노트·메모리 단계 완료(인질 아님)" 'printf %s "$OUT" | grep -q "메모리 복원 완료"'
+assert "AC-14(recover 실행): 노트 단계 완료(인질 아님 — 메모리 서비스는 great-reduction으로 소멸)" 'printf %s "$OUT" | grep -q "노트로 복원"'
 assert "AC-14(recover 실행): 실패 요약 + 비0" '[ "$RC" -ne 0 ] && printf %s "$OUT" | grep -q "완료되지 않았어요"'
 echo "m2" > "$BKR/agents/$MARKER"    # 마커 부여 → 보류 경로
 run_recover "$BKR"

@@ -1,0 +1,7 @@
+# AC-5 inventory 대조 — 2026-07-21 17:26:48
+PASS: Extract/Remove 잔재 0 · Keep 전존
+## 판정 변경 기록(일탈 — self-review 대상): 관측 UI 계열(ui-server·ui-status·routes/ui·connection-status·public/ui(style.css 제외 — 아래 복원 참조)·ui.sh)은 spec '결정 기록'의 Keep·절제와 달리 전체 Remove — 실측상 거버넌스 뷰어(specs/048)로 메타 결합 100%+express, 코어 관측은 CLI 리포트(query-report·brain-report)가 담당. embed.sh도 Remove — 실체가 게이트웨이 스택 오케스트레이터(litellm profile), 임베딩 자체(EMBEDDINGS_* 직결·Ollama·reindex)는 무변경 유지(사용자 게이트 준수). config.ts·types.ts는 소비자 0으로 전체 Remove(인벤토리 '부분'에서 상향). style.css는 설치 가이드(Keep)의 스타일이라 복원. examples/·tests/fixtures/research-evidence-pack은 인벤토리 누락 자산 — 게이트웨이 API 예제/메타 픽스처로 판정해 Remove(픽스처는 sdd-toolkit 보유 확인).
+
+## r1 부기(2026-07-21): blocker 수정은 파일 집합 무변(편집만) — Extract/Remove/Keep 목록 대조 결과 불변(PASS 유지).
+
+## r2 추가(2026-07-22): scripts/embedding-up.sh 신규 Keep(B-NEW 수정 — 마법사 임베딩 기동 스크립트, amendment r2-1). Extract/Remove 대조 결과 불변 — PASS 유지.

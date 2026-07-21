@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# specs/010 공급망 고정 — 정적 회귀 가드. (+ specs/014: openmemory 편입)
+# specs/010 공급망 고정 — 정적 회귀 가드. (+ specs/014: 구 메모리 이미지 편입 — 역사)
 # 외부 아티팩트 참조가 가변 태그로 되돌아가거나 고정 지점이 사라지는 것을 막는다.
 # 접근: allowlist — 모든 compose image는 @sha256 digest 또는 구체 태그(숫자·v숫자·pg숫자)만
 #       허용하고, latest/stable/main/edge/무태그 등 가변 참조는 거부한다.
@@ -8,8 +8,8 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DOCKERFILE="$ROOT/Dockerfile"
-OM_DOCKERFILE="$ROOT/openmemory/Dockerfile"
+# great-reduction(2026-07-21): 게이트웨이 Dockerfile·openmemory 이미지 제거 — 남은 외부
+# 아티팩트는 compose의 ollama뿐이라 검사 범위가 compose로 줄었다.
 
 pass=0; fail=0
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; pass=$((pass+1)); }
@@ -21,7 +21,7 @@ is_pinned() {
   local ref="$1" tag
   case "$ref" in
     *@sha256:*) return 0 ;;                      # digest 고정
-    localmind|localmind-openmemory) return 0 ;;  # 로컬 빌드 이미지(외부 아티팩트 아님)
+    localmind|localmind-*) return 0 ;;           # 로컬 빌드 이미지(외부 아티팩트 아님) # legacy-cleanup
     *:*) tag="${ref##*:}" ;;
     *) return 1 ;;                               # 무태그 → 런타임에 :latest → 거부
   esac
@@ -43,37 +43,14 @@ for f in "$ROOT"/docker-compose*.yml; do
 done
 assert "AC-1: 모든 compose image가 고정(digest/구체태그)  위반:$violations" '[ -z "$violations" ]'
 
-# ── AC-1(Dockerfile): FROM에 가변 태그 없음 ─────────────────────
-assert "AC-1: Dockerfile FROM에 :latest/가변 태그 없음" \
-  '! grep -qE "^FROM[[:space:]]+\S+:(latest|stable|main|edge|nightly)\b" "$DOCKERFILE"'
-assert "AC-1: Dockerfile에 무태그·하드코딩 node 태그 없음(ARG 경유만)" \
-  '! grep -qE "^FROM[[:space:]]+node:[0-9]" "$DOCKERFILE"'
-
 # ── 고정 지점 존재(FR-1~4) ──────────────────────────────────────
 assert "FR-1: ollama digest 고정" 'grep -qE "ollama/ollama@sha256:[0-9a-f]{64}" "$ROOT/docker-compose.yml"'
-assert "FR-1: litellm digest 고정" 'grep -qE "berriai/litellm@sha256:[0-9a-f]{64}" "$ROOT/docker-compose.yml"'
-assert "FR-3: codex 버전 고정" 'grep -qE "@openai/codex@[0-9]+\.[0-9]+\.[0-9]+" "$DOCKERFILE"'
-assert "FR-2: claude 설치 버전 인자 고정" 'grep -qE "install\.sh \| bash -s -- [0-9]+\.[0-9]+\.[0-9]+" "$DOCKERFILE"'
-
-# ── AC-4: node 버전이 단일 지점(ARG)에만 — FROM은 변수 참조 ─────
-assert "AC-4/FR-4: node 버전이 ARG 한 곳에만 정의" \
-  '[ "$(grep -cE "^ARG NODE_VERSION=[0-9]+\.[0-9]+\.[0-9]+$" "$DOCKERFILE")" -eq 1 ]'
-assert "AC-4: 두 FROM 모두 \${NODE_VERSION} 변수 참조" \
-  '[ "$(grep -cE "^FROM node:\\\$\{NODE_VERSION\}-slim" "$DOCKERFILE")" -eq 2 ]'
-
 # ── FR-5: 갱신 안내 주석 존재 ───────────────────────────────────
 assert "FR-5: compose에 갱신 안내 주석 존재" 'grep -qE "갱신|올리려면|업데이트" "$ROOT/docker-compose.yml"'
-assert "FR-5: Dockerfile에 갱신 안내 주석 존재" 'grep -qE "갱신|올리려면|업데이트" "$DOCKERFILE"'
+# ── (역사) specs/014 구 메모리 이미지 가드 — 이미지 제거 후에도 negative 자기검증으로
+#    가드 함수 자체의 회귀만 확인한다(검사 대상 실파일은 소멸).
 
-# ── FR-6/AC-5: 비-root 결정 기록 ────────────────────────────────
-assert "AC-5: 비-root 실행 결정(적용/보류 근거) 주석 존재" 'grep -qE "비-root|비루트|non-root|USER node" "$DOCKERFILE"'
-
-# ── specs/014: openmemory Dockerfile 편입 — 010의 사각지대 해소 ─────────────
-# openmemory 이미지는 개인 기억 전체를 다루는 컨테이너인데 기존 가드의 스캔 범위 밖이었다.
-# 검사: (a) 베이스 이미지가 ARG 경유 고정 패치버전 (b) mem0 소스가 커밋 sha로 고정
-#       (c) 커밋/태그 지정 없는 무고정 clone 부재 (d) 갱신 절차 주석 존재
-
-# openmemory Dockerfile 검사 함수 — negative 자기검증에도 재사용한다.
+# 구 메모리 Dockerfile 검사 함수 — negative 자기검증에도 재사용한다.
 check_om() {
   local f="$1" bad=""
   grep -qE '^ARG PYTHON_TAG=[0-9]+\.[0-9]+\.[0-9]+-slim$' "$f" || bad="$bad python-tag-arg"
@@ -86,9 +63,6 @@ check_om() {
   grep -qE '갱신|올리려면|업데이트' "$f" || bad="$bad update-note"
   printf '%s' "$bad"
 }
-
-om_bad="$(check_om "$OM_DOCKERFILE")"
-assert "014: openmemory Dockerfile 고정(베이스 ARG·MEM0_COMMIT·갱신 주석)  위반:$om_bad" '[ -z "$om_bad" ]'
 
 # negative 자기검증(014 AC-2): 가변으로 되돌린 사본은 반드시 걸려야 한다 — 가드의 거짓 green 방지.
 NEG_TMP="$(mktemp -d)"

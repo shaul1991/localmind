@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # specs/033 — 이 기기 최신화 한 방(make update).
 # 정본(코드 repo·NOTES_DIR 노트 repo)을 origin에서 ff-only로 당기고,
-# 파생물(dist 빌드·노트 인덱스·페르소나/스킬 배포)을 정본에서 재생성한다.
+# 파생물(dist 빌드·노트 인덱스)을 정본에서 재생성한다.
 # 노트 repo만 예외: ff 불가(기기 간 백업 분기)면 pull --rebase 폴백, 충돌이면 원상 복구(2026-07-08 개정).
 # 이웃: 원격 기기는 make device-sync(031), 새 기기는 make recover, 백업 복원은 make restore.
 # memory-import는 하지 않는다 — 이 기기의 메모리 DB가 정본(백업 memory.md는 파생 export)이라
@@ -39,7 +39,7 @@ main() {
       elif [ "$(git -C "$DIR" rev-parse HEAD)" != "$old_head" ]; then
         ok "코드 갱신됨($(git -C "$DIR" rev-parse --short HEAD)) — 빌드해요"
         if run npm run --prefix "$DIR" build; then
-          ok "빌드 완료 — 실행 중인 스택에 반영하려면 'make up'"
+          ok "빌드 완료 — MCP 클라이언트(Claude Code 등)를 재시작하면 반영돼요"
         else
           warn "빌드 실패 — 코드는 최신이지만 dist가 이전 버전이에요('make build'로 재시도)"
           fails="$fails build"
@@ -82,33 +82,15 @@ main() {
     fi
   done < <(notes_dir_paths "$notes_value")
 
-  # ── ③ 파생물 재생성: 인덱스 → 페르소나 → 스킬 (모두 멱등) ────────────
-  say "→ ③ 파생물 재생성(인덱스·페르소나·스킬·규칙)"
+  # ── ③ 파생물 재생성: 인덱스 (멱등) ──────────────────────────────────
+  # great-reduction(2026-07-21): 페르소나·스킬·규칙 배포는 sdd-toolkit repo로 이전 —
+  # 메타 최신화는 그 repo의 make update가 담당한다.
+  say "→ ③ 파생물 재생성(인덱스)"
   if run bash "$DIR/scripts/reindex.sh"; then
     ok "재인덱싱"
   else
-    warn "재인덱싱 실패 — 임베딩(:4000)이 꺼져 있나요? 'make up' 후 'make reindex'로 다시 시도하세요"
+    warn "재인덱싱 실패 — 임베딩 엔진(EMBEDDINGS_URL — 예: Ollama)이 꺼져 있나요? 켠 뒤 'make reindex'로 다시 시도하세요"
     fails="$fails reindex"
-  fi
-  if run npm run --silent --prefix "$DIR" agents:deploy; then
-    ok "페르소나 배포"
-  else
-    warn "페르소나 배포 실패 — 'make agents-deploy'로 다시 시도하세요"
-    fails="$fails agents-deploy"
-  fi
-  if run npm run --silent --prefix "$DIR" skills:deploy; then
-    ok "스킬 배포"
-  else
-    warn "스킬 배포 실패 — 'make skills-deploy'로 다시 시도하세요"
-    fails="$fails skills-deploy"
-  fi
-  # 규칙(base+overlay) 배포 — 글로벌 표면만(--no-repo). 이 기기 최신화 시 governance를
-  # Claude·Codex에 재주입한다(specs/041). per-repo overlay는 그 repo에서 make rules-deploy.
-  if run npm run --silent --prefix "$DIR" rules:deploy -- --no-repo; then
-    ok "규칙 배포"
-  else
-    warn "규칙 배포 실패 — 'make rules-deploy'로 다시 시도하세요"
-    fails="$fails rules-deploy"
   fi
 
   # ── 요약 ──────────────────────────────────────────────────────────────

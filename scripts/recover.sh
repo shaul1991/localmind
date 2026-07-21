@@ -72,7 +72,6 @@ if [ ! -f "$ENV_FILE" ]; then
 else
   ok ".env 있음"
 fi
-bash "$PROJECT_DIR/scripts/ensure-master-key.sh" "$ENV_FILE" # 게이트웨이 키 없으면 자동 생성(specs/014)
 chmod 600 "$ENV_FILE" # OAuth 토큰·키가 담기므로 소유자 전용(specs/015 FR-9)
 
 # ── 2/6 : 백업 내려받기 ─────────────────────────────────────────
@@ -124,33 +123,19 @@ say "$(b '[3/6] 프로그램 설치·준비')"
 ( cd "$PROJECT_DIR" && npm install --no-fund --no-audit >/dev/null 2>&1 ) && ok "의존성 설치 완료" || { err "설치 실패 — 인터넷 연결을 확인하고 다시 시도해 주세요."; exit 1; }
 ( cd "$PROJECT_DIR" && npm run --silent build >/dev/null 2>&1 ) && ok "빌드 완료" || { err "빌드 실패 — 'cd $PROJECT_DIR && npm run build' 로 메시지를 확인해 주세요."; exit 1; }
 
-# ── 4/6 : 스택 기동 + 헬스 대기 ─────────────────────────────────
-say "$(b '[4/6] localmind 켜기 (메모리·AI 엔진)')"
-say "  → 시작하는 중... (처음엔 모델 내려받기로 몇 분 걸려요. 기다려 주세요.)"
-DC up -d --build >/dev/null 2>&1 || { err "스택 기동 실패 — 'make logs' 로 원인을 확인해 주세요."; exit 1; }
-ready=0
-for i in $(seq 1 120); do
-  m="$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8767/docs 2>/dev/null || echo 000)"
-  g="$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:4000/health/liveliness 2>/dev/null || echo 000)"
-  if [ "$m" = "200" ] && [ "$g" = "200" ]; then ready=1; break; fi
-  printf '\r  준비 중... %s/120 (메모리=%s AI엔진=%s)   ' "$i" "$m" "$g"
-  sleep 5
-done
-printf '\r%*s\r' 60 ''  # 진행줄 지우기
-if [ "$ready" != "1" ]; then
-  err "엔진이 제때 안 떴어요. 'make logs' 로 확인 후, 떠 있으면 '$(b 'make restore')' 로 데이터만 복원하세요."
-  exit 1
-fi
-ok "localmind 엔진 준비 완료 (메모리 :8767 · AI :4000)"
-
-# ── 5/6 : 메모리 복원 ───────────────────────────────────────────
-say "$(b '[5/6] 메모리 되살리기')"
-if [ -f "$BACKUP_DIR/memory.md" ]; then
-  ( cd "$PROJECT_DIR" && npm run --silent memory:import -- "$BACKUP_DIR/memory.md" ) && ok "메모리 복원 완료(이미 있는 건 건너뜀)" \
-    || warn "메모리 복원 중 문제 — 나중에 '$(b 'make memory-import FILE='"$BACKUP_DIR"'/memory.md')' 로 다시 시도하세요."
+# ── 4/6 : 임베딩 엔진 확인 ──────────────────────────────────────
+say "$(b '[4/6] 임베딩 엔진 확인 (노트 검색용)')"
+EMB_URL="$(read_env_val EMBEDDINGS_URL "$ENV_FILE" 2>/dev/null || true)"; EMB_URL="${EMB_URL:-http://localhost:11434/v1}"
+if curl -fsS -m 3 "$EMB_URL/models" >/dev/null 2>&1 || curl -fsS -m 3 "${EMB_URL%/v1}/api/tags" >/dev/null 2>&1; then
+  ok "임베딩 엔진 응답 ($EMB_URL)"
 else
-  ok "백업에 memory.md 가 없어요 — 메모리 복원은 건너뜁니다(노트는 복원됨)."
+  warn "임베딩 엔진 무응답 ($EMB_URL) — Ollama를 켜세요: brew services start ollama && ollama pull bge-m3"
+  warn "(색인은 나중에 'make reindex'로 다시 만들 수 있어요 — 복구는 계속 진행합니다.)"
 fi
+
+# ── 5/6 : (great-reduction) 메모리 복원 단계 소멸 — 노트가 기억의 정본 ─────
+say "$(b '[5/6] 메모리 되살리기')"
+ok "별도 메모리 서비스가 없어요(2026-07 개편) — 기억은 전부 노트로 복원됩니다."
 
 # ── 6/6 : 노트 재인덱싱 ─────────────────────────────────────────
 say "$(b '[6/6] 노트 검색 색인 만들기')"

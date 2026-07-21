@@ -12,14 +12,14 @@ import fs from "node:fs";
 
 export interface QueryLogRecord {
   ts: string;
-  tool: "search_notes" | "ask_brain" | "capture_note";
+  tool: "search_notes" | "ask_brain" | "capture_note"; // ask_brain=역사 레코드 호환(great-reduction 이전 로그)
   query: string;
   hitCount: number;
   success: boolean;
   folder?: string | null;
   captureValidation?: string | null;
   sources?: string[];
-  /** specs/017 — ask_brain 검증 결과. env로 끈 호출·미구성(페르소나 없음)은 필드 없음. */
+  /** specs/017(역사 great-reduction 이전) — ask_brain 검증 결과. 과거 로그 파싱 호환용. */
   verify?: "pass" | "warn" | "skipped";
   /** specs/017 — 합성에 쓴 모델(관측: 응답은 무음이어도 로그로 감사). */
   model?: string;
@@ -154,7 +154,7 @@ export function analyze(records: QueryLogRecord[], opts: AnalysisOptions): Query
   const verifyStats = { pass: 0, warn: 0, skipped: 0 };
   for (const r of rs) if (r.verify) verifyStats[r.verify]++;
 
-  // specs/025 — 스코어 분포: 성공 레코드(search_notes+ask_brain — 같은 코사인 스케일) 중
+  // specs/025 — 스코어 분포: 성공 레코드(search_notes+역사 ask_brain — 같은 코사인 스케일, great-reduction 호환) 중
   // topScore 보유분만. 레거시(미기록) 성공분은 scoredMissing으로 따로 센다(투명성).
   // 모집단은 기존 실패 판정(!success || hitCount===0)의 여집합과 정합하게(교차 리뷰) —
   // 비정상 라인(success:true + hitCount:0)이 분포에 섞이지 않는다.

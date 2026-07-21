@@ -1,9 +1,0 @@
-{
-  "run_id": "R-001",
-  "status": "incomplete",
-  "completed_questions": ["What does the official specification require?"],
-  "incomplete_questions": ["How do two independent implementations differ?"],
-  "ledger_ids": ["S-001", "E-001", "C-001"],
-  "capability_fallback": "No isolated researcher was available; the current session recorded a non-independent fallback.",
-  "next_validation_steps": ["Verify the implementation-specific claim against a second independent source."]
-}

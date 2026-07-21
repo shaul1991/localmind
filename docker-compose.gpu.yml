@@ -1,5 +1,5 @@
 # Docker Ollama를 NVIDIA GPU로 가속하는 override (Linux + NVIDIA).
-#   make embed BACKEND=gpu         # Linux+NVIDIA에선 make embed(=auto)도 이 경로를 자동 선택
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 #
 # 전제: 호스트에 nvidia-container-toolkit 설치(컨테이너가 GPU를 보게 한다).
 #   https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/

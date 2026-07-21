@@ -3,7 +3,7 @@
  *
  *  - 노트는 NOTES_DIR의 마크다운 파일이 정본. NOTES_DIR는 쉼표로 여러 폴더 지정 가능.
  *  - 임베딩 인덱스는 파생물( 첫 폴더의 .brain-index.json ). 파일 해시로 증분 갱신.
- *  - 임베딩은 게이트웨이(bge-m3), 종합은 localmind 채팅(claude/codex)을 쓴다.
+ *  - 임베딩은 OpenAI 호환 엔드포인트(EMBEDDINGS_URL — 예: Ollama 직결 bge-m3)를 쓴다.
  *
  * pgvector/포트 노출이 필요 없도록 인덱스는 로컬 파일 + 인메모리 코사인으로 처리한다
  * (개인 지식 규모엔 충분). stdout은 MCP 전용이므로 이 모듈은 어떤 것도 stdout에 쓰지 않는다.
@@ -11,17 +11,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { agentsDir } from "./agents/registry.js";
-import { skillsDir } from "./agents/skills.js";
-import {
-  modelBackend,
-  parseVerdict,
-  personaChat,
-  pickCrossTarget,
-  pickTarget,
-  resolvePersona,
-} from "./agents/runtime.js";
-import { countVerifyOnDay, readRecords, type QueryLogRecord } from "./query-analysis.js";
+import { type QueryLogRecord } from "./query-analysis.js";
 
 export interface NoteFolder {
   label: string;
@@ -74,9 +64,21 @@ const REINDEX_FALLBACK = process.env.REINDEX_FALLBACK === "1" || !process.env.NO
 // 않도록 BRAIN_INDEX로 위치를 바꿀 수 있다.
 const INDEX_PATH = process.env.BRAIN_INDEX ?? path.join(FOLDERS[0].dir, ".brain-index.json");
 
-const EMB_URL = (process.env.EMBEDDINGS_URL ?? "http://localhost:4000/v1").replace(/\/$/, "");
-// 키 하드코딩 폴백 없음(specs/014 FR-7) — 게이트웨이 키는 설치마다 임의 생성되므로
-// MCP 등록 env(make mcp-install가 전달) 또는 호출 환경에서 와야 한다.
+// 색인 제외 — 노트 폴더 하위의 페르소나·스킬 정본 폴더(에이전트 설정이라 노트가 아님).
+// great-reduction: agents/skills 모듈은 sdd-toolkit으로 이전 — 경로 판정만 인라인 유지
+// (env override는 기존 모듈과 동일: LOCALMIND_AGENTS_DIR·LOCALMIND_SKILLS_DIR).
+function excludedMetaDirs(): string[] {
+  const first = FOLDERS[0].dir;
+  return [
+    path.resolve(process.env.LOCALMIND_AGENTS_DIR?.trim() || path.join(first, "agents")),
+    path.resolve(process.env.LOCALMIND_SKILLS_DIR?.trim() || path.join(first, "skills")),
+  ];
+}
+
+// 기본은 Ollama 직결(great-reduction — 게이트웨이 소멸로 :4000 기본값은 유령 포트였음, r1 advisory).
+const EMB_URL = (process.env.EMBEDDINGS_URL ?? "http://localhost:11434/v1").replace(/\/$/, "");
+// 키 하드코딩 폴백 없음(specs/014 FR-7). EMBEDDINGS_KEY가 정본, LITELLM_MASTER_KEY는
+// 기존 설치 하위호환 폴백(great-reduction r1 B4).
 const EMB_KEY = process.env.EMBEDDINGS_KEY ?? process.env.LITELLM_MASTER_KEY ?? "";
 const EMB_MODEL = process.env.EMBEDDINGS_MODEL ?? "text-embedding-3-small";
 
@@ -84,10 +86,6 @@ const EMB_MODEL = process.env.EMBEDDINGS_MODEL ?? "text-embedding-3-small";
 // readRuntimeSnapshot projection이 공유한다(literal 복제 금지 — 042가 owner를 옮겨도 한 곳만).
 const RETRIEVAL_ALGORITHM = "cosine-full-scan-v1" as const;
 const EMBEDDING_IMPLEMENTATION = "openai-compatible-http-embeddings-v1" as const;
-
-const GATEWAY_URL = (process.env.LOCALMIND_URL ?? "http://localhost:8787").replace(/\/$/, "");
-const GATEWAY_KEY = process.env.LOCALMIND_API_KEY?.trim();
-const ANSWER_MODEL = process.env.MCP_DEFAULT_MODEL ?? "sonnet";
 
 const MAX_CHUNK = Math.max(400, Number(process.env.BRAIN_CHUNK_SIZE ?? 2000));
 
@@ -658,7 +656,7 @@ export function listMarkdown(dir: string, isRoot = true, rootEntries?: fs.Dirent
     const full = path.join(dir, e.name);
     // 페르소나 레지스트리(agents/)·스킬 정본(skills/)은 노트가 아니다 —
     // 색인·검색에서 제외(specs/016 FR-10 · specs/018 FR-8)
-    if (e.isDirectory() && (path.resolve(full) === agentsDir() || path.resolve(full) === skillsDir())) continue;
+    if (e.isDirectory() && excludedMetaDirs().includes(path.resolve(full))) continue;
     // 백업 미러(specs/019 FR-1)도 노트가 아니다 — 색인 프로세스는 BACKUP_DIR를 모르므로
     // 미러 폴더가 스스로를 식별하는 마커로 제외한다(AC-10, 016 FR-10 불변식 유지).
     if (e.isDirectory() && fs.existsSync(path.join(full, ".localmind-mirror"))) continue;
@@ -723,24 +721,6 @@ export function extractLinks(text: string): string[] {
   return links;
 }
 
-// 대소문자 무시 비교용. macOS/Windows는 파일시스템이 기본적으로 대소문자를 구분하지
-// 않고 Obsidian 자체도 링크 해석 시 대소문자를 구분하지 않으므로, [[Note-B]]가 실제
-// 파일 note-b.md를 가리켜도 해석돼야 한다(self-review에서 발견).
-function basenameNoExt(p: string): string {
-  return path.basename(p).replace(/\.md$/i, "").toLowerCase();
-}
-
-/** 위키링크 target을 인덱스의 실제 노트 키('label/relpath')로 해석한다(basename 매칭,
- *  대소문자 구분 없음). fromFolder(같은 폴더)를 우선하고, 없으면 전체 vault에서 첫 매칭.
- *  없으면 null(미해결). */
-export function resolveLink(target: string, fromFolder: string, idx: BrainIndex): string | null {
-  const targetBase = basenameNoExt(target);
-  const keys = Object.keys(idx.files);
-  const sameFolder = keys.find((k) => idx.files[k].folder === fromFolder && basenameNoExt(k) === targetBase);
-  if (sameFolder) return sameFolder;
-  return keys.find((k) => basenameNoExt(k) === targetBase) ?? null;
-}
-
 function sha(s: string): string {
   return crypto.createHash("sha256").update(s).digest("hex");
 }
@@ -749,8 +729,8 @@ async function embed(texts: string[]): Promise<number[][]> {
   if (!texts.length) return [];
   if (!EMB_KEY) {
     throw new Error(
-      "게이트웨이 키(LITELLM_MASTER_KEY)가 설정되지 않았어요 — 'make mcp-install'을 다시 실행해 " +
-        "연결을 갱신하거나, MCP 설정의 env에 .env의 LITELLM_MASTER_KEY 값을 넣어 주세요.",
+      "임베딩 키(EMBEDDINGS_KEY)가 설정되지 않았어요 — .env에 EMBEDDINGS_KEY를 넣고(Ollama 직결은 " +
+        "아무 값이나, 예: dummy) 'make mcp-install'을 다시 실행해 연결을 갱신해 주세요.",
     );
   }
   const attempts = Math.max(1, Number(process.env.EMBED_RETRIES ?? 5));
@@ -1282,98 +1262,6 @@ export interface CaptureResult {
   tags?: string[];
 }
 
-// ── specs/017 — 큐레이터 태깅 ───────────────────────────────────────────────
-
-/** 기존 태그 어휘 수집 — 최근 수정 노트(상한 200개)의 frontmatter tags를 빈도순으로.
- *  매 capture 전수 스캔을 피하기 위해 프로세스 내 TTL 캐시(5분)를 둔다(plan). */
-let tagVocabCache: { at: number; vocab: string[] } | null = null;
-const TAG_VOCAB_TTL_MS = 5 * 60_000;
-
-export function collectTagVocab(): string[] {
-  if (tagVocabCache && Date.now() - tagVocabCache.at < TAG_VOCAB_TTL_MS) return tagVocabCache.vocab;
-  const freq = new Map<string, number>();
-  try {
-    const files: { path: string; mtime: number }[] = [];
-    for (const f of FOLDERS) {
-      for (const p of listMarkdown(f.dir)) {
-        try {
-          files.push({ path: p, mtime: fs.statSync(p).mtimeMs });
-        } catch {
-          /* 사라진 파일 — 건너뜀 */
-        }
-      }
-    }
-    files.sort((a, b) => b.mtime - a.mtime);
-    for (const { path: p } of files.slice(0, 200)) {
-      try {
-        const head = fs.readFileSync(p, "utf8").slice(0, 2000);
-        const m = head.match(/^tags:\s*\[([^\]]*)\]/m);
-        if (!m) continue;
-        for (const raw of m[1].split(",")) {
-          const tag = raw.trim().replace(/^["']|["']$/g, "");
-          if (tag) freq.set(tag, (freq.get(tag) ?? 0) + 1);
-        }
-      } catch {
-        /* 읽기 실패 — 건너뜀 */
-      }
-    }
-  } catch {
-    /* 수집 실패 — 빈 어휘로 진행(FR-5) */
-  }
-  const vocab = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 50).map(([t]) => t);
-  tagVocabCache = { at: Date.now(), vocab };
-  return vocab;
-}
-
-/** 테스트용 — 캐시 초기화. */
-export function _resetTagVocabCacheForTest(): void {
-  tagVocabCache = null;
-}
-
-/** 큐레이터에게 태그를 제안받는다. 실패·해석 불가는 null(태그 없이 캡처 진행, FR-5). */
-async function suggestTags(text: string, title?: string): Promise<string[] | null> {
-  const curator = resolvePersona("curator");
-  if (!curator) return null; // 미구성 — 무음(FR-1)
-  const vocab = collectTagVocab();
-  const vocabLine = vocab.length
-    ? `기존 태그 어휘(재사용 우선): ${vocab.join(", ")}`
-    : "기존 태그 어휘 없음 — 새 태그는 보수적으로 최대 2개만.";
-  const timeoutMs = Math.max(1000, Number(process.env.BRAIN_TAG_TIMEOUT_MS ?? 30_000));
-  const res = await personaChat(curator, {
-    user: `${vocabLine}\n\n제목: ${title ?? "(없음)"}\n본문:\n${text.slice(0, 2000)}`,
-    systemPrefix:
-      "역할 제한: 지금은 노트 태깅만 한다. 위 노트에 어울리는 태그 1~3개를 고르되 기존 어휘를 " +
-      '우선 재사용하라. 반드시 JSON 문자열 배열만 출력하라. 예: ["회의", "프로젝트a"]',
-    prefer: "claude",
-    timeoutMs,
-  });
-  if (!res) return null;
-  try {
-    const m = res.text.match(/\[[\s\S]*?\]/);
-    const arr = JSON.parse(m ? m[0] : res.text);
-    if (!Array.isArray(arr)) return null;
-    const tags = [...new Set(arr.filter((t) => typeof t === "string").map((t: string) => t.trim()).filter(Boolean))].slice(0, 3);
-    return tags.length ? tags : null;
-  } catch {
-    return null;
-  }
-}
-
-/** 방금 capture가 만든 frontmatter의 `tags: []` 줄에 태그를 기록한다(capture 시 1회만 —
- *  이후 재색인·동작은 파일을 수정하지 않으므로 수동 편집 태그가 보존된다, AC-11). */
-function writeTagsToNote(filePath: string, tags: string[]): boolean {
-  try {
-    const src = fs.readFileSync(filePath, "utf8");
-    const line = `tags: [${tags.map((t) => JSON.stringify(t)).join(", ")}]`;
-    const next = src.replace(/^tags: \[\]$/m, line);
-    if (next === src) return false; // 예상 줄이 없으면 건드리지 않는다
-    fs.writeFileSync(filePath, next);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /** 텍스트에서 재검색 쿼리를 추출한다. frontmatter/제목을 건너뛰고 첫 유효 줄 50자. 10자 미만이면 null. */
 export function extractSearchQuery(text: string): string | null {
   const stripped = text.replace(/^---[\s\S]*?---\s*/m, ""); // frontmatter 제거
@@ -1438,15 +1326,8 @@ export async function capture(
 
   const key = `${target.label}/${fname}`;
 
-  // specs/017 FR-5 — 큐레이터 태깅: 파일 생성 후·색인 전에 frontmatter에 기록해
-  // 색인이 최종본으로 1회만 돌게 한다. 실패·부재·꺼짐은 태그 없이 진행(캡처 우선).
-  let tags: string[] | undefined = noteTags && noteTags.length > 0 ? noteTags : undefined;
-  // 사전 지정 tags가 있으면 frontmatter가 이미 채워져 큐레이터 치환(`^tags: \[\]$`)은 no-op —
-  // 자동 태깅 호출 자체를 생략한다(032 FR-3: 사용자 지정 우선).
-  if (!tags && process.env.BRAIN_CAPTURE_TAGS !== "off") {
-    const suggested = await suggestTags(text, title);
-    if (suggested && writeTagsToNote(path.join(target.dir, fname), suggested)) tags = suggested;
-  }
+  // great-reduction: 자동 태깅(큐레이터) 제거 — 태그는 호출자(AI)가 tags 인자로 공급한다.
+  const tags: string[] | undefined = noteTags && noteTags.length > 0 ? noteTags : undefined;
 
   // 텍스트가 너무 짧으면 검증 생략
   if (!extractSearchQuery(text)) {
@@ -1508,174 +1389,6 @@ function logCapture(result: CaptureResult, query: string, folder: string): void 
     folder,
     captureValidation: result.validationStatus,
   });
-}
-
-export interface BrainAnswer {
-  answer: string;
-  sources: string[];
-}
-
-// ── specs/017 — 페르소나 런타임 위임 (사서 합성 · 크리틱 검증) ──────────────
-
-/** 노트 근거 원칙 — 페르소나(사서)와 무관하게 항상 강제되는 규칙(017 FR-2). */
-const FORCED_RAG_RULES =
-  "당신은 사용자의 개인 노트만 근거로 답하는 어시스턴트입니다. 아래 '노트'에 있는 내용만 사용하고, " +
-  "출처를 [경로]로 인용하세요. 노트에 없으면 모른다고 답하세요.";
-
-/** 크리틱 자동 검증의 강제 규칙 — 검사 범위를 사실·수치·인용으로 한정(017 FR-3). */
-const VERIFY_RULES =
-  "역할 제한: 지금은 자동 사실 대조만 한다. 답변의 구체적 사실 주장·수치·날짜·인용이 아래 출처 청크와 " +
-  "일치하는지만 검사하라. 일반 서술·종합·연결·의견은 검사 대상이 아니다. " +
-  '반드시 JSON만 출력하라: {"ok": true} 또는 {"ok": false, "issues": ["확인되지 않는 항목 설명", ...]}';
-
-interface VerifyOutcome {
-  /** 답변 뒤에 붙일 표시(무음이면 빈 문자열) */
-  note: string;
-  /** 로그 필드 — undefined면 기록하지 않음(env off·페르소나 부재) */
-  verify?: "pass" | "warn" | "skipped";
-}
-
-/** 검증 생략 표시 — 크리틱이 "존재하는데" 수행하지 못했을 때만 쓴다(부재는 무음). */
-function skipNote(reason: string): string {
-  return `\n\n---\nℹ 검증 생략(${reason})`;
-}
-
-/** 크리틱 교차 검증 파이프라인(017 FR-3·4). 어떤 실패도 답변을 막지 않는다. */
-async function verifyAnswer(answer: string, context: string, synthModel: string): Promise<VerifyOutcome> {
-  if (process.env.BRAIN_VERIFY === "off") return { note: "" }; // 필드 자체를 남기지 않음(AC-14)
-  const critic = resolvePersona("critic");
-  if (!critic) return { note: "" }; // 미구성 — 무음·무필드(FR-1)
-
-  // 교차 백엔드 판정 — 동종 검증으로 위장하지 않는다(FR-3).
-  const target = pickCrossTarget(critic, modelBackend(synthModel));
-  if (!target) return { note: skipNote("교차 모델 없음"), verify: "skipped" };
-
-  // 일일 상한 — 로그가 곧 카운터(±1 오차 허용, plan).
-  const limit = Math.max(0, Number(process.env.BRAIN_VERIFY_DAILY_LIMIT ?? 50));
-  const todayCount = countVerifyOnDay(readRecords(QUERY_LOG_PATH) ?? []);
-  if (todayCount >= limit) return { note: skipNote("일일 상한"), verify: "skipped" };
-
-  const timeoutMs = Math.max(1000, Number(process.env.BRAIN_VERIFY_TIMEOUT_MS ?? 60_000));
-  const res = await personaChat(critic, {
-    user: `답변:\n${answer}\n\n출처 청크:\n${context}`,
-    systemPrefix: VERIFY_RULES,
-    target,
-    timeoutMs,
-  });
-  if (!res) return { note: skipNote("시간 초과 또는 호출 실패"), verify: "skipped" };
-
-  const verdict = parseVerdict(res.text);
-  if (!verdict) return { note: skipNote("판정 해석 실패"), verify: "skipped" };
-  if (verdict.ok || verdict.issues.length === 0) return { note: "", verify: "pass" }; // 통과 = 무음(FR-9)
-
-  const items = verdict.issues.slice(0, 5).map((i) => `- ${i}`).join("\n");
-  return {
-    note:
-      `\n\n---\n⚠ 검증(critic/${res.model}): 아래 내용은 출처에서 확인되지 않았습니다 — ` +
-      `교차 모델의 추정이며 최종 판단은 사용자 몫입니다:\n${items}\n` +
-      `(이 검증이 거슬리면 BRAIN_VERIFY=off 로 끌 수 있어요)`,
-    verify: "warn",
-  };
-}
-
-/** RAG: 노트 검색 → 컨텍스트로 claude/codex 종합 답변(인용 포함). folder(라벨)로 한정 가능.
- *  specs/017: 사서 페르소나가 있으면 합성을 위임하고, 크리틱이 답변을 교차 검증한다.
- *  로그는 검증까지 끝난 뒤 **단일 레코드**로 남긴다(AC-15 — 이중 기록은 리포트를 오염). */
-export async function askBrain(question: string, k = 5, folder?: string): Promise<BrainAnswer> {
-  const hits = await searchNotesInternal(question, k, folder); // 내부 경유 — 이중 기록 방지(D-1)
-  const logAsk = (sources: string[], extra: Partial<QueryLogRecord> = {}) =>
-    logQuery({
-      ts: new Date().toISOString(),
-      tool: "ask_brain",
-      query: question,
-      hitCount: hits.length,
-      success: sources.length > 0,
-      folder: folder ?? null,
-      sources,
-      topScore: hits[0]?.score ?? null, // specs/025 — hits는 스코어 내림차순(클로저 재사용)
-      ...extra,
-    });
-  if (!hits.length) {
-    logAsk([]); // 답변이 없으므로 검증도 없다(FR-4)
-    return { answer: "관련 노트를 찾지 못했습니다.", sources: [] };
-  }
-
-  const context = hits.map((h) => `[${h.path}]\n${h.text}`).join("\n\n---\n\n");
-  const sources = [...new Set(hits.map((h) => h.path))];
-
-  // 사서 합성(FR-2) — 강제 규칙이 페르소나 지침보다 앞. 부재 시 기존 경로·무음.
-  let model = ANSWER_MODEL;
-  let system = FORCED_RAG_RULES;
-  let persona: string | undefined;
-  if (process.env.BRAIN_LIBRARIAN !== "off") {
-    const librarian = resolvePersona("librarian");
-    const target = librarian && pickTarget(librarian, "claude");
-    if (librarian && target) {
-      model = target.model;
-      system = `${FORCED_RAG_RULES}\n\n${librarian.prompt}`;
-      persona = "librarian";
-    }
-  }
-
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (GATEWAY_KEY) headers.Authorization = `Bearer ${GATEWAY_KEY}`;
-  const res = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model,
-      stream: false,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: `노트:\n${context}\n\n질문: ${question}` },
-      ],
-    }),
-  });
-  if (!res.ok) {
-    logAsk(sources, { model, persona }); // 합성 실패 — 검증 없이 1회 기록(FR-4·AC-15)
-    return { answer: `종합 실패 (HTTP ${res.status})`, sources };
-  }
-  const j: any = await res.json();
-  const answer = j?.choices?.[0]?.message?.content ?? "(빈 응답)";
-
-  const verified = await verifyAnswer(answer, context, model);
-  logAsk(sources, { model, persona, ...(verified.verify ? { verify: verified.verify } : {}) });
-  return { answer: answer + verified.note, sources };
-}
-
-export interface ResolvedLink {
-  /** resolved:true면 해석된 노트 키('label/relpath'), false면 원본 위키링크 타겟 문자열. */
-  target: string;
-  resolved: boolean;
-}
-export interface NoteLinks {
-  outgoing: ResolvedLink[];
-  incoming: string[];
-}
-
-/** 노트의 1-hop 위키링크 관계(outgoing/incoming)를 조회한다. 노트가 없으면 null. */
-export async function noteLinks(notePath: string): Promise<NoteLinks | null> {
-  const idx = await ensureIndexed();
-  const entry = idx.files[notePath];
-  if (!entry) return null;
-
-  const outgoing: ResolvedLink[] = entry.linksOut.map((raw) => {
-    const resolved = resolveLink(raw, entry.folder, idx);
-    return resolved ? { target: resolved, resolved: true } : { target: raw, resolved: false };
-  });
-
-  const incoming: string[] = [];
-  for (const [key, fe] of Object.entries(idx.files)) {
-    if (key === notePath) continue;
-    for (const raw of fe.linksOut) {
-      if (resolveLink(raw, fe.folder, idx) === notePath) {
-        incoming.push(key);
-        break;
-      }
-    }
-  }
-
-  return { outgoing, incoming };
 }
 
 /** 인덱스에서 단일 파일 항목을 제거하고 저장한다. 파일 삭제 이벤트 처리용. */
@@ -1796,167 +1509,4 @@ export function indexLabelReport(): {
 /** 노트 폴더 요약 문자열(label:dir, ...). */
 export function notesDir(): string {
   return FOLDERS.map((f) => `${f.label}:${f.dir}`).join(", ");
-}
-
-/** 노트 파일 목록(label/파일경로). folder(라벨)로 한정 가능. 임베딩 불필요(스캔만). */
-export function listNotes(folder?: string): { folder: string; path: string }[] {
-  const out: { folder: string; path: string }[] = [];
-  for (const f of FOLDERS) {
-    if (folder && f.label !== folder) continue;
-    for (const full of listMarkdown(f.dir)) out.push({ folder: f.label, path: `${f.label}/${path.relative(f.dir, full)}` });
-  }
-  return out;
-}
-
-// ── specs/038 — 노트 카드 브라우저: 메타 추출·열거 ─────────────────────────
-export interface NoteMeta {
-  folder: string;
-  /** label/상대경로 (본문 API의 path 파라미터와 동일 형식) */
-  path: string;
-  title: string;
-  tags: string[];
-  /** YYYY-MM-DD (frontmatter date/created → 파일명 → "") */
-  date: string;
-  snippet: string;
-}
-
-/** 문자열에서 첫 현실적 날짜(20xx-01~12-01~31, 구분자 유무 무관)를 YYYY-MM-DD로.
- *  숫자 id를 날짜로 오인하지 않도록 ① 연도 20xx + 월·일 범위 검증 ② 앞뒤가 숫자가 아님
- *  (긴 숫자 id에 우연히 박힌 날짜 부분열 배제 — 038 self-review). */
-function firstIsoDate(s: string): string {
-  const re = /(?<!\d)(20\d{2})-?(\d{2})-?(\d{2})(?!\d)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(s)) !== null) {
-    const mo = Number(m[2]);
-    const d = Number(m[3]);
-    if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) return `${m[1]}-${m[2]}-${m[3]}`;
-  }
-  return "";
-}
-
-/** 노트 텍스트에서 카드 메타를 추출한다(순수 — I/O 없음, 038 AC-2). */
-export function parseNoteMeta(text: string, relPath: string, folderLabel: string): NoteMeta {
-  const fm = text.match(/^---\n([\s\S]*?)\n---/);
-  const fmBody = fm ? fm[1] : "";
-  const fmField = (name: string): string | null => {
-    const m = fmBody.match(new RegExp(`^${name}:\\s*(.+)$`, "m"));
-    return m ? m[1].trim().replace(/^["']|["']$/g, "") : null;
-  };
-  // 인라인(tags: ["a","b"]) 우선, 없으면 블록 스타일(tags:\n  - a\n  - b)도 파싱(038 self-review).
-  const cleanTag = (t: string) => t.trim().replace(/^["']|["']$/g, "");
-  const inlineTags = fmBody.match(/^tags:\s*\[([^\]]*)\]/m);
-  let tags: string[];
-  if (inlineTags) {
-    tags = inlineTags[1].split(",").map(cleanTag).filter(Boolean);
-  } else {
-    const blockTags = fmBody.match(/^tags:\s*\n((?:[ \t]*-[ \t]*.+\n?)+)/m);
-    tags = blockTags
-      ? blockTags[1].split("\n").map((l) => cleanTag(l.replace(/^[ \t]*-[ \t]*/, ""))).filter(Boolean)
-      : [];
-  }
-  const body = text.replace(/^---\n[\s\S]*?\n---\s*/, "");
-  const headingM = body.match(/^#\s+(.+)$/m);
-  const base = (relPath.replace(/\.md$/, "").split("/").pop() ?? relPath) || relPath;
-  const title = fmField("title") || (headingM ? headingM[1].trim() : base);
-  const date = firstIsoDate(fmField("date") ?? fmField("created") ?? "") || firstIsoDate(relPath);
-  const snippet = body
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l && !l.startsWith("#") && !l.startsWith("---"))
-    .map((l) => l.replace(/^>\s*/, "").replace(/^[-*]\s+/, "").replace(/^\d+\.\s+/, "").trim())
-    .filter(Boolean)
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .slice(0, 140);
-  return { folder: folderLabel, path: `${folderLabel}/${relPath}`, title, tags, date, snippet };
-}
-
-export interface NotesListing {
-  notes: NoteMeta[];
-  /** 빈도순 전체 태그(필터 칩용) */
-  tags: string[];
-}
-
-/** 전체 노트를 메타와 함께 열거한다(날짜 내림차순, 태그 빈도순). 038 FR-1·2.
- *  folders 주입은 테스트용(기본 FOLDERS). */
-export function listNotesWithMeta(folders: NoteFolder[] = FOLDERS): NotesListing {
-  const notes: NoteMeta[] = [];
-  const tagFreq = new Map<string, number>();
-  for (const f of folders) {
-    for (const full of listMarkdown(f.dir)) {
-      let text: string;
-      try {
-        // 심링크 노트는 리스팅에서 제외 — 폴더 밖 파일 내용이 스니펫으로 새지 않게(본문
-        // API·reportsStatus와 동일 보안 태세, 038 self-review 중대-1). 신뢰경계 밖 입력.
-        if (fs.lstatSync(full).isSymbolicLink()) continue;
-        text = fs.readFileSync(full, "utf8").slice(0, 4000); // 상단만 — frontmatter+스니펫 충분
-      } catch {
-        continue; // 사라진 파일 — 건너뜀
-      }
-      const meta = parseNoteMeta(text, path.relative(f.dir, full), f.label);
-      notes.push(meta);
-      for (const t of meta.tags) tagFreq.set(t, (tagFreq.get(t) ?? 0) + 1);
-    }
-  }
-  notes.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-  const tags = [...tagFreq.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
-  return { notes, tags };
-}
-
-/** 'label/파일경로' 노트 한 개를 삭제하고 재인덱싱한다. 폴더 밖 경로는 거부. 반환: 삭제 성공 여부. */
-/**
- * 노트를 폴더의 `.trash/` 하위로 **상대경로를 보존해** 이동한다(soft-delete, specs/011 FR-4).
- * - `label/sub/note.md` → `<folderDir>/.trash/sub/note.md` (AC-9: 하위폴더 경로 보존)
- * - 같은 위치에 파일이 있으면 타임스탬프(+카운터) 접미로 충돌을 피한다(AC-7: 덮어쓰기 없음)
- * `.trash/`는 숨김 폴더라 listMarkdown이 인덱싱에서 자동 제외한다(검색 미노출).
- * 순수 fs 연산 — 인덱싱과 분리해 단위 테스트 가능. 이동한 목적지 절대경로를 반환.
- */
-export function moveToTrash(full: string, folderDir: string): string {
-  const rel = path.relative(folderDir, full); // 폴더 내 상대경로 보존
-  const trashDir = path.join(folderDir, ".trash");
-  let dest = path.join(trashDir, rel);
-  if (fs.existsSync(dest)) {
-    const ext = path.extname(dest);
-    const base = dest.slice(0, dest.length - ext.length);
-    dest = `${base}-${Date.now()}${ext}`;
-    let n = 1;
-    while (fs.existsSync(dest)) dest = `${base}-${Date.now()}-${n++}${ext}`;
-  }
-  fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.renameSync(full, dest);
-  return dest;
-}
-
-export type DeleteNoteResult =
-  | { ok: true }
-  /** invalid-target: 노트가 아닌 대상(비-.md, 숨김 파일/폴더, 폴더 밖 경로) — specs/013 FR-7 */
-  | { ok: false; reason: "not-found" | "invalid-target" };
-
-export async function deleteNote(qualified: string): Promise<DeleteNoteResult> {
-  const notFound: DeleteNoteResult = { ok: false, reason: "not-found" };
-  const invalid: DeleteNoteResult = { ok: false, reason: "invalid-target" };
-  const slash = qualified.indexOf("/");
-  if (slash < 0) return notFound;
-  const f = FOLDER_BY_LABEL.get(qualified.slice(0, slash));
-  if (!f) return notFound;
-  const full = path.resolve(f.dir, qualified.slice(slash + 1));
-  if (full !== f.dir && !full.startsWith(path.resolve(f.dir) + path.sep)) return invalid; // 폴더 밖 탈출 방지
-  // 노트(.md)만 삭제 대상이다 — 인덱스(.brain-index.json)·휴지통(.trash/)·설정 등
-  // 숨김 파일/폴더나 비-.md 파일은 프롬프트 주입·착오로 지목돼도 거부한다(013 FR-7).
-  if (!full.toLowerCase().endsWith(".md")) return invalid;
-  const rel = path.relative(f.dir, full);
-  if (rel.split(path.sep).some((seg) => seg.startsWith("."))) return invalid;
-  if (!fs.existsSync(full) || !fs.statSync(full).isFile()) return notFound;
-  // 심링크 경유 탈출 방지 — 경로 문자열은 폴더 안이어도 실경로가 밖이면 거부
-  // (self-review 결함 3: notes/link→밖 심링크로 vault 밖 파일이 이동되는 우회).
-  try {
-    const realFull = fs.realpathSync(full);
-    const realDir = fs.realpathSync(f.dir);
-    if (realFull !== realDir && !realFull.startsWith(realDir + path.sep)) return invalid;
-  } catch {
-    return notFound;
-  }
-  moveToTrash(full, f.dir); // 영구 삭제 대신 휴지통 이동(soft-delete)
-  await ensureIndexed();
-  return { ok: true };
 }

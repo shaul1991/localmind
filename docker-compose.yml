@@ -1,50 +1,24 @@
-# 프로젝트명을 고정 → 클론 디렉토리명과 무관하게 컨테이너/볼륨/네트워크가 일관(localmind_*).
-name: localmind
-
+# localmind 임베딩 엔진(Ollama) — 로컬에 Ollama를 직접 설치하기 어려운 환경(예: Linux 서버)용.
+# 맥은 네이티브 설치가 더 빠르다(Metal): brew install ollama && ollama pull bge-m3
+#
+#   docker compose up -d          # ollama 기동(+bge-m3 자동 pull)
+#   .env: EMBEDDINGS_URL=http://localhost:11434/v1 · EMBEDDINGS_MODEL=bge-m3 · EMBEDDINGS_KEY=dummy
+#   NVIDIA GPU 가속: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# great-reduction(2026-07-21): 게이트웨이·litellm·openmemory 서비스 제거 — 임베딩은
+# OpenAI 호환 엔드포인트(EMBEDDINGS_URL) 직결이 기본(specs/202607211015).
 services:
-  localmind:
-    build: .
-    image: localmind
-    container_name: localmind
-    ports:
-      # 개인 전용 — 루프백에만 노출(같은 머신에서만 접근, LAN 노출 없음).
-      - "127.0.0.1:8787:8787"
-    environment:
-      - HOST=0.0.0.0
-      - PORT=8787
-      # claude 구독 인증: 호스트에서 'make claude-token'(claude setup-token)으로 발급한
-      # 장수명 OAuth 토큰. .env 의 CLAUDE_CODE_OAUTH_TOKEN 에서 주입된다.
-      #   왜 토큰인가: ~/.claude.json 단일 파일 bind-mount는 claude 가 설정을 atomic
-      #   rename 으로 교체할 때마다 inode 가 끊겨 컨테이너에서 "config not found" 가 되고,
-      #   macOS 는 토큰을 Keychain 에 저장해 파일 마운트로는 인증이 공유되지도 않는다.
-      #   헤드리스/컨테이너 정석인 CLAUDE_CODE_OAUTH_TOKEN 으로 둘 다 해결한다.
-      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
-      # 필요 시 주석 해제
-      # - LOCALMIND_API_KEY=change-me
-      # - DEFAULT_BACKEND=claude
-      # - SESSION_MODE=auto
-      # - LOG_LEVEL=info
-    volumes:
-      # codex 구독 인증은 ~/.codex/auth.json(파일 기반)을 디렉터리째 공유한다.
-      # 디렉터리 마운트는 atomic rename 에도 안전하므로 claude 처럼 깨지지 않는다.
-      - ${HOME}/.codex:/root/.codex
-    restart: unless-stopped
-
-  # ── opt: 임베딩 백엔드 (profile: gateway) ─────────────────────
-  # Ollama로 OpenAI 호환 /v1/embeddings 제공. 최초 기동 시 모델을 자동 pull.
   ollama:
-    profiles: ["gateway"]
     # [공급망 고정] digest로 고정(= ollama 0.30.11). sha256이라 업스트림 재푸시에도 불변 — 재현성 최상.
-    #   참고: ollama는 semver 태그가 명확해 `ollama/ollama:0.30.11`(버전 태그)이 더 간단·가독적이며
-    #   specs/010이 1차로 선호하는 형태다. 여기서 digest를 쓴 건 구현 환경에서 태그 원격 검증이
-    #   불가했고 digest는 검증된 재현 핀이기 때문 — 네트워크 되는 호스트에서 태그로 바꿔도 무방.
     #   버전을 올리려면: 호스트에서 `docker pull ollama/ollama:<신버전>` 후
-    #   `docker image inspect ... --format '{{index .RepoDigests 0}}'`로 새 digest를 얻어 교체 → `make up` 검증.
+    #   `docker image inspect ... --format '{{index .RepoDigests 0}}'`로 새 digest를 얻어 교체 후 검증.
     image: ollama/ollama@sha256:c484b703176aa19dfc0a54cbfb60ab8094b38faa04283fb77eba1d33319e5eca
     container_name: localmind-ollama
+    ports:
+      - "127.0.0.1:11434:11434"
     environment:
       # CPU에선 임베딩 1건이 이미 전 코어를 쓰므로 병렬(>1)은 경합으로 더 느려진다.
-      # 기본 1, GPU 등 여유가 있을 때만 올린다.
+      # 기본 1, GPU 등 여유가 있을 때만 올린다(gpu override가 4로 조정).
       - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
     entrypoint: ["/bin/sh", "-c"]
     command:
@@ -58,135 +32,5 @@ services:
       - ollama-data:/root/.ollama
     restart: unless-stopped
 
-  # ── opt: 통합 게이트웨이 (profile: gateway) ───────────────────
-  # supermemory 등 소비자는 이 엔드포인트(4000) 하나만 바라본다.
-  #   /v1/embeddings        → ollama(bge-m3)
-  #   /v1/chat/completions  → localmind(claude/codex CLI)
-  litellm:
-    profiles: ["gateway"]
-    # [공급망 고정] digest로 고정(= litellm v1.91.0). litellm의 ghcr 태그 체계가 불명확
-    #   (main-* 롤링 태그 위주)이라 sha256 digest로 고정한다 — specs/010 Open questions 지침.
-    #   버전을 올리려면: 원하는 릴리스 태그로 `docker pull ghcr.io/berriai/litellm:<태그>` 후
-    #   `docker image inspect ... --format '{{index .RepoDigests 0}}'`로 새 digest를 얻어 교체 → `make up` 검증.
-    image: ghcr.io/berriai/litellm@sha256:addc088d27c8e6d143d933dc005b8f1a41d45978e5f3acef8e35881303c67427
-    container_name: localmind-litellm
-    depends_on: [localmind, ollama]
-    ports:
-      - "127.0.0.1:4000:4000"
-    volumes:
-      - ./litellm.config.yaml:/app/config.yaml:ro
-    command: ["--config", "/app/config.yaml", "--port", "4000"]
-    environment:
-      # 소비자는 이 키를 Authorization: Bearer 로 보낸다. make init-env가 임의 값을 자동 생성.
-      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY 미설정 — make init-env 로 키를 생성하세요}
-      # 임베딩 라우팅 대상. 기본 = Docker ollama. `make embed BACKEND=host` 가
-      # docker-compose.host.yml override로 host.docker.internal(맥 네이티브 Ollama·Metal)로 바꾼다.
-      - OLLAMA_API_BASE=${OLLAMA_API_BASE:-http://ollama:11434/v1}
-    restart: unless-stopped
-
-  # ── opt: 메모리 서비스 (profile: memory) — OpenMemory(mem0) ──
-  # 저장소는 Postgres+pgvector 단일 DB(앱 메타데이터 + 벡터). OpenMemory는
-  # 최신 소스 + localmind 패치로 빌드(게시 이미지는 pgvector 미지원 + 읽기 버그).
-  # LLM·임베더는 게이트웨이로 → claude(추출) + bge-m3(임베딩), 메터드 API 0원.
-  mem0_pg:
-    profiles: ["memory"]
-    image: pgvector/pgvector:pg16
-    container_name: localmind-pg
-    environment:
-      - POSTGRES_USER=mem0
-      - POSTGRES_PASSWORD=mem0
-      - POSTGRES_DB=openmemory
-    volumes:
-      - mem0-pg:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mem0 -d openmemory"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-    restart: unless-stopped
-
-  openmemory:
-    profiles: ["memory"]
-    build: ./openmemory
-    image: localmind-openmemory
-    container_name: localmind-openmemory
-    depends_on:
-      mem0_pg:
-        condition: service_healthy
-      litellm:
-        condition: service_started
-    ports:
-      # 호스트 8765는 다른 서비스가 쓸 수 있어 8767로 노출(컨테이너 내부는 8765).
-      # 개인 전용 — 루프백에만 노출.
-      - "127.0.0.1:${OPENMEMORY_PORT:-8767}:8765"
-    environment:
-      # config.json이 env:API_KEY를 참조하므로 둘 다 세팅.
-      - API_KEY=${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY 미설정 — make init-env 로 키를 생성하세요}
-      - OPENAI_API_KEY=${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY 미설정 — make init-env 로 키를 생성하세요}
-      # openai SDK가 직접 읽는 base URL → LLM·임베더 모두 게이트웨이로.
-      - OPENAI_BASE_URL=http://litellm:4000/v1
-      - USER=${OPENMEMORY_USER:-localmind}
-      # 앱 메타데이터 DB → Postgres (목록/검색 버그 해소)
-      - DATABASE_URL=postgresql://mem0:mem0@mem0_pg:5432/openmemory
-      # 벡터스토어 → pgvector (PG_HOST/PORT 감지 시 mem0가 pgvector 사용)
-      - PG_HOST=mem0_pg
-      - PG_PORT=5432
-      - PG_DB=openmemory
-      - PG_USER=mem0
-      - PG_PASSWORD=mem0
-      # LLM·임베더를 게이트웨이로
-      - LLM_PROVIDER=openai
-      - LLM_MODEL=${CHAT_MODEL:-claude-sonnet-4-6}
-      - LLM_BASE_URL=http://litellm:4000/v1
-      - LLM_API_KEY=${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY 미설정 — make init-env 로 키를 생성하세요}
-      - EMBEDDER_PROVIDER=openai
-      - EMBEDDER_MODEL=text-embedding-3-small
-      - EMBEDDER_BASE_URL=http://litellm:4000/v1
-      - EMBEDDER_API_KEY=${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY 미설정 — make init-env 로 키를 생성하세요}
-      # Host 헤더 검증(specs/014 — DNS rebinding 차단). 기본 허용 목록에 '추가'되며 '*'면 끔.
-      - OPENMEMORY_ALLOWED_HOSTS=${OPENMEMORY_ALLOWED_HOSTS:-}
-    restart: unless-stopped
-
-  # 부트스트랩(일회성): pgvector 테이블을 임베딩 차원에 맞춰 선생성(mem0가 재사용)
-  # 하고 LLM/임베더 모델명을 게이트웨이 라우팅에 맞게 설정한다.
-  openmemory-init:
-    profiles: ["memory"]
-    image: localmind-openmemory
-    container_name: localmind-openmemory-init
-    depends_on:
-      mem0_pg:
-        condition: service_healthy
-      openmemory:
-        condition: service_started
-    restart: "no"
-    environment:
-      - EMBEDDING_DIMS=${EMBEDDING_DIMS:-1024}
-      - CHAT_MODEL=${CHAT_MODEL:-claude-sonnet-4-6}
-    entrypoint: ["python", "-c"]
-    command:
-      - |
-        import os, time, json, urllib.request, psycopg2
-        dims = int(os.environ.get("EMBEDDING_DIMS", "1024"))
-        model = os.environ.get("CHAT_MODEL", "claude-sonnet-4-6")
-        for _ in range(60):
-            try:
-                conn = psycopg2.connect(host="mem0_pg", port=5432, dbname="openmemory", user="mem0", password="mem0"); break
-            except Exception: time.sleep(2)
-        cur = conn.cursor()
-        cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
-        cur.execute("CREATE TABLE IF NOT EXISTS openmemory (id UUID PRIMARY KEY, vector vector(%d), payload JSONB)" % dims)
-        conn.commit(); conn.close()
-        print("[init] pgvector table ready (dim=%d)" % dims)
-        for _ in range(60):
-            try: urllib.request.urlopen("http://openmemory:8765/docs", timeout=3); break
-            except Exception: time.sleep(2)
-        # 모델명은 LLM_MODEL env로 이미 적용됨. config API는 best-effort 보정.
-        cfg = {"mem0": {"llm": {"provider": "openai", "config": {"model": model, "temperature": 0.1, "max_tokens": 2000, "api_key": "env:API_KEY"}}, "embedder": {"provider": "openai", "config": {"model": "text-embedding-3-small", "api_key": "env:API_KEY"}}}}
-        req = urllib.request.Request("http://openmemory:8765/api/v1/config/", data=json.dumps(cfg).encode(), headers={"Content-Type": "application/json"}, method="PUT")
-        try: urllib.request.urlopen(req, timeout=15)
-        except Exception as e: print("[init] config PUT skipped:", e)
-        print("[init] done")
-
 volumes:
   ollama-data:
-  mem0-pg:

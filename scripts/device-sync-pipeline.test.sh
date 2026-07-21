@@ -92,17 +92,12 @@ RBARE="$TMP/remote-proj.git"; RDIR="$TMP/remote-proj"; RHOME="$TMP/remote-home"
 cp -R "$PROJ/scripts" "$RDIR/"; mkdir -p "$RDIR/src" "$RHOME"
 ( cd "$RDIR" && git_id "$RDIR" && "$REAL_GIT" -C "$RDIR" add -A && "$REAL_GIT" -C "$RDIR" commit -qm init && "$REAL_GIT" -C "$RDIR" push -q -u origin HEAD 2>/dev/null || true )
 
-# specs/044 R4-05: 수신 워커의 워크플로 검증(ⓖ)이 **실제 verify-targets**를 실행하도록 fixture에 설치한다
-# (branch를 우회하는 grep-only 증거가 아니라 실 verifier 실행). 실 src/templates를 복사하고 node_modules는
-# 링크하며, 검증 대상 injected target 루트를 LOCALMIND override로 지정해 실 배포로 채운다.
-cp "$ROOT/scripts/verify-targets.ts" "$RDIR/scripts/" 2>/dev/null || true
-rm -rf "$RDIR/src"; cp -R "$ROOT/src" "$RDIR/src"; cp -R "$ROOT/templates" "$RDIR/templates"
+# great-reduction(2026-07-21): 워크플로 자산 검증(ⓖ verify-targets)·스킬 배포는 sdd-toolkit
+# 소관으로 이전 — 수신 워커는 코드·노트·자산 데이터만 다룬다. 코어 검증 게이트(ⓓ)가 실
+# 스위트를 실행하도록 src를 복사한다.
+rm -rf "$RDIR/src"; cp -R "$ROOT/src" "$RDIR/src"
 cp "$ROOT/package.json" "$ROOT/tsconfig.json" "$RDIR/" 2>/dev/null || true
 ln -sf "$ROOT/node_modules" "$RDIR/node_modules"
-RECV_DATA="$TMP/recv-data"; RECV_CLAUDE="$TMP/recv-claude/skills"; RECV_AGENT="$TMP/recv-agent/skills"; RECV_GEMINI="$TMP/recv-gemini/commands"
-mkdir -p "$(dirname "$RECV_CLAUDE")" "$(dirname "$RECV_AGENT")" "$(dirname "$RECV_GEMINI")"
-recv_deploy() { ( cd "$ROOT" && LOCALMIND_SKILLS_DIR="$RECV_DATA" LOCALMIND_CLAUDE_SKILLS_DIR="$RECV_CLAUDE" LOCALMIND_AGENT_SKILLS_DIR="$RECV_AGENT" LOCALMIND_GEMINI_COMMANDS_DIR="$RECV_GEMINI" node --import tsx/esm scripts/skills-deploy.ts >/dev/null 2>&1 ); }
-recv_deploy
 
 # 원격 백업 저장소(노트) — ff 가능
 NBARE="$TMP/notes.git"; NDIR="$RHOME/.localmind"
@@ -118,8 +113,6 @@ run_sync() { # [env K=V ...] — 오케스트레이터 실행
     SSH_LOG="$TMP/ssh.log" MAKE_LOG="$TMP/make.log" GIT_LOG="$TMP/git.log" EVT_LOG="$TMP/evt.log" \
     REMOTE_HOME="$RHOME" REMOTE_ENV_FILE="$TMP/recv.env" REMOTE_BACKUP_DIR="$NDIR" \
     REMOTE_CLAUDE_AGENTS_DIR="$RHOME/claude-agents" \
-    REMOTE_SKILLS_DIR="$RECV_DATA" REMOTE_CLAUDE_SKILLS_DIR="$RECV_CLAUDE" \
-    REMOTE_AGENT_SKILLS_DIR="$RECV_AGENT" REMOTE_GEMINI_COMMANDS_DIR="$RECV_GEMINI" \
     env "$@" bash scripts/device-sync.sh 2>&1)"
   RC=$?
 }
@@ -133,7 +126,7 @@ assert "AC-1: 성공 경로 0 종료" '[ "$RC" -eq 0 ]'
 assert "AC-1: 완료 요약(①~④)" 'printf %s "$OUT" | grep -q "동기화 완료" && printf %s "$OUT" | grep -q "④수신"'
 assert "AC-1: 순서 ①gh→②make→③ssh(공유 이벤트 로그 라인 비교)" 'g=$(grep -n "EVT gh" "$TMP/evt.log" | head -1 | cut -d: -f1); m=$(grep -n "EVT make" "$TMP/evt.log" | head -1 | cut -d: -f1); s=$(grep -n "EVT ssh" "$TMP/evt.log" | head -1 | cut -d: -f1); [ -n "$g" ] && [ -n "$m" ] && [ -n "$s" ] && [ "$g" -lt "$m" ] && [ "$m" -lt "$s" ]'
 assert "AC-8: 수신이 restore-assets 경로를 호출(bare deploy 아님)" 'grep -q RESTORE "$TMP/restore.log"'
-assert "AC-11: 배포 마커 검증 통과" 'printf %s "$OUT" | grep -q "managed-by 마커"'
+# AC-11(배포 마커)은 great-reduction으로 소멸 — 배포 검증은 sdd-toolkit 소관.
 
 # AC-2/5b: backup 코어(2)=중단, 소프트(1)=계속
 reset_logs
@@ -203,14 +196,12 @@ run_recv() { # [env K=V ...]
     LOCALMIND_PROJECT_DIR="$RDIR" LOCALMIND_ENV_FILE="$TMP/recv.env" BACKUP_DIR="$NDIR" \
     NPM_LOG="$TMP/npm.log" RESTORE_LOG="$TMP/restore.log" GIT_LOG="$TMP/git.log" \
     LOCALMIND_CLAUDE_AGENTS_DIR="$RHOME/claude-agents" \
-    LOCALMIND_SKILLS_DIR="$RECV_DATA" LOCALMIND_CLAUDE_SKILLS_DIR="$RECV_CLAUDE" \
-    LOCALMIND_AGENT_SKILLS_DIR="$RECV_AGENT" LOCALMIND_GEMINI_COMMANDS_DIR="$RECV_GEMINI" \
     env "$@" bash scripts/device-sync-receive.sh 2>&1)"
   RC=$?
 }
 : > "$TMP/recv.env"
 
-# AC-8/12: 성공 경로 — dist 부재 → build → seed → restore-assets → 마커
+# AC-8/12: 성공 경로 — dist 부재 → build → 코어 검증 → restore-assets
 rm -rf "$RDIR/dist"; : > "$TMP/npm.log"; : > "$TMP/restore.log"
 run_recv SYNC_TEST_CMD=true
 assert "AC-8: 수신 성공(0) + 순서(build→검증→복원)" '[ "$RC" -eq 0 ] && grep -q build "$TMP/npm.log" && grep -q RESTORE "$TMP/restore.log"'
@@ -249,28 +240,6 @@ printf '#!/bin/sh\nexit 127\n' > "$NOBIN/node"; chmod +x "$NOBIN/node"
 : > "$TMP/npm.log"
 OUT="$(cd "$RDIR" && PATH="$NOBIN:$PATH" HOME="$RHOME" LOCALMIND_PROJECT_DIR="$RDIR" LOCALMIND_ENV_FILE="$TMP/recv.env" BACKUP_DIR="$NDIR" NPM_LOG="$TMP/npm.log" bash scripts/device-sync-receive.sh 2>&1)"; RC=$?
 assert "AC-17: node 부재 → SYNC_ENV_PREP 안내 + npm 미실행 + 비0" '[ "$RC" -ne 0 ] && printf %s "$OUT" | grep -q "SYNC_ENV_PREP" && ! grep -q NPM "$TMP/npm.log"'
-
-echo "— R4-05: 수신 워커 워크플로 검증(실 verify-targets 실행) —"
-: > "$TMP/recv.env"
-# 모든 target 정상(recv_deploy로 사전 배포) → 검증 통과 + 수신 0
-recv_deploy; rm -rf "$RDIR/dist"
-run_recv SYNC_TEST_CMD=true
-assert "R4-05: 모든 available target 정상 → 검증 통과(0) + 검증 라인 출력" '[ "$RC" -eq 0 ] && printf %s "$OUT" | grep -q "워크플로 자산 검증"'
-# 시나리오1: 공용 target에서 packaged skill 하나 제거 → 검증 실패 → 비0(silent skip 아님)
-rm -rf "$RECV_AGENT/goal-ready"; rm -rf "$RDIR/dist"
-run_recv SYNC_TEST_CMD=true
-assert "R4-05: 공용 target skill 누락 → 검증 실패 + 비0" '[ "$RC" -ne 0 ] && printf %s "$OUT" | grep -q "워크플로 자산 검증 실패"'
-recv_deploy
-# 시나리오3b: Gemini 명령이 존재해도 marker가 없으면 검증 실패
-printf 'description = "unmanaged"\nprompt = "x"\n' > "$RECV_GEMINI/goal-ready.toml"; rm -rf "$RDIR/dist"
-run_recv SYNC_TEST_CMD=true
-assert "R4-05: Gemini 명령 marker 없음(존재만) → 검증 실패 + 비0" '[ "$RC" -ne 0 ] && printf %s "$OUT" | grep -q "워크플로 자산 검증 실패"'
-recv_deploy
-# resolver 실패: verify-targets 자체를 실행 못하면(정본 templates 부재) 조용히 건너뛰지 않고 실패
-mv "$RDIR/templates" "$RDIR/templates.bak"; rm -rf "$RDIR/dist"
-run_recv SYNC_TEST_CMD=true
-assert "R4-05: resolver/verifier 실패 → silent skip 아니라 비0" '[ "$RC" -ne 0 ]'
-mv "$RDIR/templates.bak" "$RDIR/templates"
 
 echo ""
 echo "031 device-sync 결과: $pass 통과, $fail 실패"

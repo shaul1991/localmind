@@ -68,7 +68,7 @@ if (process.argv.includes("--clean")) {
 // ── 리포트 (렌더만 — 계산은 analyze) ────────────────────────────
 const all = readRecords(LOG_PATH);
 if (all === null) {
-  console.log(`로그 없음(${LOG_PATH}) — 먼저 search_notes/ask_brain을 사용하면 쌓여요.`);
+  console.log(`로그 없음(${LOG_PATH}) — 먼저 search_notes를 사용하면 쌓여요.`);
   process.exit(0);
 }
 const a = analyze(all, { days: DAYS, minSamples: MIN_SAMPLES });

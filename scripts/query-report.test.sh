@@ -62,7 +62,7 @@ assert "025 AC-5: 기존 집계는 불변(총 29건 표기·exit 0)" '[ "$RC" -e
 # ── AC-4: 20건 이상 → 성공률·실패 키워드 Top·개선 제안 ──────────────────────
 L4="$TMP/full.jsonl"
 for i in $(seq 1 12); do rec "$L4" 1 search_notes "회의록 배포 일정" 0 false; done
-for i in $(seq 1 6); do rec "$L4" 2 ask_brain "백업 절차" 3 true '["notes/a.md"]'; done
+for i in $(seq 1 6); do rec "$L4" 2 ask_brain "백업 절차" 3 true '["notes/a.md"]'; done  # 역사 레코드 호환(great-reduction 이전 로그)
 for i in $(seq 1 4); do rec "$L4" 3 search_notes "장보기 목록" 1 true; done
 rec "$L4" 40 search_notes "옛날 쿼리(30일 밖)" 0 false # 최근 30일 필터 확인용
 run_report "$L4"

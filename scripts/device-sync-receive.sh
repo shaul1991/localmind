@@ -74,12 +74,13 @@ if [ "$need_build" -eq 1 ]; then
   fi
 fi
 
-# ── ⓓ 레지스트리 검증 게이트 — 실패하면 배포하지 않는다(FR-5) ──
-TEST_CMD="${SYNC_TEST_CMD:-node --import tsx/esm --test src/agents/seed.test.ts}"
+# ── ⓓ 코어 검증 게이트 — 실패하면 복원을 진행하지 않는다(FR-5) ──
+# great-reduction: 페르소나 레지스트리(seed) 검증은 sdd-toolkit 소관 — 코어(MCP 표면)로 대체.
+TEST_CMD="${SYNC_TEST_CMD:-node --import tsx/esm --test src/mcp-server.test.ts}"
 if ( cd "$PROJECT_DIR" && bash -c "$TEST_CMD" >/dev/null 2>&1 ); then
-  ok "레지스트리 검증(seed)"
+  ok "코어 검증(MCP 표면)"
 else
-  echo "! 레지스트리 검증 실패 — 깨진 페르소나 구성을 배포하지 않아요."
+  echo "! 코어 검증 실패 — 깨진 상태로 복원을 진행하지 않아요."
   echo "  이 기기에서 직접 확인: cd $PROJECT_DIR && $TEST_CMD"
   [ -n "$FAILURES" ] && echo "⚠ 수신 부분 완료 — 안 된 것:$FAILURES"
   exit 1
@@ -93,28 +94,8 @@ else
   FAILURES="$FAILURES 자산배포"
 fi
 
-# ── ⓕ 배포 마커 검증(읽기 전용 — managed-by 마커) ──
-CLAUDE_AGENTS_DIR="${LOCALMIND_CLAUDE_AGENTS_DIR:-$HOME/.claude/agents}"
-if grep -rl "managed-by: localmind" "$CLAUDE_AGENTS_DIR" >/dev/null 2>&1; then
-  ok "배포 산출물 확인(managed-by 마커)"
-else
-  warn "배포 산출물에서 localmind 마커를 찾지 못했어요 ($CLAUDE_AGENTS_DIR)"
-  FAILURES="$FAILURES 마커"
-fi
-
-# ── ⓖ 워크플로 자산 target별 검증(specs/044 R4-05) ──────────────────────────────
-# 판정의 단일 소스는 TS(verify-targets) — 셸이 가용성·경로·소유권·marker 규칙을 재구현하지 않는다.
-# 모든 available target(공용은 필수, Claude/Gemini는 부모 존재/override 시)의 이름 결합 marker와
-# deny-implicit 정책 metadata, Gemini command marker를 확인한다. **verifier 실행 자체가 실패하면
-# (resolver 실패) 조용히 건너뛰지 않고 검증 실패로 본다.** unavailable target은 실패가 아니다.
-WF_VERIFY_OUT="$(cd "$PROJECT_DIR" && node --import tsx/esm scripts/verify-targets.ts 2>&1)"; wf_rc=$?
-[ -n "$WF_VERIFY_OUT" ] && printf '%s\n' "$WF_VERIFY_OUT"
-if [ "$wf_rc" -eq 0 ]; then
-  ok "워크플로 자산 검증(모든 available target marker·정책)"
-else
-  warn "워크플로 자산 검증 실패 — 'make skills-deploy'로 재생성하세요."
-  FAILURES="$FAILURES 워크플로검증"
-fi
+# great-reduction(2026-07-21): ⓕ 배포 마커·ⓖ 워크플로 자산(verify-targets) 검증 제거 —
+# 페르소나·스킬 배포는 sdd-toolkit repo 소관(이 스크립트는 코드·노트·자산 데이터만 수신).
 
 if [ -z "$FAILURES" ]; then
   echo "✓ 수신 완료"

@@ -1,48 +1,30 @@
 {
   "name": "localmind",
   "version": "2026.07.8",
-  "description": "메터드 API 0원의 완결형 로컬 AI 스택 — Claude/Codex CLI 구독으로 OpenAI·Anthropic 호환 API + 임베딩 + mem0 메모리 + second-brain RAG + MCP",
+  "description": "로컬 second-brain — 내 노트(.md)가 정본인 개인 기억 계층: capture·검색·백업·동기화 + MCP",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "dist/mcp.js",
   "bin": {
-    "localmind": "dist/index.js",
-    "localmind-mcp": "dist/mcp.js",
-    "localmind-review": "dist/agents/cross-review-cli.js"
+    "localmind-mcp": "dist/mcp.js"
   },
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
     "mcp": "tsx src/mcp.ts",
-    "ui": "tsx src/ui-server.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "smoke": "tsx scripts/smoke.ts",
-    "smoke:anthropic": "tsx scripts/smoke-anthropic.ts",
-    "smoke:tools": "tsx scripts/smoke-tools.ts",
-    "smoke:anthropic:tools": "tsx scripts/smoke-anthropic-tools.ts",
     "smoke:mcp": "tsx scripts/smoke-mcp.ts",
     "smoke:brain": "tsx scripts/smoke-brain.ts",
-    "memory:export": "tsx scripts/memory-export.ts",
-    "memory:import": "tsx scripts/memory-import.ts",
     "reindex": "tsx scripts/reindex.ts",
     "query-report": "tsx scripts/query-report.ts",
     "brain-report": "tsx scripts/brain-report.ts",
-    "init-sdd": "tsx scripts/init-sdd.ts",
-    "agents:deploy": "tsx scripts/agents-deploy.ts",
-    "rules:deploy": "tsx scripts/rules-deploy.ts",
-    "retro-report": "tsx scripts/retro-report.ts",
     "retrieval:quality": "tsx scripts/retrieval-quality.ts",
-    "skills:deploy": "tsx scripts/skills-deploy.ts",
-    "review:preflight": "tsx scripts/review-preflight.ts",
-    "test": "node --import tsx/esm --test src/*.test.ts src/agents/*.test.ts src/rules/*.test.ts src/backends/*.test.ts scripts/*.test.mjs"
+    "test": "node --import tsx/esm --test src/*.test.ts scripts/*.test.mjs"
   },
   "keywords": [
-    "claude",
-    "codex",
-    "openai",
-    "proxy",
-    "cli",
-    "llm"
+    "second-brain",
+    "notes",
+    "mcp",
+    "rag",
+    "local-first"
   ],
   "license": "MIT",
   "dependencies": {
@@ -52,10 +34,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.106.0",
     "@types/express": "^4.17.21",
     "@types/node": "^22.10.0",
-    "openai": "^6.45.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   },

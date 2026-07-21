@@ -5,7 +5,7 @@
  *   npm run reindex
  *   NOTES_DIR="work=/notes/work,life=/notes/personal" npm run reindex
  *
- * 전제: 임베딩 게이트웨이(:4000)가 떠 있어야 한다(make up).
+ * 전제: 임베딩 엔진(Ollama — EMBEDDINGS_URL, 기본 http://localhost:11434/v1)이 떠 있어야 한다.
  */
 import { listFolders, reindex } from "../src/brain.js";
 
