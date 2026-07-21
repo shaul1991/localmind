@@ -37,28 +37,28 @@ audience: both
 | repo | `.env.example` | EMBEDDINGS_* 예시 — litellm/Ollama 직결 병기 + EMBEDDING_MODEL(단수)와 레이어 구분 주석(FR-2, 실증 후 확정) |
 | repo | `scripts/mcp-install.sh`·`scripts/mcp-desktop.sh`·`scripts/reindex.sh` | EMBEDDINGS_URL·EMBEDDINGS_MODEL 옵션 패스스루(설정 시에만 — FR-2 배선, AC-7) |
 | 기기 | M5 `.env`·Ollama·색인·MCP 등록 | FR-3 복원 실행(관찰 기록) |
-| 기기 | `~/personal/shaul-brain/second-brain-private/devices/shaulm5local.md` | 기기 노트 갱신(사용자 벌트 — 보고 명시) |
+| 기기 | `<사용자 노트 벌트>/devices/<기기>.md` | 기기 노트 갱신(사용자 벌트 — 보고 명시) |
 | repo | `specs/202607211015-local-first-default/evidence/` | restore-log·실증 기록 |
 
 ## 단계
 
-0. **Phase 0 — EMBEDDINGS_* 배선(FR-2 일부, AC-7)**: scripts 3파일 패스스루 + 하위호환
+0. ✅ **Phase 0 — EMBEDDINGS_* 배선(FR-2 일부, AC-7)**: scripts 3파일 패스스루 + 하위호환
    확인(미설정 시 diff 없음·스위트 green). Phase 1의 .env 기반 실증이 이 배선을 전제.
-1. **Phase 1 — M5 복원 실증(FR-3·4 전반)**: 절차 초안대로 실행하며 기록 — Ollama 기동 →
+1. ✅ **Phase 1 — M5 복원 실증(FR-3·4 전반)**: 절차 초안대로 실행하며 기록 — Ollama 기동 →
    U-5 실증(직결 vs litellm) → .env 구성 → 재색인 → mcp-install/mcp-desktop → 검증(AC-4·5)
    → U-4 확정. **실증이 문서보다 먼저**(Live-Verify — 문서에 미검증 단정 금지).
-2. **Phase 2 — 문서 확정(FR-1·2)**: 실증 결과로 README·home-server.md·.env.example 작성.
+2. ✅ **Phase 2 — 문서 확정(FR-1·2)**: 실증 결과로 README·home-server.md·.env.example 작성.
    복귀 절차 = 실행 로그의 정리본(1:1, AC-3).
-3. **Phase 3 — self-review·closure**: preflight → 격리 self-review(§7A) → 문서 검증 표기 →
+3. ✅ **Phase 3 — self-review·closure**(r1 clean): preflight → 격리 self-review(§7A) → 문서 검증 표기 →
    commit/push/PR. 기기 트랙은 PR 밖임을 본문 명시(이중 트랙 관례).
 
 ## 테스트 전략
 
-- 계약(unit): AC-1·2 — 기존 문서 계약 스위트 green + 신규 문구 존재는 수동/스위트 혼합
+- [x] 계약(unit): AC-1·2 — 기존 문서 계약 스위트 green + 신규 문구 존재는 수동/스위트 혼합
   (문서 추가는 기존 AC-17 등 비회귀 확인이 핵심).
-- 실행 관찰(도그푸드): AC-3·4·5·6 — M5 실환경 실행 로그가 evidence(결정적 재현은 불가한
+- [x] 실행 관찰(도그푸드): AC-3·4·5·6 — M5 실환경 실행 로그가 evidence(결정적 재현은 불가한
   실환경 작업 — 관찰 기록·명령 출력 캡처가 근거, degraded 아닌 성격).
-- Live-Verify: U-4·U-5는 실증 전 문서 단정 금지.
+- [x] Live-Verify: U-4·U-5는 실증 전 문서 단정 금지.
 
 ## Verification matrix
 

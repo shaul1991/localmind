@@ -54,14 +54,14 @@ tier-rationale: >
 
 ## Success metrics
 
-(전 항목 달성 — 2026-07-21 self-review r1 clean. Desktop UI 노출만 사용자 확인 대기. 근거: spec.md 검증 결과 절)
-
-- M5에서 `whoami`가 로컬 stdio로 응답하고, 원격 MCP를 껐을 때(오프라인 등가)도 recall이
-  동작한다(도그푸드 관찰).
-- Desktop에서 localmind 도구 목록이 보인다(사용자 확인).
-- 복귀 절차 문서가 M5 실행 로그와 1:1로 일치한다(절차 드리프트 0).
-- U-4(EMBEDDINGS_MODEL=bge-m3 실동작)·U-5(litellm 없이 Ollama 직결 성립 여부)가 실증으로
-  확정돼 문서에 반영된다.
+- [x] M5에서 `whoami`가 로컬 stdio로 응답하고, 원격 MCP를 껐을 때(오프라인 등가)도 recall이
+  동작한다 — 도그푸드 관찰(restore-log 단계 ⑤: whoami·search 0.573 회수·capture→로컬
+  query-log 41줄).
+- [ ] Desktop에서 localmind 도구 목록이 보인다 — **사용자 확인 대기**(config 등록은 AC-5로
+  확인 완료, UI 노출은 AI가 관찰 불가 — 사유 기재).
+- [x] 복귀 절차 문서가 M5 실행 로그와 1:1로 일치한다 — AC-3(치환 사유 부기 포함, r1 clean).
+- [x] U-4·U-5가 실증으로 확정돼 문서에 반영된다 — 재색인 로그(bge-m3 전환·1200파일)·curl
+  직결(1024차원), .env.example·복귀 절차에 반영(AC-6).
 
 ## Non-goals
 
