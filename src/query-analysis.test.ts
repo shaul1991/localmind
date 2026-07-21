@@ -15,7 +15,7 @@ const NOW = Date.parse("2026-07-03T12:00:00Z");
 function rec(partial: Partial<QueryLogRecord>): QueryLogRecord {
   return {
     ts: "2026-07-03T10:00:00Z",
-    tool: "ask_brain",
+    tool: "ask_brain", // 역사 레코드 호환(great-reduction 이전 로그 파싱)
     query: "테스트 질의",
     hitCount: 1,
     success: true,
@@ -128,7 +128,7 @@ describe("scoreStats — 스코어 분포 (025)", () => {
       [
         rec({ tool: "search_notes", topScore: 0.8 }),
         rec({ tool: "search_notes", topScore: 0.2 }),
-        rec({ tool: "ask_brain", topScore: 0.5 }), // ask_brain도 모집단(FR-3 — 같은 코사인 스케일)
+        rec({ tool: "ask_brain", topScore: 0.5 }), // 역사 레코드도 모집단(FR-3 — great-reduction 이전 로그 호환)
         rec({ tool: "search_notes" }), // 레거시(topScore 미기록) — scoredMissing
         rec({ tool: "search_notes", success: false, hitCount: 0, topScore: null }), // 실패 — 제외
         rec({ tool: "capture_note", query: "캡처", topScore: 0.9 }), // capture — 제외

@@ -1,5 +1,7 @@
 # ROADMAP
 
+> ⚠️ **great-reduction(2026-07-21) 이전에 작성된 로드맵입니다.** 게이트웨이·메모리 서비스·페르소나/스킬(메타) 관련 항목은 제거·분리(sdd-toolkit)로 무효화됐을 수 있습니다 — 유효성은 [product-vision](docs/product-vision.md)·[rebuild-plan](docs/rebuild-plan.md) 기준으로 재판정하세요.
+
 localmind의 진화 방향을 기록한다. 핵심 비전:
 
 > **개인 전용 로컬 AI 스택.** repo 하나로 **내 머신에서, 나 혼자** 쓰는 완결형 스택을

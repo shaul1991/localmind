@@ -1,0 +1,20 @@
+# AC-2 grep 검증 — 2026-07-21 17:26:23
+## 규칙: 실참조 0 — 예외는 명시 표기 라인만: 'great-reduction'(역사 설명·로그 호환)·'legacy-cleanup'(구 설치 정리)·'구 메모리'(가드 역사)
+## 패턴1: openmemory|:8767|:8787|ask_brain|suggestTags (src scripts Makefile docker* ci.yml)
+PASS: 실참조 매치 0
+## 패턴2: package.json에 @anthropic-ai/sdk·openai 부재
+PASS: 매치 0
+
+## 허용 예외 전수(감사용 — 전부 역사 표기 라인):
+  src/query-analysis.ts:15:  tool: "search_notes" | "ask_brain" | "capture_note"; // ask_brain=역사 레코드 호환(great-reduction 이전 로그)
+  src/query-analysis.ts:22:  /** specs/017(역사 great-reduction 이전) — ask_brain 검증 결과. 과거 로그 파싱 호환용. */
+  src/query-analysis.ts:157:  // specs/025 — 스코어 분포: 성공 레코드(search_notes+역사 ask_brain — 같은 코사인 스케일, great-reduction 호환) 중
+  src/query-analysis.test.ts:18:    tool: "ask_brain", // 역사 레코드 호환(great-reduction 이전 로그 파싱)
+  src/query-analysis.test.ts:131:        rec({ tool: "ask_brain", topScore: 0.5 }), // 역사 레코드도 모집단(FR-3 — great-reduction 이전 로그 호환)
+  scripts/query-report.test.sh:65:for i in $(seq 1 6); do rec "$L4" 2 ask_brain "백업 절차" 3 true '["notes/a.md"]'; done  # 역사 레코드 호환(great-reduction 이전 로그)
+  scripts/backup.sh:19:# great-reduction(2026-07-21): 메모리 서비스(openmemory) 제거 — 노트가 기억의 정본, 메모리 export 단계 소멸.
+  scripts/purge.sh:104:  docker image rm localmind localmind-openmemory >/dev/null 2>&1 \
+  scripts/pinning.test.sh:11:# great-reduction(2026-07-21): 게이트웨이 Dockerfile·openmemory 이미지 제거 — 남은 외부
+  docker-compose.yml:8:# great-reduction(2026-07-21): 게이트웨이·litellm·openmemory 서비스 제거 — 임베딩은
+
+## 일탈 기록: express·@types/express 잔존 — mcp-http.ts(Keep, 원격 옵션)가 실사용. AC-2 초안의 'express=게이트웨이+UI 전용' 전제(인벤토리 추정)가 실측과 달라 spec 정정 필요(자기승인 아님 — self-review 판정 대상).

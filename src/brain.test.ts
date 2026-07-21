@@ -411,7 +411,6 @@ function runQueryLogProbe(notesDir: string, body: string): any {
     `srv.listen(0, async () => {`,
     `  const base = "http://127.0.0.1:" + srv.address().port;`,
     `  process.env.EMBEDDINGS_URL = base + "/v1";`,
-    `  process.env.LOCALMIND_URL = base; // ask_brain 종합(gateway)도 스텁으로`,
     `  const m = await import(${JSON.stringify(BRAIN_JS)});`,
     `  try {`,
     body,

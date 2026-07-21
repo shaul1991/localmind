@@ -1,6 +1,6 @@
 /**
  * specs/017 FR-6 — 분석가 리포트 진입점: 실패 질의 집계(최근 7일) + analyst 페르소나
- * 해석을 리포트 노트로 저장한다. 노트는 색인 대상이라 recall/ask_brain으로 회수된다.
+ * 해석을 리포트 노트로 저장한다. 노트는 색인 대상이라 search_notes로 회수된다.
  * 계산은 src/query-analysis.ts, 렌더는 src/report-note.ts — 이 파일은 IO만(얇은 진입점).
  *
  * 사용: make report (주기 등록: make report-cron)
@@ -66,7 +66,7 @@ async function main(): Promise<void> {
   console.log(`📊 리포트 저장: ${file}`);
   if (a.insufficient) console.log(`ℹ 데이터 부족(검색 ${a.searches}건 < ${MIN_SAMPLES}건) — 집계만 기록했습니다.`);
   else if (!interpretation) console.log("ℹ analyst 페르소나 없음/무응답 — 집계만 기록했습니다.");
-  console.log("ℹ 다음 색인 때부터 recall/ask_brain 검색에 잡힙니다.");
+  console.log("ℹ 다음 색인 때부터 search_notes 검색에 잡힙니다.");
 }
 
 main().catch((e) => {

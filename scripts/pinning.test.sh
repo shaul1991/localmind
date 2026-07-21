@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# specs/010 공급망 고정 — 정적 회귀 가드. (+ specs/014: openmemory 편입)
+# specs/010 공급망 고정 — 정적 회귀 가드. (+ specs/014: 구 메모리 이미지 편입 — 역사)
 # 외부 아티팩트 참조가 가변 태그로 되돌아가거나 고정 지점이 사라지는 것을 막는다.
 # 접근: allowlist — 모든 compose image는 @sha256 digest 또는 구체 태그(숫자·v숫자·pg숫자)만
 #       허용하고, latest/stable/main/edge/무태그 등 가변 참조는 거부한다.
@@ -21,7 +21,7 @@ is_pinned() {
   local ref="$1" tag
   case "$ref" in
     *@sha256:*) return 0 ;;                      # digest 고정
-    localmind|localmind-openmemory) return 0 ;;  # 로컬 빌드 이미지(외부 아티팩트 아님)
+    localmind|localmind-*) return 0 ;;           # 로컬 빌드 이미지(외부 아티팩트 아님) # legacy-cleanup
     *:*) tag="${ref##*:}" ;;
     *) return 1 ;;                               # 무태그 → 런타임에 :latest → 거부
   esac
@@ -47,10 +47,10 @@ assert "AC-1: 모든 compose image가 고정(digest/구체태그)  위반:$viola
 assert "FR-1: ollama digest 고정" 'grep -qE "ollama/ollama@sha256:[0-9a-f]{64}" "$ROOT/docker-compose.yml"'
 # ── FR-5: 갱신 안내 주석 존재 ───────────────────────────────────
 assert "FR-5: compose에 갱신 안내 주석 존재" 'grep -qE "갱신|올리려면|업데이트" "$ROOT/docker-compose.yml"'
-# ── (역사) specs/014 openmemory 가드 — 이미지 제거 후에도 negative 자기검증으로
+# ── (역사) specs/014 구 메모리 이미지 가드 — 이미지 제거 후에도 negative 자기검증으로
 #    가드 함수 자체의 회귀만 확인한다(검사 대상 실파일은 소멸).
 
-# openmemory Dockerfile 검사 함수 — negative 자기검증에도 재사용한다.
+# 구 메모리 Dockerfile 검사 함수 — negative 자기검증에도 재사용한다.
 check_om() {
   local f="$1" bad=""
   grep -qE '^ARG PYTHON_TAG=[0-9]+\.[0-9]+\.[0-9]+-slim$' "$f" || bad="$bad python-tag-arg"

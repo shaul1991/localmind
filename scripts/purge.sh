@@ -25,7 +25,7 @@ say ""
 say "$(b '⚠️  localmind 완전 제거') $(b '(로컬에서만 — GitHub 백업은 그대로)')"
 say "$(b '되돌릴 수 없어요'). 다음을 삭제합니다:"
 say "  • 컨테이너 정지 + 데이터 볼륨($(b '메모리 DB')·$(b 'AI 모델')·인덱스)"
-say "  • localmind $(b 'Docker 이미지')(빌드본: localmind, localmind-openmemory)"
+say "  • localmind $(b 'Docker 이미지')(구 빌드본 포함)"  # legacy-cleanup
 say "  • Claude Code $(b 'MCP 등록') 해제"
 [ -n "$WIPE_NOTES" ] && say "  • $(b '노트 폴더')도 삭제(로컬): $(b "$BACKUP_DIR")   ← NOTES=1"
 say ""
@@ -99,9 +99,10 @@ else
 fi
 
 # 2) localmind 빌드 이미지만 제거(공용 pull 이미지는 보존)
+# legacy-cleanup: 구 세대(great-reduction 이전) 설치가 남긴 빌드 이미지도 함께 지운다.
 if [ "$DOCKER_OK" = "1" ]; then
   docker image rm localmind localmind-openmemory >/dev/null 2>&1 \
-    && ok "localmind 이미지 제거(localmind, localmind-openmemory)" \
+    && ok "localmind 이미지 제거(구 빌드 이미지 포함)" \
     || warn "localmind 이미지 없음(또는 다른 컨테이너가 사용 중)"
 else
   err "Docker가 실행 중이 아니에요 — localmind 이미지를 지우지 못했어요."

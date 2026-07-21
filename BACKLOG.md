@@ -1,5 +1,7 @@
 # BACKLOG
 
+> ⚠️ **great-reduction(2026-07-21) 이전에 작성된 백로그입니다.** 게이트웨이·메모리 서비스·페르소나/스킬(메타) 관련 항목은 제거·분리(sdd-toolkit)로 무효화됐을 수 있습니다 — 유효성은 [product-vision](docs/product-vision.md)·[rebuild-plan](docs/rebuild-plan.md) 기준으로 재판정하세요.
+
 **코드는 완료했지만 라이브 스택(docker)이 없어 end-to-end로 검증하지 못한 항목**과
 **아직 진행하지 않은 다음 작업**을 모아 둔다. 추후 작업 시 각 항목의 "검증/완료 기준"을
 따라 확인하고 체크박스를 채운다.
