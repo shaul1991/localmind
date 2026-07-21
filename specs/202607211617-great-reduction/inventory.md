@@ -57,7 +57,15 @@ date: 2026-07-21
 | notes-browser.test.ts (128) | Remove | list_notes/note_links/delete_note(사용 0) 테스트 |
 | (brain.ts·mcp-server.ts 내부의 remember/recall/list_memories/delete_memory·ask/ask_brain·list_notes/note_links/delete_note 지원부) | Remove·부분 | rebuild-plan §1 Remove 9종 |
 
-※ 게이트웨이 스택은 §8 애매로 이관(계획 문서 내부 모순).
+※ ~~게이트웨이 스택은 §8 애매로 이관(계획 문서 내부 모순)~~ → **Remove 확정**(spec 결정
+기록·rebuild-plan 정정 절, 2026-07-21): index.ts·server.ts(+test)·session.ts(+test)·
+routes/{chat,messages,models}.ts·tools.ts(+test)·transform.ts(+test)·types-anthropic.ts·
+backends/* 7파일 — AC-5 대조 목록에 포함(critic B2 반영). 동행 Remove: smoke 4종·
+claude-token.sh·make token/secrets·dev/start·docker 게이트웨이 서비스·express·
+@anthropic-ai/sdk·openai·@types/express. 관측 UI 계열은 **Keep·메타/게이트웨이 import만
+절제**(spec 결정 기록). embed.sh **Keep**(Phase D 유지 판정). bootstrap-guide **내용 기준
+워커 판정·기록**. memory-export/import는 회수 완료(evidence/memory-recovery.md, 13건)로
+**즉시 Remove 가능**.
 
 ## 4. scripts/ 80파일
 
