@@ -124,14 +124,14 @@ if [ "$OS" = "Darwin" ] && [ "$ARCH" = "arm64" ]; then
       else
         DEC="cpu"
         say "  일단 CPU로 진행합니다. 나중에 아래로 가속 가능:"
-        cmd "brew services start ollama && ollama pull bge-m3 && make embed BACKEND=host"
+        cmd "brew services start ollama && ollama pull bge-m3   # .env: EMBEDDINGS_URL=http://localhost:11434/v1"
       fi
     else
       say "  Ollama가 설치되지 않았어요. 설치 후 brew services로 등록하면 재시작 후에도 자동 기동됩니다:"
       cmd "brew install ollama"
       cmd "brew services start ollama   # 재시작 후 자동 기동"
       cmd "ollama pull bge-m3"
-      cmd "make embed BACKEND=host      # 설치 후 Metal 가속으로 전환"
+      cmd "# 설치 후 .env에 EMBEDDINGS_URL=http://localhost:11434/v1 · EMBEDDINGS_MODEL=bge-m3 · EMBEDDINGS_KEY=dummy"
       DEC="cpu"
       say "  일단 CPU로 시작합니다."
     fi
@@ -309,7 +309,7 @@ if [ "$OS" = "Darwin" ] && [ "$ARCH" = "arm64" ]; then
   # Apple Silicon: ollama가 Metal(GPU) 가속을 자동 사용 → host가 CPU보다 훨씬 빠름.
   if [ "${DEC:-cpu}" != "host" ]; then
     say "  Apple Silicon Mac은 $(b 'host ollama + Metal 가속')이 CPU보다 훨씬 빠릅니다. 준비되면 전환:"
-    cmd "brew services start ollama && ollama pull bge-m3 && make embed BACKEND=host"
+    cmd "brew services start ollama && ollama pull bge-m3   # .env: EMBEDDINGS_URL=http://localhost:11434/v1"
   else
     say "  이미 host(Metal 가속) 사용 중 — 최적입니다."
   fi

@@ -61,28 +61,25 @@ if have ollama; then
   if http "http://localhost:11434/api/tags"; then host_ollama="✓ 가동 중 (:11434)"; else host_ollama="! 설치됨(미가동)"; fi
 fi
 
-# ── 현재 임베딩 라우팅 ─────────────────────────────────────────
-# .env의 OLLAMA_API_BASE 유효값(주석·비활성 라인 제외)에 host.docker.internal이 있으면
-# 호스트 모드다(specs/022 FR-3 — raw grep은 주석·예시 라인에 오탐하고, litellm 설정은
-# os.environ 참조라 리터럴이 존재할 수 없는 죽은 가지. reindex.sh의 021 FR-3 판정과 동일).
+# ── 현재 임베딩 라우팅 (great-reduction: OpenAI 호환 엔드포인트 직결) ─────────
 ENV_FILE="${LOCALMIND_ENV_FILE:-$DIR/.env}"
-route="docker"; route_label="Docker Ollama (litellm:4000 → ollama:11434)"
-case "$(read_env_val OLLAMA_API_BASE "$ENV_FILE")" in *host.docker.internal*)
-  route="host"; route_label="호스트 Ollama (litellm:4000 → host.docker.internal:11434)";;
-esac
+EMB_URL="$(read_env_val EMBEDDINGS_URL "$ENV_FILE")"
+EMB_URL="${EMB_URL:-http://localhost:11434/v1}"
+EMB_MODEL="$(read_env_val EMBEDDINGS_MODEL "$ENV_FILE")"
+EMB_MODEL="${EMB_MODEL:-bge-m3}"
+route_label="$EMB_URL (모델: $EMB_MODEL)"
 
 # 실효 백엔드(지금 임베딩이 실제로 도는 형태) 판정
-if [ "$route" = "host" ]; then
-  if [ "$accel" = "metal" ]; then effective="호스트 Ollama → Metal GPU (빠름)"
-  elif [ "$accel" = "cuda" ]; then effective="호스트 Ollama → NVIDIA GPU (빠름)"
-  else effective="호스트 Ollama → CPU"; fi
-else
-  effective="Docker Ollama → CPU (청크당 약 1~4초)"
-fi
+case "$EMB_URL" in
+  *11434*) if [ "$accel" = "metal" ]; then effective="Ollama 직결 → Metal GPU (빠름)"
+           elif [ "$accel" = "cuda" ]; then effective="Ollama 직결 → NVIDIA GPU (빠름)"
+           else effective="Ollama 직결 → CPU"; fi;;
+  *)       effective="외부 OpenAI 호환 엔드포인트";;
+esac
 
 # 임베딩 엔드포인트 살아있나
-emb_up="✗ 응답 없음 (:4000) — 스택 미기동?"
-if http "http://127.0.0.1:4000/health/liveliness"; then emb_up="✓ 응답 (:4000)"; fi
+emb_up="✗ 응답 없음 ($EMB_URL) — 임베딩 엔진(예: ollama serve)이 켜져 있나요?"
+if http "$EMB_URL/models" || http "${EMB_URL%/v1}/api/tags"; then emb_up="✓ 응답 ($EMB_URL)"; fi
 
 # ── 출력 ───────────────────────────────────────────────────────
 say ""
@@ -102,19 +99,19 @@ row "엔드포인트"    "$emb_up"
 # ── 권장 ───────────────────────────────────────────────────────
 head "[권장]"
 if [ "$OS" = "Darwin" ] && [ "$accel" = "metal" ]; then
-  if [ "$route" = "host" ] && [ "${host_ollama#✓}" != "$host_ollama" ]; then
+  if [ "${host_ollama#✓}" != "$host_ollama" ] && case "$EMB_URL" in *11434*) true;; *) false;; esac; then
     say "  ✓ 최적 구성입니다 — 호스트 Ollama(Metal)로 임베딩 중."
   else
     say "  $(b '맥북의 GPU(Metal)를 살리면 임베딩이 10~50배 빨라집니다.')"
     say "  지금은 Docker 안에서 CPU로 돌아 가장 큰 장점을 못 쓰는 상태예요."
     say ""
     say "    1) $(b 'brew install ollama')        # 호스트에 네이티브 설치(또는 Ollama.app)"
-    say "    2) $(b 'ollama serve')               # 새 터미널에 켜둔 채로"
+    say "    2) $(b 'ollama serve')               # 새 터미널에 켜둔 채로(또는 brew services start ollama)"
     say "    3) $(b 'ollama pull bge-m3')         # 임베딩 모델 받기"
-    say "    4) $(b 'make embed BACKEND=host')    # 임베딩을 호스트(Metal)로 전환"
+    say "    4) .env에 $(b 'EMBEDDINGS_URL=http://localhost:11434/v1') · $(b 'EMBEDDINGS_MODEL=bge-m3') · $(b 'EMBEDDINGS_KEY=dummy')"
   fi
 elif [ "$OS" = "Linux" ] && [ "$accel" = "cuda" ]; then
-  say "  NVIDIA GPU가 있습니다 — $(b 'make embed BACKEND=gpu')로 Docker Ollama를 GPU 가속."
+  say "  NVIDIA GPU가 있습니다 — $(b 'docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d')로 Ollama GPU 가속."
   say "  (nvidia-container-toolkit 설치 전제)"
 elif [ "$OS" = "Linux" ]; then
   say "  이 서버엔 GPU가 없어 $(b 'CPU 임베딩이 현재로선 최선')입니다."
@@ -182,8 +179,7 @@ EOF_LABELS
 fi
 
 head "[다음 단계]"
-say "  $(b 'make embed')                       # 이 기기에 맞는 엔진으로 전환(auto 감지)"
-say "  $(b 'make embed BACKEND=host|gpu|cpu')  # 강제 지정 · $(b 'DRY_RUN=1')로 미리보기"
-say "  $(b 'make reindex')                     # 전환 후 기존 노트 재색인"
+say "  $(b 'make reindex')                     # 설정(.env EMBEDDINGS_*) 반영해 노트 재색인"
+say "  $(b 'docker compose up -d')             # Ollama를 직접 설치하기 어려운 환경의 대안(컨테이너)"
 say ""
 exit 0   # 진단 성공 = 0 (프롬프트 ✗ 방지)

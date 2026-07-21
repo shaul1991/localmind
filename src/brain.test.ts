@@ -27,8 +27,6 @@ import {
   removeFromIndex,
   watchNotes,
   extractLinks,
-  resolveLink,
-  moveToTrash,
   chunkText,
   createNoteFile,
   listMarkdown,
@@ -112,151 +110,6 @@ describe("extractLinks", () => {
 
   it("경로 형태의 타겟(폴더/하위폴더/노트명)도 그대로 추출한다", () => {
     assert.deepEqual(extractLinks("[[personal/project/README]]"), ["personal/project/README"]);
-  });
-});
-
-// ── resolveLink 단위 테스트 ────────────────────────────────────────────────
-
-describe("resolveLink", () => {
-  function mockIndex(): BrainIndex {
-    return {
-      version: 3,
-      files: {
-        "work/note-b.md": { hash: "h1", folder: "work", chunks: [], linksOut: [] },
-        "life/note-b.md": { hash: "h2", folder: "life", chunks: [], linksOut: [] },
-        "work/only-here.md": { hash: "h3", folder: "work", chunks: [], linksOut: [] },
-      },
-    };
-  }
-
-  it("basename이 일치하는 노트를 해석한다", () => {
-    const idx = mockIndex();
-    assert.equal(resolveLink("only-here", "work", idx), "work/only-here.md");
-  });
-
-  it("AC-4: 매칭되는 파일이 없으면 null(미해결)을 반환한다", () => {
-    const idx = mockIndex();
-    assert.equal(resolveLink("존재하지않는노트", "work", idx), null);
-  });
-
-  it("AC-6: 동일 basename이 여러 폴더에 있으면 같은 폴더(fromFolder)를 우선한다", () => {
-    const idx = mockIndex();
-    assert.equal(resolveLink("note-b", "work", idx), "work/note-b.md");
-    assert.equal(resolveLink("note-b", "life", idx), "life/note-b.md");
-  });
-
-  it("같은 폴더에 없으면 전체 vault에서 첫 매칭을 사용한다", () => {
-    const idx = mockIndex();
-    // 'other' 폴더에서 링크했지만 note-b는 work/life에만 존재 → 첫 매칭(work) 사용
-    assert.equal(resolveLink("note-b", "other", idx), "work/note-b.md");
-  });
-
-  it("타겟에 경로가 포함돼도 basename만으로 매칭한다", () => {
-    const idx = mockIndex();
-    assert.equal(resolveLink("아무경로/only-here", "work", idx), "work/only-here.md");
-  });
-
-  it("회귀: basename 매칭은 대소문자를 구분하지 않는다(self-review에서 발견)", () => {
-    const idx = mockIndex();
-    assert.equal(resolveLink("Only-Here", "work", idx), "work/only-here.md");
-    assert.equal(resolveLink("ONLY-HERE", "work", idx), "work/only-here.md");
-  });
-});
-
-// ── noteLinks 통합 테스트 (격리된 자식 프로세스로 실제 ~/.localmind 오염 방지) ──
-//
-// brain.ts는 NOTES_DIR/BRAIN_INDEX를 모듈 로드 시점에 한 번만 읽으므로, 이미 로드된
-// 프로세스 안에서 process.env.NOTES_DIR을 나중에 바꿔도 반영되지 않는다. 따라서 실제
-// 격리를 위해서는 자식 프로세스를 env와 함께 새로 띄워야 한다.
-
-function runNoteLinksProbe(notesDir: string, notePath: string, env: Record<string, string> = {}): any {
-  const script = [
-    `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
-    `  await m.reindex();`,
-    `  const nl = await m.noteLinks(${JSON.stringify(notePath)});`,
-    `  process.stdout.write(JSON.stringify(nl));`,
-    `}).catch((e) => { console.error(e); process.exit(1); });`,
-  ].join("\n");
-  const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
-    cwd: REPO_ROOT,
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      ...env,
-      // 라벨을 "notes"로 명시 — 안 하면 mkdtemp가 만든 임시 폴더명(무작위 접미사 포함)이
-      // 라벨이 되어 테스트의 'notes/파일명' 경로 가정이 깨진다.
-      NOTES_DIR: `notes=${notesDir}`,
-      BRAIN_INDEX: path.join(notesDir, ".brain-index.json"),
-    },
-  });
-  return JSON.parse(out);
-}
-
-describe("noteLinks — AC-7 (임베딩 불필요: 빈 vault)", () => {
-  it("AC-7: 인덱스에 없는 노트 경로로 조회하면 null을 반환한다", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-notelinks-empty-"));
-    try {
-      const result = runNoteLinksProbe(dir, "nonexistent/path.md");
-      assert.equal(result, null);
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
-
-// INTEGRATION 플래그는 파일 하단(capture() 통합 테스트 앞)에서 한 번만 선언한다.
-describe("noteLinks — AC-1/2/5 (통합 — 임베딩 서버 필요)", { skip: !INTEGRATION }, () => {
-  it("AC-1: outgoing — 노트A가 [[노트B]]를 링크하면 noteLinks(A)에 B가 해석된 상태로 포함된다", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-notelinks-ac1-"));
-    try {
-      fs.writeFileSync(path.join(dir, "note-a.md"), "노트A 본문입니다. [[note-b]]를 참고하세요.");
-      fs.writeFileSync(path.join(dir, "note-b.md"), "노트B 본문입니다. 별다른 링크는 없습니다.");
-      const result = runNoteLinksProbe(dir, "notes/note-a.md");
-      assert.ok(result, "노트A의 링크 정보가 반환돼야 한다");
-      const outgoing = result.outgoing as { target: string; resolved: boolean }[];
-      assert.ok(outgoing.some((l) => l.resolved && l.target === "notes/note-b.md"));
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it("AC-2: incoming — 노트A가 [[노트B]]를 링크하면 noteLinks(B)의 incoming에 A가 포함된다", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-notelinks-ac2-"));
-    try {
-      fs.writeFileSync(path.join(dir, "note-a.md"), "노트A 본문입니다. [[note-b]]를 참고하세요.");
-      fs.writeFileSync(path.join(dir, "note-b.md"), "노트B 본문입니다. 별다른 링크는 없습니다.");
-      const result = runNoteLinksProbe(dir, "notes/note-b.md");
-      assert.ok(result);
-      assert.ok((result.incoming as string[]).includes("notes/note-a.md"));
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it("AC-5: 위키링크가 전혀 없는 노트는 outgoing/incoming이 모두 빈 배열이다", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-notelinks-ac5-"));
-    try {
-      fs.writeFileSync(path.join(dir, "lonely.md"), "이 노트는 어디에도 링크되지 않고 어디도 링크하지 않는다.");
-      const result = runNoteLinksProbe(dir, "notes/lonely.md");
-      assert.ok(result);
-      assert.deepEqual(result.outgoing, []);
-      assert.deepEqual(result.incoming, []);
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it("AC-4(통합 확인): 미해결 링크가 있으면 outgoing에 resolved:false로 포함된다", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-notelinks-ac4-"));
-    try {
-      fs.writeFileSync(path.join(dir, "note-a.md"), "본문에 [[존재하지않는노트]] 링크가 있다.");
-      const result = runNoteLinksProbe(dir, "notes/note-a.md");
-      assert.ok(result);
-      const outgoing = result.outgoing as { target: string; resolved: boolean }[];
-      assert.ok(outgoing.some((l) => !l.resolved && l.target === "존재하지않는노트"));
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
   });
 });
 
@@ -453,52 +306,6 @@ describe("인덱스 캐시·원자성·동시성 (009)", () => {
   });
 });
 
-// ── moveToTrash (soft-delete) 단위 테스트 — specs/011 트랙 B ────────────────
-// 순수 fs 연산이라 임베딩/인덱싱 없이 검증한다(deleteNote는 이 위에 ensureIndexed만 얹음).
-describe("moveToTrash (soft-delete)", () => {
-  function tmpFolder(): string {
-    return fs.mkdtempSync(path.join(os.tmpdir(), "lm-trash-"));
-  }
-
-  it("AC-5(파일): 원위치에서 사라지고 .trash/로 이동한다", () => {
-    const dir = tmpFolder();
-    const note = path.join(dir, "note.md");
-    fs.writeFileSync(note, "hello");
-    const dest = moveToTrash(note, dir);
-    assert.ok(!fs.existsSync(note), "원위치에서 사라짐");
-    assert.equal(dest, path.join(dir, ".trash", "note.md"));
-    assert.equal(fs.readFileSync(dest, "utf8"), "hello", "내용 보존(복구 가능)");
-    fs.rmSync(dir, { recursive: true, force: true });
-  });
-
-  it("AC-9: 하위폴더 상대경로가 .trash/sub/note.md로 보존된다", () => {
-    const dir = tmpFolder();
-    fs.mkdirSync(path.join(dir, "sub"), { recursive: true });
-    const note = path.join(dir, "sub", "note.md");
-    fs.writeFileSync(note, "x");
-    const dest = moveToTrash(note, dir);
-    assert.equal(dest, path.join(dir, ".trash", "sub", "note.md"));
-    assert.ok(fs.existsSync(dest));
-    fs.rmSync(dir, { recursive: true, force: true });
-  });
-
-  it("AC-7: 같은 이름을 두 번 삭제해도 휴지통에 둘 다 보존(덮어쓰기 없음)", () => {
-    const dir = tmpFolder();
-    const note = path.join(dir, "note.md");
-    fs.writeFileSync(note, "first");
-    const d1 = moveToTrash(note, dir);
-    fs.writeFileSync(note, "second"); // 재생성
-    const d2 = moveToTrash(note, dir);
-    assert.notEqual(d1, d2, "두 목적지가 다름");
-    assert.ok(fs.existsSync(d1) && fs.existsSync(d2), "둘 다 존재");
-    const trashFiles = fs.readdirSync(path.join(dir, ".trash"));
-    assert.equal(trashFiles.length, 2, "휴지통에 2개");
-    assert.equal(fs.readFileSync(d1, "utf8"), "first");
-    assert.equal(fs.readFileSync(d2, "utf8"), "second");
-    fs.rmSync(dir, { recursive: true, force: true });
-  });
-});
-
 // ── specs/013 트랙 B — chunkText 분할 불변식 (FR-4, AC-6) ──────────────────
 // 기본 MAX_CHUNK=2000(BRAIN_CHUNK_SIZE 미설정) 기준. 순수 함수라 직접 검증.
 
@@ -575,76 +382,6 @@ describe("createNoteFile — capture 파일명 충돌 방지 (013 AC-10)", () =>
     try {
       const f = createNoteFile(dir, "note.md", "본문");
       assert.equal(f, "note.md");
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
-
-// ── specs/013 트랙 C — deleteNote 대상 제한 (FR-7, AC-9) ────────────────────
-// deleteNote는 FOLDERS(모듈 로드 시 고정)에 묶여 있어 자식 프로세스로 격리한다.
-
-function runDeleteProbe(notesDir: string, targets: string[]): any {
-  const script = [
-    `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
-    `  const out = [];`,
-    `  for (const t of ${JSON.stringify(targets)}) out.push(await m.deleteNote(t));`,
-    `  process.stdout.write(JSON.stringify(out));`,
-    `}).catch((e) => { console.error(e); process.exit(1); });`,
-  ].join("\n");
-  const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
-    cwd: REPO_ROOT,
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      NOTES_DIR: `notes=${notesDir}`,
-      BRAIN_INDEX: path.join(notesDir, ".brain-index.json"),
-      // 삭제 성공 경로의 ensureIndexed가 임베딩을 부르지 않도록 빈 vault 유지가 원칙이나,
-      // 여기서는 거부 경로만 검증하므로 임베딩 서버가 필요 없다.
-    },
-  });
-  return JSON.parse(out);
-}
-
-describe("deleteNote — 대상 제한 (013 AC-9)", () => {
-  it("AC-9: 비-.md·숨김 파일·폴더 탈출 경로는 거부되고 파일이 그대로 남는다", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lm-delete-guard-"));
-    try {
-      fs.writeFileSync(path.join(dir, "data.txt"), "plain");
-      fs.writeFileSync(path.join(dir, ".brain-index.json"), "{}");
-      fs.mkdirSync(path.join(dir, ".trash"), { recursive: true });
-      fs.writeFileSync(path.join(dir, ".trash", "old.md"), "trashed");
-      const outside = path.join(path.dirname(dir), `outside-${path.basename(dir)}.md`);
-      fs.writeFileSync(outside, "outside");
-      // 심링크 경유 탈출(결함 3): notes/linkdir → 폴더 밖 디렉토리
-      const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "lm-delete-outside-"));
-      fs.writeFileSync(path.join(outsideDir, "real.md"), "vault 밖 실제 파일");
-      fs.symlinkSync(outsideDir, path.join(dir, "linkdir"));
-      try {
-        const results = runDeleteProbe(dir, [
-          "notes/data.txt", // 비-.md
-          "notes/.brain-index.json", // 숨김(인덱스 파일)
-          "notes/.trash/old.md", // 숨김 폴더 내부
-          `notes/../${path.basename(outside)}`, // 폴더 탈출(기존 동작 회귀 고정)
-          "notes/no-such.md", // 없음
-          "notes/linkdir/real.md", // 심링크 경유 탈출(결함 3)
-        ]);
-        for (const r of results) assert.equal(r.ok, false, `거부돼야 함: ${JSON.stringify(r)}`);
-        assert.equal(results[0].reason, "invalid-target", "비-.md는 invalid-target");
-        assert.equal(results[1].reason, "invalid-target", "숨김 파일은 invalid-target");
-        assert.equal(results[2].reason, "invalid-target", "숨김 폴더 내부는 invalid-target");
-        assert.equal(results[4].reason, "not-found", "존재하지 않는 노트는 not-found");
-        assert.equal(results[5].reason, "invalid-target", "심링크 경유 vault 밖 파일은 invalid-target");
-        // 파일이 전부 그대로 남아 있다
-        assert.ok(fs.existsSync(path.join(dir, "data.txt")));
-        assert.ok(fs.existsSync(path.join(dir, ".brain-index.json")));
-        assert.ok(fs.existsSync(path.join(dir, ".trash", "old.md")));
-        assert.ok(fs.existsSync(outside));
-        assert.ok(fs.existsSync(path.join(outsideDir, "real.md")), "vault 밖 파일이 이동되지 않아야 한다");
-      } finally {
-        fs.rmSync(outside, { force: true });
-        fs.rmSync(outsideDir, { recursive: true, force: true });
-      }
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -746,33 +483,6 @@ describe("쿼리 로그 (004)", () => {
       assert.ok(srch, "search_notes 레코드");
       assert.equal(srch.success, true);
       assert.ok(srch.hitCount >= 1);
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it("AC-2: ask_brain이 sources·success와 함께 기록되고, 1회 호출은 레코드 1건이다(D-1 이중 기록 방지)", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lm-qlog-ask-"));
-    try {
-      const r = runQueryLogProbe(dir, `
-        await m.capture("백업 절차를 정리한 노트 본문입니다. 자세한 단계는 다음과 같습니다.", "백업 절차");
-        const ans = await m.askBrain("백업 절차가 뭐지?");
-        const enough = () => {
-          try { return fsx.readFileSync(process.env.QUERY_LOG, "utf8").trim().split("\\n").length >= 2; }
-          catch { return false; }
-        };
-        for (let i = 0; i < 100 && !enough(); i++) await new Promise((r) => setTimeout(r, 20));
-        const lines = fsx.readFileSync(process.env.QUERY_LOG, "utf8").trim().split("\\n").filter(Boolean).map(JSON.parse);
-        process.stdout.write(JSON.stringify({ lines, sources: ans.sources }));
-      `);
-      const ask = r.lines.filter((x: any) => x.tool === "ask_brain");
-      assert.equal(ask.length, 1, "ask_brain 레코드는 1건");
-      assert.equal(ask[0].success, true);
-      assert.ok(Array.isArray(ask[0].sources) && ask[0].sources.length >= 1, "sources가 기록된다");
-      assert.equal(typeof ask[0].topScore, "number", "025 AC-3: ask_brain에 topScore 기록(확장)");
-      // D-1: askBrain 경유 검색은 search_notes 레코드를 만들지 않는다(이중 기록·빈도 왜곡 방지)
-      const search = r.lines.filter((x: any) => x.tool === "search_notes");
-      assert.equal(search.length, 0, "위임 검색이 search_notes로 중복 기록되면 안 된다");
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -927,7 +637,7 @@ describe("인덱스 다중 프로세스 안전 (013)", () => {
 
 // ── specs/016 AC-9: 페르소나 레지스트리(agents/)는 노트 색인·목록에서 제외 ──
 describe("agents/ 색인 제외 — specs/016 AC-9 (자식 프로세스 격리)", () => {
-  it("노트 폴더 안의 agents/ 정의는 listNotes에 나타나지 않는다", () => {
+  it("노트 폴더 안의 agents/ 정의는 색인 스캔(listMarkdown)에 나타나지 않는다", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-agents-exclude-"));
     try {
       fs.writeFileSync(path.join(dir, "note.md"), "일반 노트 본문");
@@ -942,7 +652,7 @@ describe("agents/ 색인 제외 — specs/016 AC-9 (자식 프로세스 격리)"
 
       const script = [
         `import(${JSON.stringify(BRAIN_JS)}).then((m) => {`,
-        `  process.stdout.write(JSON.stringify(m.listNotes()));`,
+        `  process.stdout.write(JSON.stringify(m.listMarkdown(${JSON.stringify(dir)})));`,
         `}).catch((e) => { console.error(e); process.exit(1); });`,
       ].join("\n");
       const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
@@ -955,11 +665,11 @@ describe("agents/ 색인 제외 — specs/016 AC-9 (자식 프로세스 격리)"
           LOCALMIND_AGENTS_DIR: path.join(dir, "agents"),
         },
       });
-      const notes: { folder: string; path: string }[] = JSON.parse(out);
-      const paths = notes.map((n) => n.path);
-      assert.ok(paths.includes("notes/note.md"), "일반 노트가 목록에 없음");
-      assert.ok(paths.includes(path.join("notes", "sub", "inner.md")), "하위 폴더 노트가 목록에 없음");
-      assert.ok(!paths.some((p) => p.includes("agents")), `agents/ 파일이 목록에 노출됨: ${paths.join(", ")}`);
+      const paths: string[] = JSON.parse(out);
+      assert.ok(paths.some((p) => p.endsWith("note.md")), "일반 노트가 목록에 없음");
+      assert.ok(paths.some((p) => p.endsWith(path.join("sub", "inner.md"))), "하위 폴더 노트가 목록에 없음");
+      // 전체 경로에는 tmp 접두("...-agents-exclude-")가 있어 하위 상대경로로 판정한다.
+      assert.ok(!paths.some((p) => p.includes(path.join("agents", "critic.md"))), `agents/ 파일이 목록에 노출됨: ${paths.join(", ")}`);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

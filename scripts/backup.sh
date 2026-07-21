@@ -16,12 +16,7 @@ FAILURES=""
 
 # ── 1) 메모리 export — 실패해도 계속(backup-init.sh와 동일 정책·문구) ──────
 # stderr는 버리지 않는다 — 실패 원인을 사용자가 볼 수 있어야 한다.
-if ( cd "$PROJECT_DIR" && npm run --silent memory:export -- "$BACKUP_DIR/memory.md" >/dev/null ); then
-  echo "✓ 메모리 export → $BACKUP_DIR/memory.md"
-else
-  echo "! 메모리 내보내기를 건너뜁니다(스택이 꺼져 있을 수 있어요 — 노트는 그대로 백업됩니다)."
-  FAILURES="$FAILURES 메모리"
-fi
+# great-reduction(2026-07-21): 메모리 서비스(openmemory) 제거 — 노트가 기억의 정본, 메모리 export 단계 소멸.
 
 # ── 2) 백업 repo 확인 — 노트 백업의 전제 ────────────────────────
 if ! git -C "$BACKUP_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -121,7 +116,6 @@ if [ -z "$FAILURES" ]; then
 else
   echo ""
   echo "⚠ 백업 부분 완료 — 안 된 것:$FAILURES  (성공한 단계는 위 로그대로 반영됐어요)"
-  case "$FAILURES" in *메모리*)   echo "  · 메모리: 스택을 켠 뒤('make up') 'make backup' 재실행";; esac
   case "$FAILURES" in *노트커밋*) echo "  · 노트 커밋: 위의 git 사용자 정보 안내를 따른 뒤 재실행";; esac
   case "$FAILURES" in *push*)     echo "  · push: 위의 push 안내를 따른 뒤 재실행";; esac
   case "$FAILURES" in *개인설정*) echo "  · 개인 설정: BACKUP_EXTRA_FILES 경로를 확인한 뒤 재실행";; esac

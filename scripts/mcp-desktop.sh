@@ -17,7 +17,6 @@ warn() { printf '  \033[33m!\033[0m %s\n' "$*"; }
 err()  { printf '  \033[31m✗\033[0m %s\n' "$*"; }
 
 # ── 값 해석 (make mcp-config와 동일 규칙) ──
-USER_ID="$(read_env_val OPENMEMORY_USER "$ENV_FILE" 2>/dev/null || true)"; USER_ID="${USER_ID:-localmind}"
 MASTER_KEY="$(read_env_val LITELLM_MASTER_KEY "$ENV_FILE" 2>/dev/null || true)"
 # 임베딩 엔드포인트 옵션 패스스루(specs/202607211015 FR-2) — 설정된 경우에만 config env에 포함.
 EMBEDDINGS_URL="$(read_env_val EMBEDDINGS_URL "$ENV_FILE" 2>/dev/null || true)"
@@ -56,14 +55,14 @@ else
   fi
 fi
 ok "설정 파일 : $(b "$CONFIG")"
-ok "노트 폴더 : $(b "$NOTES_DIR")  · 사용자: $(b "$USER_ID")"
+ok "노트 폴더 : $(b "$NOTES_DIR")"
 
 # ── 미리보기 ──
 if [ -n "${DRY_RUN:-}" ]; then
   say ""
   say "$(b '[미리보기]') 아래를 mcpServers.localmind 로 병합합니다(기존 서버는 보존):"
-  printf '  {\n    "command": "node",\n    "args": ["%s"],\n    "env": { "NOTES_DIR": "%s", "OPENMEMORY_USER": "%s", "LITELLM_MASTER_KEY": "(설정값)" }\n  }\n' \
-    "$MCP_JS" "$NOTES_DIR" "$USER_ID"
+  printf '  {\n    "command": "node",\n    "args": ["%s"],\n    "env": { "NOTES_DIR": "%s", "LITELLM_MASTER_KEY": "(설정값)" }\n  }\n' \
+    "$MCP_JS" "$NOTES_DIR"
   say "  실제 적용: $(b 'make mcp-desktop')"
   exit 0
 fi
@@ -76,7 +75,7 @@ fi
 
 # node 실패 시 $?를 정확히 캡처하려면 `if ! cmd`(부정은 $?를 0으로 만듦) 대신 명시 캡처.
 set +e
-CONFIG="$CONFIG" MCP_JS="$MCP_JS" LM_NOTES="$NOTES_DIR" LM_USER="$USER_ID" LM_KEY="$MASTER_KEY" \
+CONFIG="$CONFIG" MCP_JS="$MCP_JS" LM_NOTES="$NOTES_DIR" LM_KEY="$MASTER_KEY" \
 LM_EMB_URL="$EMBEDDINGS_URL" LM_EMB_MODEL="$EMBEDDINGS_MODEL" node -e '
 const fs = require("fs"), path = require("path"), p = process.env.CONFIG;
 let raw = ""; try { raw = fs.readFileSync(p, "utf8"); } catch (e) {}
@@ -87,7 +86,7 @@ if (raw.trim()) {
 if (typeof cfg !== "object" || cfg === null || Array.isArray(cfg)) { console.error("PARSE_FAIL"); process.exit(3); }
 var ms = cfg.mcpServers;
 if (typeof ms !== "object" || ms === null || Array.isArray(ms)) cfg.mcpServers = {};
-var env = { NOTES_DIR: process.env.LM_NOTES, OPENMEMORY_USER: process.env.LM_USER, LITELLM_MASTER_KEY: process.env.LM_KEY };
+var env = { NOTES_DIR: process.env.LM_NOTES, LITELLM_MASTER_KEY: process.env.LM_KEY };
 // 임베딩 엔드포인트는 설정된 경우에만 포함(specs/202607211015 FR-2 — 미설정 시 바이트 동일).
 if (process.env.LM_EMB_URL) env.EMBEDDINGS_URL = process.env.LM_EMB_URL;
 if (process.env.LM_EMB_MODEL) env.EMBEDDINGS_MODEL = process.env.LM_EMB_MODEL;

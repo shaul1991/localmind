@@ -49,8 +49,8 @@ run_a_backup
 assert "A: 백업 0 종료(수동 단계 없음)" '[ "$RC" -eq 0 ]'
 assert "A: 자산 미러+마커가 백업 repo에 커밋됨" \
   'git -C "$BK_A" ls-tree -r --name-only HEAD | grep -q "agents/critic.md" && git -C "$BK_A" ls-tree -r --name-only HEAD | grep -q "agents/$MARKER"'
-assert "A: 쿼리 로그(기기 파일)·메모리 덤프 커밋됨" \
-  'git -C "$BK_A" ls-tree -r --name-only HEAD | grep -q "query-log\." && git -C "$BK_A" ls-tree -r --name-only HEAD | grep -q "memory.md"'
+assert "A: 쿼리 로그(기기 파일) 커밋됨(메모리 덤프는 great-reduction으로 소멸)" \
+  'git -C "$BK_A" ls-tree -r --name-only HEAD | grep -q "query-log\."'
 
 # ── 기기 B: clone → (notes-connect 후 가정) restore ──────────────────────────
 HOME_B="$TMP/home-b"; NOTES_B="$TMP/b-notes"; BK_B="$TMP/b-backup"

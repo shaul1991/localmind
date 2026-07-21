@@ -42,16 +42,13 @@ run_backup() { # run_backup <PATH선두> <BACKUP_DIR> [추가 env KEY=V ...]
 }
 mkdir -p "$TMP/home"; : > "$TMP/test.env"
 
-# ── AC-1: 스택 꺼짐(export 실패)에도 노트는 백업되고 비0 종료 ────────────────
+# ── AC-1: 노트 백업·push (great-reduction: 메모리 export 단계 소멸 — npm 스텁 무관) ──
 D1="$TMP/notes1"; B1="$TMP/bare1.git"; new_repo "$D1" "$B1"
 echo "노트 내용" > "$D1/note.md"
 run_backup "$TMP/bin-fail" "$D1"
-assert "AC-1: 비0 종료(부분 실패 식별 가능)" '[ "$RC" -ne 0 ]'
-assert "031: 메모리만 실패는 정확히 exit 1(소프트 신호)" '[ "$RC" -eq 1 ]'
+assert "AC-1: 노트 백업은 npm(구 메모리 export) 상태와 무관하게 0 종료" '[ "$RC" -eq 0 ]'
 assert "AC-1: 노트 커밋이 생성된다(인질 아님)" 'git -C "$D1" log --oneline | grep -q "localmind backup"'
 assert "AC-1: 노트가 원격(push)까지 반영된다" 'git -C "$B1" log --oneline | grep -q "localmind backup"'
-assert "AC-1: 메모리 실패가 요약에 표기된다" 'printf %s "$OUT" | grep -q "메모리"'
-assert "AC-1: 부분 완료 요약이 출력된다" 'printf %s "$OUT" | grep -q "부분 완료"'
 assert "AC-1: 파생물 gitignore 시드" 'grep -q ".brain-index.json" "$D1/.gitignore"'
 
 # ── AC-2: 정상 경로 회귀 없음 ────────────────────────────────────────────────
@@ -59,7 +56,6 @@ D2="$TMP/notes2"; B2="$TMP/bare2.git"; new_repo "$D2" "$B2"
 echo "노트" > "$D2/note.md"
 run_backup "$TMP/bin-ok" "$D2"
 assert "AC-2: 정상 백업은 0 종료" '[ "$RC" -eq 0 ]'
-assert "AC-2: memory.md가 백업에 포함된다" 'git -C "$D2" ls-files | grep -q "memory.md"'
 assert "AC-2: 완료 메시지" 'printf %s "$OUT" | grep -q "백업 완료"'
 
 # ── 멱등: 변경 없이 재실행 → 커밋 생략, 0 종료 ──────────────────────────────

@@ -74,8 +74,8 @@ assert "전체 성공(exit 0)" '[ "$RC" -eq 0 ]'
 assert "AC-1 코드 HEAD가 origin과 일치" '[ "$(git -C "$PROJ" rev-parse HEAD)" = "$(git -C "$CODE_ORIGIN" rev-parse main)" ]'
 assert "AC-1 빌드 호출됨" 'grep -qE "EVT npm run --prefix .+ build" "$EVT"'
 assert "AC-3 새 노트 파일 pull됨" '[ -f "$N1/b.md" ]'
-assert "AC-5 순서: 빌드 → reindex → agents:deploy → skills:deploy" \
-  '[ "$(evt_seq)" = "build|reindex|agents:deploy|skills:deploy" ]'
+assert "AC-5 순서: 빌드 → reindex (great-reduction: 메타 배포는 sdd-toolkit 소관)" \
+  '[ "$(evt_seq)" = "build|reindex" ]'
 
 # ── AC-2·4: 변경 없음 → 빌드 생략, 비git 폴더 스킵 (+라벨 경로 통합) ────
 printf '\n\033[1mAC-2·4 — 멱등(변경 없음) + 비git 폴더 스킵 + 라벨 경로\033[0m\n'
@@ -117,7 +117,7 @@ new_fixture s5
 run_update REINDEX_RC=1
 assert "exit 1" '[ "$RC" -eq 1 ]'
 assert "재인덱싱 실패 안내" 'grep -q "재인덱싱 실패" "$OUT"'
-assert "이후 배포 단계는 수행됨" 'grep -q "skills:deploy" "$EVT"'
+assert "메타 배포는 호출되지 않는다(이전됨)" '! grep -q "deploy" "$EVT"'
 
 # ── AC-9: upstream 없음 → pull 생략 + 정상 진행 ─────────────────────────
 printf '\n\033[1mAC-9 — upstream 없는 코드 repo\033[0m\n'
@@ -197,7 +197,7 @@ run_update NPM_FAIL_MATCH=build
 assert "exit 1 (빌드 실패만으로 — 배포는 성공)" '[ "$RC" -eq 1 ]'
 assert "빌드 실패 안내" 'grep -q "빌드 실패" "$OUT"'
 assert "배포는 성공(실패 원인이 빌드로 격리됨)" '! grep -q "배포 실패" "$OUT"'
-assert "이후 단계(재인덱싱·배포)는 시도됨" 'grep -q "EVT reindex" "$EVT" && grep -q "skills:deploy" "$EVT"'
+assert "이후 단계(재인덱싱)는 시도됨 + 메타 배포 미호출" 'grep -q "EVT reindex" "$EVT" && ! grep -q "deploy" "$EVT"'
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

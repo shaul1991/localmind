@@ -161,14 +161,14 @@ assert "AC-22: 라벨만 달라도 폴더 집합이 같으면 일치" '! printf 
 run_doctor "$ENV" "$TMP/none.json"               # 조회 불가 → 점검 자체 생략
 assert "AC-22: 조회 불가 시 점검 출력 없음(오탐 금지)" '! printf %s "$OUT" | grep -q "노트 폴더 정합"'
 
-# ── 022 AC-6~9: doctor 라우팅 유효값 판정 + 고아·부재 라벨 안내 ────────────
-printf '# OLLAMA_API_BASE=http://host.docker.internal:11434/v1 (예시)\nNOTES_DIR="a=/x"\nOLLAMA_API_BASE=http://ollama:11434/v1\n' > "$ENV"
+# ── 022 AC-6~9(개정: great-reduction — 직결 EMBEDDINGS_URL 라우팅) ─────────
+printf '# EMBEDDINGS_URL=http://example:4000/v1 (예시 주석)\nNOTES_DIR="a=/x"\nEMBEDDINGS_URL=http://localhost:11434/v1\n' > "$ENV"
 run_doctor "$ENV" "$TMP/none.json"
-assert "022 AC-6: 주석 host URL + 유효값 docker → Docker 라우팅 표시" 'printf %s "$OUT" | grep -q "현재 라우팅.*Docker"'
-printf 'NOTES_DIR="a=/x"\nOLLAMA_API_BASE=http://host.docker.internal:11434/v1\n' > "$ENV"
+assert "022 AC-6: 유효값 11434 → Ollama 직결 라우팅 표시" 'printf %s "$OUT" | grep -q "현재 라우팅.*11434"'
+printf 'NOTES_DIR="a=/x"\nEMBEDDINGS_URL=http://other-host:9999/v1\n' > "$ENV"
 run_doctor "$ENV" "$TMP/none.json"
-assert "022 AC-6: 유효값 host → 호스트 라우팅 표시" 'printf %s "$OUT" | grep -q "현재 라우팅.*호스트"'
-assert "022 AC-7: doctor 라우팅이 read_env_val 유효값 판정 사용(배선)" 'grep -q "read_env_val OLLAMA_API_BASE" "$ROOT/scripts/doctor.sh"'
+assert "022 AC-6: 비-Ollama URL → 외부 엔드포인트 판정" 'printf %s "$OUT" | grep -q "외부 OpenAI 호환"'
+assert "022 AC-7: doctor 라우팅이 read_env_val 유효값 판정 사용(배선)" 'grep -q "read_env_val EMBEDDINGS_URL" "$ROOT/scripts/doctor.sh"'
 assert "022 AC-7: litellm.config.yaml 죽은 가지 제거(배선)" '! grep -q "litellm.config.yaml" "$ROOT/scripts/doctor.sh"'
 
 IDX22="$TMP/labels-idx.json"; OK22="$TMP/ok22"; GONE22="$TMP/gone22"   # GONE22는 생성하지 않음

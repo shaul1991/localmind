@@ -1,7 +1,7 @@
 /**
- * second-brain MCP 도구 검증 (search_notes / ask_brain / capture_note).
+ * second-brain MCP 도구 검증 (search_notes / capture_note).
  *   npm run smoke:brain
- * 전제: gateway 스택(임베딩 :4000, 채팅 :8787)이 떠 있어야 한다.
+ * 전제: 임베딩 엔진(.env EMBEDDINGS_URL — 예: Ollama :11434)이 떠 있어야 한다.
  */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -43,12 +43,6 @@ async function main() {
     arguments: { query: "임베딩 모델 뭐 쓰지?", limit: 2 },
   });
   ok(`search_notes → ${JSON.stringify(textOf(s).slice(0, 90))}`);
-
-  const a = await client.callTool({
-    name: "ask_brain",
-    arguments: { question: "홈서버는 외부에서 어떻게 접속해?" },
-  });
-  ok(`ask_brain → ${JSON.stringify(textOf(a).slice(0, 110))}`);
 
   const c = await client.callTool({
     name: "capture_note",

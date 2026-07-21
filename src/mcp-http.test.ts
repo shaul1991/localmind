@@ -68,7 +68,7 @@ async function referenceToolNames(): Promise<string[]> {
 
 test("AC-1: http tools/list가 buildServer 등록 도구 전체를 그대로 반환(개수 하드코딩 없이)", async () => {
   const ref = await referenceToolNames();
-  assert.ok(ref.length >= 10, `참조 도구가 비정상적으로 적음(${ref.length})`); // sanity(현재 15)
+  assert.ok(ref.length >= 3, `참조 도구가 비정상적으로 적음(${ref.length})`); // sanity(great-reduction 후 3)
   const client = new ClientCtor({ name: "t", version: "0" });
   const transport = new HttpClientTransport(new URL(baseUrl), {
     requestInit: { headers: { Authorization: `Bearer ${TOKEN}` } },
