@@ -40,3 +40,16 @@ brief는 여전히 pull 도구다 — §6-3의 "자동 주입" 성립은 지침 
 - 도그푸드는 격리 임시 폴더에서 수행 — 사용자 실 벌트 캡처는 지침 연결 후 실사용에서 관찰.
 - 스위트: 전체 252/252 green + typecheck 통과(자식 probe 10종 포함) — suites 산출은 스위트
   로그가 근거(테스트 실행이 재현 수단).
+
+## 리베이스 후 재확인 (2026-07-22, main aa13b42 위 재배치 후)
+
+- 도구 노출: tools/list == [brief, capture_note, search_notes, whoami] (4종 — stdio 실기동).
+- 무키 경로: EMBEDDINGS_KEY 미설정 기동 시 brief가 신 에러 문구("임베딩 키(EMBEDDINGS_KEY)가
+  설정되지 않았어요…")로 응답 — great-reduction r1 B4 수정과 정합.
+- 격리 폴더 풀 사이클(실 Ollama bge-m3): 결정 캡처(choice·why·assumptions top-level) →
+  fresh brief 무신호 → last_verified 42일 조작 → brief에 "재검증 필요" 마킹 + ⏳ 재검증 권장
+  한 줄(노트 경로 포함, 본문 뒤 부가·비차단) → 전 단계 isError=false.
+- 관찰 2건(코드 결함 아님·후속 참고): ① NOTES_DIR 라벨 구분자는 `=`인데 `:`를 쓰면 문자
+  그대로 상대경로가 되어 의도치 않은 폴더에 저장된다 — 진단 메시지 없음(UX 후속 후보).
+  ② 실 코퍼스(1240파일·간밤 신규 캡처 다수) 첫 질의는 증분 재색인이 선행되어 응답이 수십 초
+  ~ 분 단위로 지연될 수 있다(brief 신규 아님 — search_notes 동일 거동, 기존 특성).
