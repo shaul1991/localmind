@@ -48,9 +48,10 @@ vision §2·§6·§7에서 도출한 처분 기준:
 
 | 처분 | 모듈 | 규모(테스트 포함) |
 |---|---|---|
-| **Keep** | brain.ts(색인·검색·capture — 도구 축소분 제거 후 슬림화)·mcp.ts/mcp-server.ts(도구 3+신규)·notes 계열·composition·backends·query 측정(query-analysis) | ~5k줄 → 축소 후 더 작아짐 |
+| **Keep** | brain.ts(색인·검색·capture — 도구 축소분 제거 후 슬림화)·mcp.ts/mcp-server.ts(도구 3+신규)·notes 계열·composition·**임베딩 경로**·query 측정(query-analysis) | ~5k줄 → 축소 후 더 작아짐 |
 | **Extract** | `src/agents/*` 전부(skills·skill-contract·reconcile·commands·seed·deploy·workflow-policy·workflow-docs ~9k줄)·delegation·review-preflight·evidence-schema·retro의 self-review 집계 절 | ~17k줄 |
 | **경계 주의** | retro-analysis는 **쪼갠다** — 검색 품질 측정(query-report)은 코어 측정이라 Keep, self-review/커밋 집계는 메타라 Extract | — |
+| **정정(2026-07-21 인벤토리 실측)** | LLM 게이트웨이 백엔드 스택(~2.9k줄, ask/ask_brain의 하부)은 §1의 Remove가 정본 — 초판 §2의 "backends Keep"은 임베딩 경로만을 뜻함(모호 표기 정정) | -2.9k줄 |
 
 ## 3. templates·scripts·docs
 
