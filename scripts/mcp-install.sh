@@ -59,13 +59,15 @@ fi
 
 # ── 2/3 : 설정 확인 ─────────────────────────────────────────────
 say "$(b '[2/3] 설정 확인')"
-# 게이트웨이 키 — MCP 프로세스는 .env를 읽지 않으므로 등록 env로 전달해야 임베딩(:4000)이
-# 인증된다(specs/014 FR-7 — 키가 랜덤화되면서 하드코딩 폴백이 사라짐).
-MASTER_KEY="$(read_env_val LITELLM_MASTER_KEY "$ENV_FILE")"
-[ -z "$MASTER_KEY" ] && warn "게이트웨이 키가 .env에 없어요 — 'make init-env' 후 다시 실행하면 노트 검색이 인증돼요."
-# 임베딩 엔드포인트 옵션 패스스루(specs/202607211015 FR-2) — 설정된 경우에만 등록 env로 전달.
+# 임베딩 설정 — MCP 프로세스는 .env를 읽지 않으므로 등록 env로 전달해야 한다.
+# EMBEDDINGS_KEY가 정본(great-reduction r1 B4). Ollama 직결은 아무 비어있지 않은 값이면 됨.
+# LITELLM_MASTER_KEY는 기존 설치 하위호환 폴백으로만 존치(brain.ts의 폴백 체인과 동일).
 EMBEDDINGS_URL="$(read_env_val EMBEDDINGS_URL "$ENV_FILE")"
 EMBEDDINGS_MODEL="$(read_env_val EMBEDDINGS_MODEL "$ENV_FILE")"
+EMBEDDINGS_KEY="$(read_env_val EMBEDDINGS_KEY "$ENV_FILE")"
+MASTER_KEY="$(read_env_val LITELLM_MASTER_KEY "$ENV_FILE")"
+[ -z "$EMBEDDINGS_KEY" ] && [ -z "$MASTER_KEY" ] && \
+  warn "임베딩 키가 .env에 없어요 — EMBEDDINGS_KEY를 설정해 주세요(Ollama 직결은 아무 값이나, 예: dummy). 없으면 노트 검색·저장이 실패해요."
 ok "노트 폴더  : $(b "$NOTES_DIR")"
 say "  (노트 폴더를 바꾸려면: $(b 'make mcp-install NOTES_DIR=/내/노트경로'), 여러 개는 쉼표로)"
 
@@ -83,6 +85,7 @@ add_localmind() {
     ${MASTER_KEY:+-e LITELLM_MASTER_KEY="$MASTER_KEY"} \
     ${EMBEDDINGS_URL:+-e EMBEDDINGS_URL="$EMBEDDINGS_URL"} \
     ${EMBEDDINGS_MODEL:+-e EMBEDDINGS_MODEL="$EMBEDDINGS_MODEL"} \
+    ${EMBEDDINGS_KEY:+-e EMBEDDINGS_KEY="$EMBEDDINGS_KEY"} \
     -- node "$PROJECT_DIR/dist/mcp.js" >/dev/null 2>&1
 }
 if ! add_localmind "$PROBE"; then

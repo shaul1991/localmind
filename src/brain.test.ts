@@ -1,9 +1,9 @@
 /**
  * brain.ts 단위 테스트 — node:test 기반
  *
- * 임베딩 서버 불필요: extractSearchQuery·extractLinks·resolveLink(순수 함수),
- *   noteLinks AC-7(빈 vault), 인덱스 캐시·원자성·single-flight(009, 빈 vault)
- * 임베딩 서버 필요(LOCALMIND_INTEGRATION=1로만 실행): capture()·noteLinks AC-1/2/4/5
+ * 임베딩 서버 불필요: extractSearchQuery·extractLinks·buildNoteFrontmatter(순수 함수),
+ *   인덱스 캐시·원자성·single-flight(009, 빈 vault)
+ * 임베딩 서버 필요(LOCALMIND_INTEGRATION=1로만 실행): capture()
  *
  * NOTES_DIR/BRAIN_INDEX는 brain.ts 모듈 로드 시점에 한 번만 읽히므로, 이미 로드된 프로세스
  * 안에서 process.env를 나중에 바꿔도 반영되지 않는다 — 통합 테스트는 반드시 자식 프로세스를
@@ -30,6 +30,7 @@ import {
   chunkText,
   createNoteFile,
   listMarkdown,
+  buildNoteFrontmatter,
   type BrainIndex,
 } from "./brain.js";
 
@@ -86,6 +87,57 @@ describe("extractSearchQuery", () => {
     const q = extractSearchQuery(long);
     assert.ok(q !== null);
     assert.equal(q!.length, 50);
+  });
+});
+
+// ── buildNoteFrontmatter 단위 테스트 (retro-analysis.test.ts에서 이관 —
+//    great-reduction self-review r1 B1: 검증 대상은 Keep인데 테스트가 Extract 파일에
+//    얹혀 소멸했던 것을 복원. specs/032 AC-3b 원문 그대로) ─────────────────
+describe("buildNoteFrontmatter", () => {
+  it("032 AC-3b: capture frontmatter 빌더 — tags 지정·미지정·특수문자 이스케이프", () => {
+    const withTags = buildNoteFrontmatter("결정", "2026-07-05T01:00:00", ["decision"]);
+    assert.ok(withTags.includes('tags: ["decision"]'));
+    const noTags = buildNoteFrontmatter("일반", "2026-07-05T01:00:00");
+    assert.ok(noTags.includes("tags: []"), "미지정은 기존과 동일(하위호환)");
+    const special = buildNoteFrontmatter("x", "2026-07-05T01:00:00", ['we"ird]', "ok"]);
+    assert.ok(special.includes('"we\\"ird]"'), "JSON 이스케이프로 frontmatter 안 깨짐(R5)");
+  });
+});
+
+// ── 무키 임베딩 에러 메시지 (great-reduction r1 B4 — 게이트웨이 제거 후 안내가
+//    EMBEDDINGS_KEY 기준이어야 한다. fetch 전에 throw하므로 임베딩 서버 불필요) ──
+describe("임베딩 키 미설정 에러 안내", () => {
+  it("B4: 키가 없으면 EMBEDDINGS_KEY 기준의 평이한 안내로 실패한다", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-nokey-"));
+    try {
+      const script = [
+        `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+        `  await m.capture("무키 테스트", undefined);`,
+        `  process.exit(0);`,
+        `}).catch((e) => { process.stderr.write(String(e.message)); process.exit(1); });`,
+      ].join("\n");
+      let stderr = "";
+      try {
+        execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+          cwd: REPO_ROOT,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            NOTES_DIR: `notes=${dir}`,
+            BRAIN_INDEX: path.join(dir, ".brain-index.json"),
+            EMBEDDINGS_KEY: "",
+            LITELLM_MASTER_KEY: "",
+          },
+        });
+        assert.fail("키 없이 capture가 성공하면 안 된다");
+      } catch (e: any) {
+        stderr = String(e.stderr ?? "");
+      }
+      assert.ok(stderr.includes("임베딩 키(EMBEDDINGS_KEY)"), `안내가 EMBEDDINGS_KEY 기준: ${stderr}`);
+      assert.ok(!stderr.includes("게이트웨이"), "제거된 게이트웨이를 지칭하지 않는다");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

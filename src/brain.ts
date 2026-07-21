@@ -75,9 +75,10 @@ function excludedMetaDirs(): string[] {
   ];
 }
 
-const EMB_URL = (process.env.EMBEDDINGS_URL ?? "http://localhost:4000/v1").replace(/\/$/, "");
-// 키 하드코딩 폴백 없음(specs/014 FR-7) — 게이트웨이 키는 설치마다 임의 생성되므로
-// MCP 등록 env(make mcp-install가 전달) 또는 호출 환경에서 와야 한다.
+// 기본은 Ollama 직결(great-reduction — 게이트웨이 소멸로 :4000 기본값은 유령 포트였음, r1 advisory).
+const EMB_URL = (process.env.EMBEDDINGS_URL ?? "http://localhost:11434/v1").replace(/\/$/, "");
+// 키 하드코딩 폴백 없음(specs/014 FR-7). EMBEDDINGS_KEY가 정본, LITELLM_MASTER_KEY는
+// 기존 설치 하위호환 폴백(great-reduction r1 B4).
 const EMB_KEY = process.env.EMBEDDINGS_KEY ?? process.env.LITELLM_MASTER_KEY ?? "";
 const EMB_MODEL = process.env.EMBEDDINGS_MODEL ?? "text-embedding-3-small";
 
@@ -720,24 +721,6 @@ export function extractLinks(text: string): string[] {
   return links;
 }
 
-// 대소문자 무시 비교용. macOS/Windows는 파일시스템이 기본적으로 대소문자를 구분하지
-// 않고 Obsidian 자체도 링크 해석 시 대소문자를 구분하지 않으므로, [[Note-B]]가 실제
-// 파일 note-b.md를 가리켜도 해석돼야 한다(self-review에서 발견).
-function basenameNoExt(p: string): string {
-  return path.basename(p).replace(/\.md$/i, "").toLowerCase();
-}
-
-/** 위키링크 target을 인덱스의 실제 노트 키('label/relpath')로 해석한다(basename 매칭,
- *  대소문자 구분 없음). fromFolder(같은 폴더)를 우선하고, 없으면 전체 vault에서 첫 매칭.
- *  없으면 null(미해결). */
-export function resolveLink(target: string, fromFolder: string, idx: BrainIndex): string | null {
-  const targetBase = basenameNoExt(target);
-  const keys = Object.keys(idx.files);
-  const sameFolder = keys.find((k) => idx.files[k].folder === fromFolder && basenameNoExt(k) === targetBase);
-  if (sameFolder) return sameFolder;
-  return keys.find((k) => basenameNoExt(k) === targetBase) ?? null;
-}
-
 function sha(s: string): string {
   return crypto.createHash("sha256").update(s).digest("hex");
 }
@@ -746,8 +729,8 @@ async function embed(texts: string[]): Promise<number[][]> {
   if (!texts.length) return [];
   if (!EMB_KEY) {
     throw new Error(
-      "게이트웨이 키(LITELLM_MASTER_KEY)가 설정되지 않았어요 — 'make mcp-install'을 다시 실행해 " +
-        "연결을 갱신하거나, MCP 설정의 env에 .env의 LITELLM_MASTER_KEY 값을 넣어 주세요.",
+      "임베딩 키(EMBEDDINGS_KEY)가 설정되지 않았어요 — .env에 EMBEDDINGS_KEY를 넣고(Ollama 직결은 " +
+        "아무 값이나, 예: dummy) 'make mcp-install'을 다시 실행해 연결을 갱신해 주세요.",
     );
   }
   const attempts = Math.max(1, Number(process.env.EMBED_RETRIES ?? 5));

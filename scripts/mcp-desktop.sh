@@ -21,6 +21,7 @@ MASTER_KEY="$(read_env_val LITELLM_MASTER_KEY "$ENV_FILE" 2>/dev/null || true)"
 # 임베딩 엔드포인트 옵션 패스스루(specs/202607211015 FR-2) — 설정된 경우에만 config env에 포함.
 EMBEDDINGS_URL="$(read_env_val EMBEDDINGS_URL "$ENV_FILE" 2>/dev/null || true)"
 EMBEDDINGS_MODEL="$(read_env_val EMBEDDINGS_MODEL "$ENV_FILE" 2>/dev/null || true)"
+EMBEDDINGS_KEY="$(read_env_val EMBEDDINGS_KEY "$ENV_FILE" 2>/dev/null || true)"
 NOTES_DIR="${NOTES_DIR:-}"
 [ -z "$NOTES_DIR" ] && NOTES_DIR="$(read_env_val NOTES_DIR "$ENV_FILE" 2>/dev/null || true)"
 NOTES_DIR="${NOTES_DIR:-$HOME/.localmind}"
@@ -76,7 +77,7 @@ fi
 # node 실패 시 $?를 정확히 캡처하려면 `if ! cmd`(부정은 $?를 0으로 만듦) 대신 명시 캡처.
 set +e
 CONFIG="$CONFIG" MCP_JS="$MCP_JS" LM_NOTES="$NOTES_DIR" LM_KEY="$MASTER_KEY" \
-LM_EMB_URL="$EMBEDDINGS_URL" LM_EMB_MODEL="$EMBEDDINGS_MODEL" node -e '
+LM_EMB_URL="$EMBEDDINGS_URL" LM_EMB_MODEL="$EMBEDDINGS_MODEL" LM_EMB_KEY="$EMBEDDINGS_KEY" node -e '
 const fs = require("fs"), path = require("path"), p = process.env.CONFIG;
 let raw = ""; try { raw = fs.readFileSync(p, "utf8"); } catch (e) {}
 let cfg = {};
@@ -90,6 +91,7 @@ var env = { NOTES_DIR: process.env.LM_NOTES, LITELLM_MASTER_KEY: process.env.LM_
 // 임베딩 엔드포인트는 설정된 경우에만 포함(specs/202607211015 FR-2 — 미설정 시 바이트 동일).
 if (process.env.LM_EMB_URL) env.EMBEDDINGS_URL = process.env.LM_EMB_URL;
 if (process.env.LM_EMB_MODEL) env.EMBEDDINGS_MODEL = process.env.LM_EMB_MODEL;
+if (process.env.LM_EMB_KEY) env.EMBEDDINGS_KEY = process.env.LM_EMB_KEY;
 cfg.mcpServers.localmind = {
   command: "node",
   args: [process.env.MCP_JS],

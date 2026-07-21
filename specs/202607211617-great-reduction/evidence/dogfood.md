@@ -7,3 +7,19 @@
   capture_note(태그 호출자 공급) → 실제 임베딩 색인(watcher done 로그) → search_notes 회수
   → **"모든 second-brain 도구 통과"**. 임베딩 스택 무변경 실증(사용자 게이트 준수).
 - `~/.localmind/query-log.jsonl`: 43줄 → 46줄 (+3 — 측정 루프 동작, AC-6 충족).
+
+## r1 blocker 수정 후 도그푸드 (self-review round 1 반영 — 2026-07-21)
+
+- **B3 `make report` 경로**: `npx tsx scripts/brain-report.ts` → exit 0, 리포트 노트 발행
+  확인(페르소나 해석부 절단 — 집계-only). r1 이전엔 ERR_MODULE_NOT_FOUND exit 1이었다.
+- **B2 `make setup` 경로**: `HOME=<격리> DRY_RUN=1 bash scripts/setup.sh` → 전 단계 완주,
+  exit 127 없음, 삭제 스크립트(embed/ensure-master-key/claude-token/ui)·유령 :4000·죽은
+  make 타깃 언급 0 (grep 재확인). 4단계 재편(게이트웨이 백엔드 인증 절 제거 — 소비자 0 실측).
+- **B4 무키 경로**: EMBEDDINGS_KEY·LITELLM_MASTER_KEY 모두 빈 자식 프로세스에서 capture →
+  "임베딩 키(EMBEDDINGS_KEY)가 설정되지 않았어요…"로 실패(결정적 테스트로 영구 편입 —
+  src/brain.test.ts "임베딩 키 미설정 에러 안내"). mcp-install 패스스루는
+  scripts/mcp-install.test.sh B4 케이스 3건(전달·URL/MODEL 동반·미설정 바이트 동일)으로 검증.
+- **재검증 스위트**: 단위 233/233 green(+2: buildNoteFrontmatter 이관·B4 무키) · 셸 19파일
+  전수 green · typecheck OK · `npm run smoke:mcp` 통과(도구 3종 표면).
+- desktop 쪽 EMBEDDINGS_KEY 패스스루는 동일 관용구(`${VAR:+…}`+`if(LM_EMB_KEY)`)로 배선 —
+  단 mcp-desktop.sh는 .env 격리 훅이 없어 결정적 테스트는 install 쪽만(정직 기록).

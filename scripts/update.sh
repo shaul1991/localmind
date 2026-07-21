@@ -39,7 +39,7 @@ main() {
       elif [ "$(git -C "$DIR" rev-parse HEAD)" != "$old_head" ]; then
         ok "코드 갱신됨($(git -C "$DIR" rev-parse --short HEAD)) — 빌드해요"
         if run npm run --prefix "$DIR" build; then
-          ok "빌드 완료 — 실행 중인 스택에 반영하려면 'make up'"
+          ok "빌드 완료 — MCP 클라이언트(Claude Code 등)를 재시작하면 반영돼요"
         else
           warn "빌드 실패 — 코드는 최신이지만 dist가 이전 버전이에요('make build'로 재시도)"
           fails="$fails build"

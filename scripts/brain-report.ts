@@ -1,6 +1,7 @@
 /**
- * specs/017 FR-6 — 분석가 리포트 진입점: 실패 질의 집계(최근 7일) + analyst 페르소나
- * 해석을 리포트 노트로 저장한다. 노트는 색인 대상이라 search_notes로 회수된다.
+ * specs/017 FR-6 — 리포트 진입점: 실패 질의 집계(최근 7일)를 리포트 노트로 저장한다.
+ * 노트는 색인 대상이라 search_notes로 회수된다. 페르소나(analyst) 해석부는
+ * great-reduction(r1 B3)으로 추출(sdd-toolkit) — 집계-only 발행이다.
  * 계산은 src/query-analysis.ts, 렌더는 src/report-note.ts — 이 파일은 IO만(얇은 진입점).
  *
  * 사용: make report (주기 등록: make report-cron)
@@ -12,7 +13,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { analyze, readRecords } from "../src/query-analysis.js";
 import { isoWeek, renderMarkdown } from "../src/report-note.js";
-import { personaChat, resolvePersona } from "../src/agents/runtime.js";
 import { listFolders } from "../src/brain.js";
 
 const LOG_PATH =
@@ -24,36 +24,9 @@ async function main(): Promise<void> {
   const records = readRecords(LOG_PATH) ?? [];
   const a = analyze(records, { days: DAYS, minSamples: MIN_SAMPLES });
 
-  // 분석가 해석 — 표본이 부족하면 해석도 생략(데이터 없는 해석은 소음, AC-13).
-  let interpretation: string | null = null;
-  if (!a.insufficient) {
-    const analyst = resolvePersona("analyst");
-    if (analyst) {
-      const res = await personaChat(analyst, {
-        user:
-          `아래는 개인 second-brain의 최근 ${DAYS}일 검색 품질 집계다. 패턴·가설·개선 제안을 ` +
-          `간결한 마크다운(불릿 위주, 300자 내외)으로 해석하라.\n\n` +
-          JSON.stringify(
-            {
-              searches: a.searches,
-              successRate: a.successRate,
-              failed: a.failed,
-              topFailures: a.topFailures,
-              gapWords: a.gapWords,
-              captures: a.captures,
-              capturesUnconfirmed: a.capturesUnconfirmed,
-              verifyStats: a.verifyStats,
-            },
-            null,
-            2,
-          ),
-        systemPrefix: "역할 제한: 지금은 검색 품질 집계 해석만 한다. 수치에 근거해서만 말하라.",
-        prefer: "claude",
-        timeoutMs: Math.max(1000, Number(process.env.BRAIN_REPORT_TIMEOUT_MS ?? 60_000)),
-      });
-      interpretation = res?.text ?? null;
-    }
-  }
+  // 페르소나 해석부 추출됨(great-reduction r1 B3) — 집계-only. 해석이 필요하면
+  // 리포트 노트를 대화의 AI에게 읽혀 해석시키면 된다(모델이 잘하는 일은 모델에게).
+  const interpretation: string | null = null;
 
   const now = new Date();
   const { year, week } = isoWeek(now);
@@ -65,7 +38,6 @@ async function main(): Promise<void> {
 
   console.log(`📊 리포트 저장: ${file}`);
   if (a.insufficient) console.log(`ℹ 데이터 부족(검색 ${a.searches}건 < ${MIN_SAMPLES}건) — 집계만 기록했습니다.`);
-  else if (!interpretation) console.log("ℹ analyst 페르소나 없음/무응답 — 집계만 기록했습니다.");
   console.log("ℹ 다음 색인 때부터 search_notes 검색에 잡힙니다.");
 }
 

@@ -101,9 +101,12 @@ fi
 # 2) localmind 빌드 이미지만 제거(공용 pull 이미지는 보존)
 # legacy-cleanup: 구 세대(great-reduction 이전) 설치가 남긴 빌드 이미지도 함께 지운다.
 if [ "$DOCKER_OK" = "1" ]; then
-  docker image rm localmind localmind-openmemory >/dev/null 2>&1 \
-    && ok "localmind 이미지 제거(구 빌드 이미지 포함)" \
-    || warn "localmind 이미지 없음(또는 다른 컨테이너가 사용 중)"
+  # shellcheck disable=SC2015
+  if docker image rm localmind localmind-openmemory >/dev/null 2>&1; then  # legacy-cleanup: 구 설치 이미지
+    ok "localmind 이미지 제거(구 빌드 이미지 포함)"
+  else
+    warn "localmind 이미지 없음(또는 다른 컨테이너가 사용 중)"
+  fi
 else
   err "Docker가 실행 중이 아니에요 — localmind 이미지를 지우지 못했어요."
   FAILURES="$FAILURES 이미지"
