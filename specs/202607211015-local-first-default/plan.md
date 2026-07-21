@@ -64,13 +64,13 @@ audience: both
 
 | AC | 검증 방법·레벨 | 최소 evidence | 통과·종료 조건 | 상태 |
 |---|---|---|---|---|
-| AC-1 | 텍스트 검사 + 전체 스위트 | 문서 인용·테스트 로그 | 위상 문장·복귀 6단계 존재, 스위트 비회귀 green | |
-| AC-2 | 텍스트 검사 + diff 검사 | .env.example 인용·git diff | EMBEDDINGS_* 병기·더미 키 안내·src/ 무변경 | |
-| AC-3 | 실행 기록 대조 | evidence/restore-log.md | 절차↔실행 1:1·재색인 소요·색인 생성·기기 노트 갱신 기록 | |
-| AC-4 | 실행 관찰(M5 로컬 stdio) | 명령 출력 캡처 | whoami·search·capture 성공 + 로컬 query-log 기록 | |
-| AC-5 | 파일 검사 + 사용자 확인 | config JSON 인용 | localmind stdio 항목 존재(UI 노출은 사용자 확인 명시) | |
-| AC-6 | 실행 실증 | 실증 출력 캡처 | U-4·U-5 확정 + 문서 반영(불성립 시 fallback 문서화) | |
-| AC-7 | 실행 관찰 + 스위트 | 등록 결과·**Desktop config JSON 인용**·재색인 env 관찰·테스트 로그 | 3경로(설치·Desktop·재색인) 설정 시 전달·미설정 시 바이트 동일 | |
+| AC-1 | 텍스트 검사 + 전체 스위트 | 문서 인용·테스트 로그 | 위상 문장·복귀 6단계 존재, 스위트 비회귀 green | ✅ r1 clean |
+| AC-2 | 텍스트 검사 + diff 검사 | .env.example 인용·git diff | EMBEDDINGS_* 병기·더미 키 안내·src/ 무변경 | ✅ r1 clean |
+| AC-3 | 실행 기록 대조 | evidence/restore-log.md | 절차↔실행 1:1·재색인 소요·색인 생성·기기 노트 갱신 기록 | ✅ r1 clean |
+| AC-4 | 실행 관찰(M5 로컬 stdio) | 명령 출력 캡처 | whoami·search·capture 성공 + 로컬 query-log 기록 | ✅ r1 clean |
+| AC-5 | 파일 검사 + 사용자 확인 | config JSON 인용 | localmind stdio 항목 존재(UI 노출은 사용자 확인 명시) | ✅ r1 clean |
+| AC-6 | 실행 실증 | 실증 출력 캡처 | U-4·U-5 확정 + 문서 반영(불성립 시 fallback 문서화) | ✅ r1 clean |
+| AC-7 | 실행 관찰 + 스위트 | 등록 결과·**Desktop config JSON 인용**·재색인 env 관찰·테스트 로그 | 3경로(설치·Desktop·재색인) 설정 시 전달·미설정 시 바이트 동일 | ✅ r1 clean |
 
 모든 AC가 정확히 한 행. AC-3~6은 실환경 관찰(결정적 테스트 아님 — 성격 명시). 첫 dogfood
 직전 freeze 대상.

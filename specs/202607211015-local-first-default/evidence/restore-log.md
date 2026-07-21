@@ -50,3 +50,12 @@ date: 2026-07-21
 ## 기기 노트 갱신 (T1.5)
 - devices/shaulm5local.md — "홈서버 두뇌만" 절을 "로컬 두뇌 기본 + 원격 옵션(2026-07-21)"로
   갱신: Ollama 기동·인덱스 재생성·Desktop 재등록·Claude Code 병행을 실상대로(취소선 보존).
+
+## 부기 (self-review r1 advisory 반영)
+- A-3: 단계 ③에서 `make update`(pull 포함) 대신 `npm run build`를 쓴 이유 — M5가 이 slice의
+  feature 브랜치 위라 pull이 부적절했음(의미상 등가: 스택 갱신→빌드→재색인). 일반 사용자는
+  문서대로 `make update`.
+- A-1: 도그푸드가 만든 `.env.bak-local-first-*`(실키 포함)는 repo 밖
+  `~/personal/shaul-brain/backup/localmind-env-bak/`로 이동(커밋 유출 방어). `.gitignore`의
+  `.env.bak*` 커버 추가는 스코프 밖 — 후속 후보로 보고.
+- A-2(이월): EMBEDDINGS_* 배선의 픽스처 자동 테스트 1종 추가 — 후속 후보.

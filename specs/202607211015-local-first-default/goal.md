@@ -54,6 +54,8 @@ tier-rationale: >
 
 ## Success metrics
 
+(전 항목 달성 — 2026-07-21 self-review r1 clean. Desktop UI 노출만 사용자 확인 대기. 근거: spec.md 검증 결과 절)
+
 - M5에서 `whoami`가 로컬 stdio로 응답하고, 원격 MCP를 껐을 때(오프라인 등가)도 recall이
   동작한다(도그푸드 관찰).
 - Desktop에서 localmind 도구 목록이 보인다(사용자 확인).
