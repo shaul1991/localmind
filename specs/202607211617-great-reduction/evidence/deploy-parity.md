@@ -22,3 +22,5 @@
 - 로그: /tmp/t20.8eeJ/{hash-A,hash-B,hash-C}.txt (임시 — 수치는 본 문서가 정본)
 
 **AC-3 종합 판정: 충족** — Claude 계열 49파일(T1.3) + Codex/Gemini/페르소나 31파일(T2.0) 전량 동등.
+
+> preflight 규약 부기: 위 /tmp 해시 파일들은 일회성 실행 산출물이며 결과 전문은 이 versioned evidence(specs/202607211617-great-reduction/evidence/deploy-parity.md) 본문 표에 전사되어 있다 — 정본은 이 문서다.
