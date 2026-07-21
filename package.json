@@ -1,6 +1,6 @@
 {
   "name": "localmind",
-  "version": "2026.07.8",
+  "version": "2026.07.9",
   "description": "로컬 second-brain — 내 노트(.md)가 정본인 개인 기억 계층: capture·검색·백업·동기화 + MCP",
   "type": "module",
   "main": "dist/mcp.js",
