@@ -56,6 +56,8 @@ date: 2026-07-21
   feature 브랜치 위라 pull이 부적절했음(의미상 등가: 스택 갱신→빌드→재색인). 일반 사용자는
   문서대로 `make update`.
 - A-1: 도그푸드가 만든 `.env.bak-local-first-*`(실키 포함)는 repo 밖
-  `~/personal/shaul-brain/backup/localmind-env-bak/`로 이동(커밋 유출 방어). `.gitignore`의
+  `~/personal/shaul-brain/backup/localmind-env-bak/`로 이동(커밋 유출 방어). **정정 부기**:
+  첫 이동 시도가 셸 glob 미매칭으로 조용히 실패했었고(같은 커밋의 이 기록이 잠시 사실과
+  어긋났음), push 직후 발견해 실이동을 완료·검증했다(`ls .env.bak*` 0건) — 정직 기록. `.gitignore`의
   `.env.bak*` 커버 추가는 스코프 밖 — 후속 후보로 보고.
 - A-2(이월): EMBEDDINGS_* 배선의 픽스처 자동 테스트 1종 추가 — 후속 후보.
