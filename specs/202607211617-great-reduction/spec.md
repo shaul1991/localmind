@@ -93,7 +93,9 @@ bootstrap-guide용 style.css 1파일 복원. 렌즈 critic이 이 amendment 4건
 
 ## Open questions
 - ~~게이트웨이 backends Keep/Remove 모순~~ → 정정 완료(rebuild-plan 정정 절).
-- OQ-1 sdd-toolkit 원격(GitHub) 생성 — 사용자 게이트(머지 보고 시 질의).
+- ~~OQ-1 sdd-toolkit 원격(GitHub) 생성~~ → **사용자 게이트 통과·집행 완료(2026-07-22)**:
+  `github.com/shaul1991/sdd-toolkit` private 생성·main push — OQ-4(교차기기 갱신)의 원격
+  조건 충족(M1 셋업은 후속).
 - OQ-2 localmind AGENTS.md 자체 감량 — 후속 슬라이스(이번엔 무변경).
 - ~~OQ-3 임베딩 존폐~~ → **사용자 게이트 통과(2026-07-21): "판정만 기록, 제거는 후속"** —
   실험 판정(동률·제거 권고)은 search-experiment evidence에 기록, 임베딩 스택은 이 슬라이스
