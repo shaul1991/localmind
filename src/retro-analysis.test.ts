@@ -432,7 +432,10 @@ describe("critic-efficiency FR-6 self-review 집계", () => {
             totalBlockers: 4,
             finalCompletion: "clean",
             durationMinutesTotal: 35,
-            reviewModes: ["단일", "단일"],
+            reviewModes: [
+              { round: 1, mode: "단일" },
+              { round: 2, mode: "단일" },
+            ],
             carriedCount: 0,
           },
           {
@@ -441,7 +444,7 @@ describe("critic-efficiency FR-6 self-review 집계", () => {
             totalBlockers: 0,
             finalCompletion: "clean",
             durationMinutesTotal: null,
-            reviewModes: ["단일"],
+            reviewModes: [{ round: 1, mode: "단일" }],
             carriedCount: 0,
           },
         ],
@@ -498,7 +501,14 @@ describe("202607210028 retro-lenses-column", () => {
     ];
     const agg = aggregateSelfReviewEvidence(files);
     const s = agg.bySpec.find((sp) => sp.spec === "specLens")!;
-    assert.deepEqual(s.reviewModes, ["병렬(5)", "단일"], "r1 병렬(5) · r2 단일 순서");
+    assert.deepEqual(
+      s.reviewModes,
+      [
+        { round: 1, mode: "병렬(5)" },
+        { round: 2, mode: "단일" },
+      ],
+      "r1 병렬(5) · r2 단일 순서",
+    );
     const md = renderRetro(
       {
         days: 14,
@@ -540,7 +550,15 @@ describe("202607210028 retro-lenses-column", () => {
     ];
     const agg = aggregateSelfReviewEvidence(files);
     const s = agg.bySpec.find((sp) => sp.spec === "specEdge")!;
-    assert.deepEqual(s.reviewModes, ["단일", "단일", "단일"], "비배열·빈배열 전부 단일");
+    assert.deepEqual(
+      s.reviewModes,
+      [
+        { round: 1, mode: "단일" },
+        { round: 2, mode: "단일" },
+        { round: 3, mode: "단일" },
+      ],
+      "비배열·빈배열 전부 단일",
+    );
     // 기존 집계 값·미준수 판정 불변
     assert.equal(s.rounds, 3);
     assert.equal(s.totalBlockers, 1);
@@ -625,7 +643,10 @@ describe("202607210545 carried-from 텔레메트리 (AC-6)", () => {
               totalBlockers: 1,
               finalCompletion: "clean",
               durationMinutesTotal: null,
-              reviewModes: ["단일", "단일"],
+              reviewModes: [
+                { round: 1, mode: "단일" },
+                { round: 2, mode: "단일" },
+              ],
               carriedCount: 1,
             },
             {
@@ -634,7 +655,7 @@ describe("202607210545 carried-from 텔레메트리 (AC-6)", () => {
               totalBlockers: 0,
               finalCompletion: "clean",
               durationMinutesTotal: null,
-              reviewModes: ["단일"],
+              reviewModes: [{ round: 1, mode: "단일" }],
               carriedCount: 0,
             },
           ],
@@ -649,5 +670,74 @@ describe("202607210545 carried-from 텔레메트리 (AC-6)", () => {
     const rowB = md.split("\n").find((l) => l.startsWith("| specB "));
     assert.ok(rowA?.trimEnd().endsWith("| 1 |"), "specA 승계 1건 표기");
     assert.ok(rowB?.trimEnd().endsWith("| - |"), "specB 승계 0건은 '-' 표기");
+  });
+});
+
+// specs/202607210846-evidence-schema-dedup AC-2 — reviewModes 라벨이 배열 위치가 아닌 실제 round를 표기
+describe("202607210846 retro-round-label-accuracy (AC-2)", () => {
+  it("round 1이 스키마 미준수로 빠지고 round 2만 남으면, 라벨은 위치(r1)가 아닌 실제 round(r2)로 표기된다", () => {
+    const files = [
+      // round 1 — 필수 필드(advisories) 누락 → 미준수로 제외
+      {
+        spec: "specGap",
+        filename: "self-review-round1.md",
+        text: [
+          "---",
+          "candidate-id: shaG1",
+          "round: 1",
+          "independence: isolated-context",
+          "blockers: 1",
+          "approval-needed: false",
+          "completion: blocked",
+          "---",
+          "",
+          "# 본문",
+        ].join("\n"),
+      },
+      // round 2 — 정상
+      {
+        spec: "specGap",
+        filename: "self-review-round2.md",
+        text: [
+          "---",
+          "candidate-id: shaG2",
+          "round: 2",
+          "independence: isolated-context",
+          "blockers: 0",
+          "advisories: 0",
+          "approval-needed: false",
+          "completion: clean",
+          "---",
+          "",
+          "# 본문",
+        ].join("\n"),
+      },
+    ];
+    const agg = aggregateSelfReviewEvidence(files);
+    assert.equal(agg.nonCompliant, 1, "round 1(필수 필드 누락)은 미준수로 집계");
+    const s = agg.bySpec.find((sp) => sp.spec === "specGap")!;
+    assert.deepEqual(s.reviewModes, [{ round: 2, mode: "단일" }], "남은 행은 round 2 — 위치(1번째)가 아닌 실제 round 2");
+
+    const md = renderRetro(
+      {
+        days: 14,
+        repoLabel: "fixture",
+        isGitRepo: true,
+        commits: parseCommits(""),
+        openQuestions: [],
+        hasSpecsDir: true,
+        decisions: [],
+        query: null,
+        guides: [],
+        projects: [],
+        insufficient: false,
+        selfReview: agg,
+      },
+      null,
+      new Date("2026-07-21T10:00:00Z"),
+    );
+    const row = md.split("\n").find((l) => l.startsWith("| specGap "));
+    assert.ok(row?.includes("r2 단일"), "§8 렌더 라벨이 r2 단일 — r1 단일(위치 기반)이 아님");
+    assert.ok(!row?.includes("r1 단일"), "위치 기반 오표기(r1)가 남아 있지 않음");
   });
 });

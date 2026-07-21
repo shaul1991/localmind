@@ -155,7 +155,8 @@ export function renderRetro(a: RetroAggregate, interpretation: string | null, ge
       L.push("| spec | 라운드 | 총 blocker | 최종 completion | duration(분) | 형태 | 승계 |");
       L.push("|---|---|---|---|---|---|---|");
       for (const s of bySpec) {
-        const modes = s.reviewModes.map((m, i) => `r${i + 1} ${m}`).join(" · ");
+        // specs/202607210846 AC-2 — 위치 인덱스(i+1)가 아닌 evidence 실제 round 값으로 라벨링.
+        const modes = s.reviewModes.map((m) => `r${m.round} ${m.mode}`).join(" · ");
         L.push(
           `| ${s.spec} | ${s.rounds} | ${s.totalBlockers} | ${s.finalCompletion} | ${s.durationMinutesTotal ?? "-"} | ${modes} | ${s.carriedCount > 0 ? s.carriedCount : "-"} |`,
         );

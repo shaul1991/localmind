@@ -9,6 +9,7 @@
  */
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
+import { REQUIRED_SELF_REVIEW_FIELDS, splitFrontmatter } from "./evidence-schema.js";
 
 /** 검사 대상 파일 하나(경로 + 본문). 실제 디스크 읽기는 진입점의 몫이다. */
 export interface EvidenceFile {
@@ -76,32 +77,8 @@ export function checkDiffCheckOutput(diffCheckOutput: string): PreflightViolatio
 
 // ── (c) merged report 필드 검사 (FR-3c·AC-5) ─────────────────────────────
 
-/** FR-5 필수 7필드(단일 필드셋 — FR-2와 공유). */
-const REQUIRED_MERGED_REPORT_FIELDS = [
-  "candidate-id",
-  "round",
-  "independence",
-  "blockers",
-  "advisories",
-  "approval-needed",
-  "completion",
-] as const;
-
-/** `---\n...\n---` frontmatter 블록을 분리한다. 닫는 구분자가 없으면 null. */
-function splitFrontmatter(text: string): { fm: string; body: string } | null {
-  const norm = text.replace(/\r\n/g, "\n");
-  if (!norm.startsWith("---\n")) return null;
-  const lines = norm.split("\n");
-  let end = -1;
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i] === "---") {
-      end = i;
-      break;
-    }
-  }
-  if (end < 0) return null;
-  return { fm: lines.slice(1, end).join("\n"), body: lines.slice(end + 1).join("\n") };
-}
+/** FR-5 필수 7필드(단일 필드셋 — FR-2와 공유, evidence-schema.ts가 SSoT). */
+const REQUIRED_MERGED_REPORT_FIELDS = REQUIRED_SELF_REVIEW_FIELDS;
 
 /** 파일명이 `self-review-round*.md` 패턴인 evidence의 frontmatter가 FR-5 필수 7필드를 갖췄는지 검사한다. */
 export function checkMergedReportFields(evidenceFiles: EvidenceFile[]): PreflightViolation[] {
@@ -228,9 +205,13 @@ export interface EvidenceCarryOverResult {
   reason: string;
 }
 
-/** 경로 정규화(trailing slash 제거) — tasks-format.md disjoint 판정과 표기 통일. */
+/** 경로 정규화(leading `./` 제거 + 연속 슬래시 축약 + trailing slash 제거) —
+ *  tasks-format.md의 1단계 정규화와 동일 규칙이라 disjoint 판정이 동형으로 성립한다
+ *  (specs/202607210846 AC-1 — 이전엔 trailing slash만 제거해 `./`·`//` 변형이 겹침 판정을
+ *  놓쳤다: `./src/x.ts` 선언과 `src/x.ts` diff가 다른 경로로 취급됐다). */
 function normalizeEvidencePath(p: string): string {
-  return p.replace(/\/+$/, "");
+  const collapsed = p.replace(/\/{2,}/g, "/").replace(/\/+$/, "");
+  return collapsed.replace(/^\.\//, "");
 }
 
 /** 두 경로가 같거나 한쪽이 다른 쪽의 디렉토리 접두면 겹침으로 본다
@@ -254,8 +235,10 @@ function hasDependencyOverlap(declaredDeps: string[], diffFiles: string[]): bool
  * 호출부 없이 규칙 인코딩+테스트로 존재(후속 preflight 통합 후보), specs/202607210545 FR-5.
  *
  * 승계 3조건(전부 충족해야 승계 가능): ① evidenceType이 hermetic-costly ② declaredDeps가
- * 선언돼 있음(null이 아님 — 선언 부재는 보수 기본으로 재실행) ③ declaredDeps와 diffFiles의
- * 교집합이 공집합. 하나라도 미충족이면 재실행 + 사유를 반환한다.
+ * 선언돼 있고 비어 있지 않음(null·빈 배열 모두 선언 부재로 간주 — 보수 기본으로 재실행,
+ * specs/202607210846 AC-2) ③ declaredDeps와 diffFiles의 교집합이 공집합(경로 비교는
+ * leading `./` 제거·연속 슬래시 축약 후 수행 — specs/202607210846 AC-1). 하나라도
+ * 미충족이면 재실행 + 사유를 반환한다.
  */
 export function judgeEvidenceCarryOver(input: EvidenceCarryOverInput): EvidenceCarryOverResult {
   const { declaredDeps, diffFiles, evidenceType } = input;
@@ -271,6 +254,13 @@ export function judgeEvidenceCarryOver(input: EvidenceCarryOverInput): EvidenceC
     return {
       carryOver: false,
       reason: "의존 선언이 없습니다 — 선언 부재는 보수적으로 재실행 대상입니다",
+    };
+  }
+
+  if (declaredDeps.length === 0) {
+    return {
+      carryOver: false,
+      reason: "의존 선언이 비어 있습니다 — 빈 선언(null과 동일)은 보수적으로 재실행 대상입니다",
     };
   }
 

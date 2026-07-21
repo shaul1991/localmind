@@ -4,7 +4,17 @@ localmind의 주요 변경 이력. 최신이 위.
 
 > 버전 체계: **CalVer `YYYY.MM.MICRO`** — 버전은 **릴리스(PR 머지) 시점** 기준. 확정 규칙은 `AGENTS.md`의 버전·릴리스 절이 정본이다.
 
-## 미릴리스
+## 2026.07.7 — 2026-07-21 — 완성도 스윕 + 플레이크 수정 (specs/202607210846-*·202607210756)
+
+### 완성도 스윕 — P4 경계 강건화·§4A 중복 정리·스키마 SSoT·문서 parity (specs/202607210846-*)
+
+- **judgeEvidenceCarryOver 경계 강건화** — `./`·중복 슬래시 정규화, 빈 의존 선언은 보수적
+  재실행(false CARRY 방향 제거 — P4 이월 advisory 2건 이행).
+- **goal-impl §4A 중복 수렴** — 조율 불변식 3중 서술을 1곳으로(규범 10개 손실 0, 핀 보존).
+- **evidence 스키마 SSoT** — 필수 7필드·frontmatter 파서를 `src/evidence-schema.ts`로 단일화.
+  retro §8 형태 라벨을 실제 round 번호로 정확화, `make review-preflight` 타깃 추가.
+- **사람용 문서 parity** — preflight·렌즈 병렬·hermetic 승계·retro §8 컬럼 설명을
+  docs/workflows.md·docs/agents.md에 평이한 한국어로 반영(비개발자 접근성).
 
 ### 간헐 테스트 플레이크 수정 (specs/202607210756)
 

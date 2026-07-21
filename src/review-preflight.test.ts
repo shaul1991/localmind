@@ -297,6 +297,58 @@ describe("FR-5 — judgeEvidenceCarryOver 라운드 간 hermetic evidence 조건
   });
 });
 
+describe("P4 advisory 이월 수정 (specs/202607210846) — 경로 정규화·빈 배열 보수 처리", () => {
+  it("AC-1: leading ./ 정규화 — ./src/x.ts 선언 vs src/x.ts diff는 겹침으로 재실행", () => {
+    const result = judgeEvidenceCarryOver({
+      declaredDeps: ["./src/x.ts"],
+      diffFiles: ["src/x.ts"],
+      evidenceType: "hermetic-costly",
+    });
+    assert.equal(result.carryOver, false);
+    assert.match(result.reason, /겹칩니다/);
+  });
+
+  it("AC-1: 연속 슬래시 축약 — src//x.ts 변형도 src/x.ts와 겹침으로 재실행", () => {
+    const result = judgeEvidenceCarryOver({
+      declaredDeps: ["src//x.ts"],
+      diffFiles: ["src/x.ts"],
+      evidenceType: "hermetic-costly",
+    });
+    assert.equal(result.carryOver, false);
+    assert.match(result.reason, /겹칩니다/);
+  });
+
+  it("AC-1: 양쪽 다 ./·// 변형이어도 겹침 판정", () => {
+    const result = judgeEvidenceCarryOver({
+      declaredDeps: ["./src//rules/deploy.ts"],
+      diffFiles: ["src/rules/deploy.ts"],
+      evidenceType: "hermetic-costly",
+    });
+    assert.equal(result.carryOver, false);
+    assert.match(result.reason, /겹칩니다/);
+  });
+
+  it("AC-2: declaredDeps가 빈 배열이면 null과 동일하게 재실행(사유에 빈 선언 명시)", () => {
+    const result = judgeEvidenceCarryOver({
+      declaredDeps: [],
+      diffFiles: ["src/other-module.ts"],
+      evidenceType: "hermetic-costly",
+    });
+    assert.equal(result.carryOver, false);
+    assert.match(result.reason, /비어\s*있습니다/);
+  });
+
+  it("AC-2: 기존 null 케이스의 사유 문구는 그대로 유지된다(회귀 방지)", () => {
+    const result = judgeEvidenceCarryOver({
+      declaredDeps: null,
+      diffFiles: ["src/other-module.ts"],
+      evidenceType: "hermetic-costly",
+    });
+    assert.equal(result.carryOver, false);
+    assert.match(result.reason, /선언이 없습니다/);
+  });
+});
+
 describe("runPreflight — 통합 진입 함수", () => {
   it("모든 검사가 clean이면 ok=true, violations=[]", () => {
     const result = runPreflight({

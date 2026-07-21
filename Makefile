@@ -84,6 +84,11 @@ logs: ## 로그 follow (한 서비스만: make logs SERVICE=openmemory)
 	$(COMPOSE) $(ALL) logs -f $(SERVICE)
 
 ##@ 검증
+.PHONY: review-preflight
+review-preflight: ## self-review 착수 전 결정적 사전 검사(임시경로 evidence·diff --check·merged report 필드·matrix 대응) — SPEC=specs/<dir> (specs/202607201808)
+	@if [ -z "$(SPEC)" ]; then echo "✗ SPEC을 지정하세요: make review-preflight SPEC=specs/<dir>"; exit 1; fi
+	@npm run --silent review:preflight -- "$(SPEC)"
+
 .PHONY: doctor
 doctor: ## 이 기기 진단: OS/GPU/임베딩 경로 점검 + 더 빠른 구성 안내(읽기 전용)
 	@bash "$(CURDIR)/scripts/doctor.sh"
