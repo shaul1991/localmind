@@ -216,3 +216,21 @@
 ---
 
 > 완료 시: 체크박스를 채우고, 검증 끝난 항목은 [ROADMAP.md](ROADMAP.md) 현재(Phase 0)에 반영.
+
+---
+
+## 재개편 후 백로그 (2026-07-22, release 2026.07.9 기준 — 위 항목들보다 이것이 유효)
+
+### living-memory advisory 5건 (self-review r1 — 전부 경미, evidence/self-review-r1.md)
+- [ ] volatility 오타 시 조용한 low 강등(수동 편집 경로) — under-signal. 보수적 처리(high 폴백) 또는 검증 경고 검토
+- [ ] 엣지 테스트 공백: BRIEF_STALE_DAYS 정확 경계일·미래 last_verified·brief 다건 신호 집계·volatility 오타
+- [ ] last_verified 직렬화 Z 탈락(기존 관례 계승 — 기능 영향 없음, 관례 일괄 정비 시 함께)
+- [ ] brief 빈 안내 워딩("기록 없음" vs "검색 못 찾음" 구분)
+- [ ] 신호 계산 try 블록 분리(방어적 — 현 구조상 throw 불가라 낮은 우선)
+
+### 재개편 이월
+- [ ] 임베딩 존폐 후속 판단 — A/B 동률(specs/202607211621-search-experiment) 기록됨. 트리거: 0-히트율 상승·체감 실패 누적 시 재검토(제거 시 Ollama·reindex·.brain-index 동반 감량)
+- [ ] AGENTS.md 자체 감량(OQ-2 — 메타 절 대거 sdd-toolkit 이관 여지)
+- [ ] brief 습관화 관찰(회고 리듬) — M5·M1 CLAUDE.md 연결됨(2026-07-22), 실사용 정착 여부
+- [ ] NOTES_DIR 라벨 구분자 오기(`:`) 무진단(UX) · compose EMBEDDING_MODEL 단수/복수 표기 정리
+- [ ] openmemory 컨테이너·볼륨 완전 삭제 판단(현재 stop+restart=no — 회수 완료 상태로 보존 중)
