@@ -234,3 +234,4 @@
 - [ ] brief 습관화 관찰(회고 리듬) — M5·M1 CLAUDE.md 연결됨(2026-07-22), 실사용 정착 여부
 - [ ] NOTES_DIR 라벨 구분자 오기(`:`) 무진단(UX) · compose EMBEDDING_MODEL 단수/복수 표기 정리
 - [ ] openmemory 컨테이너·볼륨 완전 삭제 판단(현재 stop+restart=no — 회수 완료 상태로 보존 중)
+- [ ] **도그푸드의 query-log 오염 방지**(측정 위생 — 회고 1, 2026-07-22): 도그푸드가 노트 폴더는 격리하되 query-log는 공용 `~/.localmind/query-log.jsonl`에 기록 — brief 실사용 통계 왜곡(도그푸드 6건 실측). 도그푸드 시 로그 경로도 격리 또는 `dogfood: true` 태깅.
