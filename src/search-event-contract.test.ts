@@ -200,7 +200,7 @@ test("reader: legacy/extended 행 모두 성공 + 잘못된 새 필드만 누락
 });
 
 // ── 표시 문구 "결과 반환률"(successRate JSON key는 불변) ──────────────────────
-test("표시 문구: report-note/retro-note는 '결과 반환률', successRate key 유지", async () => {
+test("표시 문구: report-note는 '결과 반환률', successRate key 유지", async () => {
   const qa = await import("./query-analysis.js");
   const reportNote = await import("./report-note.js");
   const recs = [
