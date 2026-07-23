@@ -33,14 +33,24 @@
 
 - [x] AC-1: 삭제 후 `tsc --noEmit` OK + `npm test` 전체 green. — 실측: 1차(죽은 코드) 246/246,
       2차(RQ 하네스 포함 최종) 177/177 · dist 클린 재빌드 후 smoke:mcp 통과(낡은 산출물 제거).
-- [x] AC-2: 삭제 대상 5파일의 참조가 저장소에 0건. — grep 실측 0건.
+- [x] AC-2: 삭제 대상 전체의 참조가 저장소에 0건 — 1차 5파일(util 2·eval-metrics 2·embed-bench)
+      및 확정 삭제분(retrieval-quality 8파일·테스트 9파일·`scripts/retrieval-quality.ts`·npm
+      script `retrieval:quality`) 모두, 정적 import·동적 `await import`·셸 `node --import tsx/esm`
+      호출·Makefile·docs 패턴 grep 실측 0건(유지분 testkit·search-event-contract 참조만 잔존).
 - [x] AC-3: 유지 판정 파일들의 소비처가 변경 없이 동작. — 스위트 246/246 + smoke:mcp 통과
       (smoke:brain은 실 노트 폴더 오염 방지를 위해 미실행 — 스위트가 brain 경로 커버).
 
 **self-review (Tier 1 — in-session 적대 자기검증 1라운드, 비독립)**: 도달성 판정 재검 —
 동적 import(`await import`)·셸에서의 tsx 직접 호출(`node --import tsx/esm scripts/…`)까지
 grep 범위에 포함했는지 확인(포함 — doctor.sh·backup-assets.sh에서 index-labels·asset-dirs를
-그 패턴으로 발견해 유지 판정). 삭제 5파일에 대한 동일 패턴 검색 0건 재확인. blocker 0.
+그 패턴으로 발견해 유지 판정). 삭제 대상 전체에 대한 동일 패턴 검색 0건 재확인. blocker 0.
+
+점검 축별 기록(리뷰 대응 보강): (1) AC↔증거 — 본 문서 AC 3건이 각각 실측 증거와 1:1 대응.
+(2) 시나리오·엣지 — 동적 import·셸 호출·Makefile 타깃·CI 스위트 경로를 엣지로 전수 검사,
+dist 낡은 산출물 잔존 케이스 발견 → 클린 재빌드로 해소. (3) 로직·경계 버그 — 코드 추가 없음
+(삭제만), 참조 무결성은 tsc·스위트 177/177이 검증. (4) 복잡도·보안 — 실행 표면 축소(-3.6k줄,
+npm script 1개 제거)로 감소, 신규 표면 없음. (5) Live-Verify Facts — 외부 API·버전 등 낡을 수
+있는 사실 주장 없음(도달성은 저장소 내부 사실로 라이브 검증 대상 아님) — 해당 없음 사유 기록.
 
 ## 티어 근거
 
