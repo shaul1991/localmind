@@ -31,12 +31,22 @@ ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 
 # 경로 정규화는 lib의 canon_path 공용(백업·진단과 같은 규칙).
 
-deploy_asset() { # <자산명> → agents:deploy | skills:deploy
+# 배포 스크립트 존재 판정 파일 — 테스트 격리용 override(LOCALMIND_ENV_FILE과 같은 결).
+PKG_FILE="${LOCALMIND_PKG_FILE:-$PROJECT_DIR/package.json}"
+
+deploy_asset() { # <자산명> → agents:deploy | skills:deploy (스크립트가 있는 구성에서만)
   local script="$1:deploy"
+  # 배포 스크립트는 great-reduction(2026-07-21)으로 메타와 함께 이관·소멸했다 — 부재는
+  # 결함이 아니라 코어 전용 구성이므로 스킵한다(소멸한 타깃 호출로 매 복원·동기화가
+  # 실패로 보이던 잔재 제거, specs/202607231856). 애드온이 스크립트를 되살리면 자동 재개.
+  if ! grep -q "\"$script\"" "$PKG_FILE" 2>/dev/null; then
+    ok "$1 배포 스킵 — 코어 전용 구성(배포 스크립트 없음)"
+    return 0
+  fi
   if ( cd "$PROJECT_DIR" && npm run --silent "$script" ); then
     ok "$1 배포 완료($script)"
   else
-    warn "$1 배포 실패 — 나중에 'make ${1}-deploy'로 다시 실행할 수 있어요."
+    warn "$1 배포 실패 — 'make restore'로 다시 시도할 수 있어요."
     FAIL=1
   fi
 }

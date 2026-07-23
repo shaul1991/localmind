@@ -24,14 +24,17 @@ exit 0
 S
 chmod +x "$TMP/bin/npm"
 
-setup() { # setup <케이스명> → BK, ENVF, LOG 초기화 + HOME 리셋
-  BK="$TMP/$1-bk"; ENVF="$TMP/$1.env"; NPM_LOG="$TMP/$1-npm.log"
+setup() { # setup <케이스명> → BK, ENVF, LOG, PKG 초기화 + HOME 리셋
+  BK="$TMP/$1-bk"; ENVF="$TMP/$1.env"; NPM_LOG="$TMP/$1-npm.log"; PKG="$TMP/$1-pkg.json"
   rm -rf "$TEST_HOME"; mkdir -p "$TEST_HOME" "$BK"; : > "$ENVF"; : > "$NPM_LOG"
+  # 기본은 배포 스크립트가 있는 구성(specs/019 원형 유지) — 코어 전용 스킵은 별도 케이스에서
+  # 빈 scripts로 검증한다(specs/202607231856).
+  printf '{"scripts":{"agents:deploy":"x","skills:deploy":"x"}}\n' > "$PKG"
 }
 run_restore() { # run_restore [추가 env...]
   OUT="$(HOME="$TEST_HOME" BACKUP_DIR="$BK" LOCALMIND_ENV_FILE="$ENVF" NPM_LOG="$NPM_LOG" \
         PATH="$TMP/bin:$PATH" env -u NOTES_DIR -u QUERY_LOG -u LOCALMIND_AGENTS_DIR -u LOCALMIND_SKILLS_DIR \
-        "$@" bash "$SCRIPT" 2>&1)"
+        LOCALMIND_PKG_FILE="$PKG" "$@" bash "$SCRIPT" 2>&1)"
   RC=$?
 }
 
@@ -93,6 +96,18 @@ setup ac14r
 mkdir -p "$BK/agents"; echo "d" > "$BK/agents/d.md"   # 마커 없음 = 기본 구성 백업 → 배포 호출됨
 run_restore DEPLOY_FAIL=1 RESTORE_CONTEXT=recover
 assert "AC-14(recover): 배포 실패 시 비0" '[ "$RC" -ne 0 ]'
+
+# ── 코어 전용 구성: 배포 스크립트 부재 → 정상 스킵(specs/202607231856) ──
+# great-reduction 이후 기본 설치에는 agents:deploy/skills:deploy가 없다 — 실패가 아니라 스킵.
+setup skipdep; T="$TMP/skipdep-target"
+mkdir -p "$BK/agents"; echo "d" > "$BK/agents/d.md"
+printf 'NOTES_DIR="w=%s"\n' "$T" > "$ENVF"
+printf '{"scripts":{"build":"x"}}\n' > "$PKG"          # 배포 스크립트 없는 코어 전용 pkg
+run_restore
+assert "스킵: 파일 복원은 완료" '[ -f "$T/agents/d.md" ]'
+assert "스킵: npm 배포 호출 0회" '! grep -q ":deploy" "$NPM_LOG"'
+assert "스킵: '배포 스킵' 안내 출력" 'printf %s "$OUT" | grep -q "배포 스킵"'
+assert "스킵: 0 종료(실패 아님)" '[ "$RC" -eq 0 ]'
 
 # ── AC-15: recover 마커 판정 ──
 setup ac15
@@ -189,10 +204,12 @@ assert "AC-27: 비대화 환경에서 자동 진행(안내 후 다음 단계 도
 #    중간 abort 없이 "복구 완료" 도달 + 실패 요약 + 비0(리뷰 결함 4) ──
 printf '#!/bin/sh\nexit 0\n' > "$TMP/bin/docker"; chmod +x "$TMP/bin/docker"   # info·compose 모두 성공
 printf '#!/bin/sh\nprintf 200\n' > "$TMP/bin/curl"; chmod +x "$TMP/bin/curl"   # 헬스 대기 즉시 통과
+printf '{"scripts":{"agents:deploy":"x","skills:deploy":"x"}}\n' > "$TMP/recover-pkg.json"  # 배포 있는 구성으로 고정
 run_recover() { # run_recover <BACKUP_DIR> [추가 env...]
   local bk="$1"; shift
   : > "$TMP/recover-npm.log"
   OUT="$(PATH="$TMP/bin:$PATH" HOME="$TEST_HOME" BACKUP_DIR="$bk" LOCALMIND_ENV_FILE="$TMP/recover.env" \
+        LOCALMIND_PKG_FILE="$TMP/recover-pkg.json" \
         NPM_LOG="$TMP/recover-npm.log" env -u NOTES_DIR -u QUERY_LOG "$@" bash "$ROOT/scripts/recover.sh" </dev/null 2>&1)"
   RC=$?
 }
