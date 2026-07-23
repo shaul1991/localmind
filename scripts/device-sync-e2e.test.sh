@@ -57,8 +57,10 @@ HOME_B="$TMP/home-b"; NOTES_B="$TMP/b-notes"; BK_B="$TMP/b-backup"
 mkdir -p "$HOME_B" "$NOTES_B"
 git clone -q "$BARE" "$BK_B"; git_id "$BK_B"
 printf 'NOTES_DIR="main=%s"\n' "$NOTES_B" > "$TMP/b.env"
+printf '{"scripts":{"agents:deploy":"x","skills:deploy":"x"}}\n' > "$TMP/b-pkg.json"  # 배포 있는 구성 고정(specs/202607231856)
 run_b_restore() {
   OUT="$(PATH="$TMP/bin:$PATH" HOME="$HOME_B" BACKUP_DIR="$BK_B" LOCALMIND_ENV_FILE="$TMP/b.env" \
+        LOCALMIND_PKG_FILE="$TMP/b-pkg.json" \
         NPM_LOG="$TMP/b-npm.log" env -u NOTES_DIR -u QUERY_LOG bash "$ROOT/scripts/restore-assets.sh" 2>&1)"
   RC=$?
 }
