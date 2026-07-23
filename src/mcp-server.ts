@@ -14,6 +14,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { capture, listFolders, notesDir, searchNotes } from "./brain.js";
 import {
+  parseLegacyDecisionNote,
   parseNoteDecision,
   staleAssumptions,
   staleSignalLine,
@@ -21,6 +22,7 @@ import {
   validateDecisionInput,
   type Decision,
   type DecisionInput,
+  type LegacyDecisionNote,
 } from "./decision.js";
 
 // 이 두뇌의 정체 — 호스트명으로 식별한다(복수 기기 구분). whoami가 보고한다.
@@ -60,6 +62,23 @@ function collectDecisions(hitPaths: string[]): Array<{ path: string; decision: D
     if (!note) continue;
     const decision = parseNoteDecision(note);
     if (decision) out.push({ path: p, decision });
+  }
+  return out;
+}
+
+/** 신형식 파싱이 안 되는 구형식 결정의 관대한 폴백 수집(specs/202607231759).
+ *  깨진 노트는 건너뛴다(AC-9 계승). */
+function collectLegacyDecisions(
+  hitPaths: string[],
+  structured: Set<string>,
+): Array<{ path: string } & LegacyDecisionNote> {
+  const out: Array<{ path: string } & LegacyDecisionNote> = [];
+  for (const p of [...new Set(hitPaths)]) {
+    if (structured.has(p)) continue;
+    const note = readNoteByHitPath(p);
+    if (!note) continue;
+    const legacy = parseLegacyDecisionNote(note);
+    if (legacy) out.push({ path: p, ...legacy });
   }
   return out;
 }
@@ -202,7 +221,12 @@ export function buildServer(): McpServer {
       try {
         const hits = await searchNotes(hint, 8, folder, "brief");
         const decisions = collectDecisions(hits.map((h) => h.path));
-        if (!decisions.length) {
+        // 구형식 폴백(specs/202607231759) — living-memory 이전 결정도 제목+발췌로 보이게 한다.
+        const legacy = collectLegacyDecisions(
+          hits.map((h) => h.path),
+          new Set(decisions.map((d) => d.path)),
+        );
+        if (!decisions.length && !legacy.length) {
           return textResult(
             `"${hint}" 관련 결정 노트가 없습니다 — 아직 이 주제의 결정이 기록되지 않았어요. ` +
               "힌트를 바꿔보거나, 결정을 내리면 capture_note(choice·why·assumptions)로 기록해 보세요.",
@@ -221,7 +245,19 @@ export function buildServer(): McpServer {
           const why = decision.why.replace(/\s+/g, " ").slice(0, 160);
           return `■ ${decision.choice} [${p}]\n  이유: ${why}\n  전제: ${assumptionLine}`;
         });
-        const body = `브리핑 (hint: "${hint}") — 결정 ${decisions.length}건\n\n${blocks.join("\n\n")}`;
+        // 구형식 블록은 신형식 뒤에 부가(AC-6) — 전제가 없어 낡음 신호 대상이 아님을 밝힌다(AC-3).
+        const legacyBlocks = legacy.map(
+          (l) => `□ (구형식) ${l.title || l.path} [${l.path}]` + (l.excerpt ? `\n  발췌: ${l.excerpt}` : ""),
+        );
+        const head = legacy.length
+          ? `브리핑 (hint: "${hint}") — 결정 ${decisions.length + legacy.length}건 (구형식 ${legacy.length}건 포함)`
+          : `브리핑 (hint: "${hint}") — 결정 ${decisions.length}건`;
+        let body = `${head}\n\n${[...blocks, ...legacyBlocks].join("\n\n")}`;
+        if (legacy.length) {
+          body +=
+            `\n\n구형식 결정 ${legacy.length}건 — 전제(낡음 신호) 미기록. ` +
+            "여전히 유효한 결정이면 capture_note(choice·why·assumptions)로 다시 기록해 두세요.";
+        }
         const signals = staleSignals(decisions);
         return textResult(signals.length ? `${body}\n\n${signals.join("\n")}` : body, false, "🧭");
       } catch (e) {

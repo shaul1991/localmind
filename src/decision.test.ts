@@ -8,6 +8,7 @@ import {
   validateDecisionInput,
   buildDecisionFrontmatterLines,
   parseNoteDecision,
+  parseLegacyDecisionNote,
   staleAssumptions,
   staleSignalLine,
   staleThresholdDays,
@@ -164,5 +165,94 @@ describe("staleThresholdDays (BRIEF_STALE_DAYS)", () => {
     assert.equal(staleThresholdDays("7"), 7);
     assert.equal(staleThresholdDays("abc"), 30);
     assert.equal(staleThresholdDays("-1"), 30);
+  });
+});
+
+describe("parseLegacyDecisionNote — 구형식 관대한 폴백 (specs/202607231759)", () => {
+  const legacyNote = [
+    "---",
+    'title: "결정: 순수 실험 — 연동해제"',
+    "date: 2026-07-22T00:52:43",
+    'tags: ["decision"]',
+    "source: localmind",
+    "---",
+    "# 결정: 순수 실험 — 연동해제",
+    "",
+    "## 선택 (choice)",
+    "메타 계층 전부를 연동해제한다. 일주일간 코어만으로 작업한다.",
+  ].join("\n");
+
+  it("AC-2: 구형식(decision 태그) 노트 → 제목+발췌로 환원", () => {
+    const r = parseLegacyDecisionNote(legacyNote);
+    assert.ok(r, "구형식 결정은 null이 아니어야 한다");
+    assert.equal(r!.title, "결정: 순수 실험 — 연동해제");
+    assert.match(r!.excerpt, /메타 계층 전부를 연동해제/);
+    assert.doesNotMatch(r!.excerpt, /^#/, "발췌에 헤딩 마크가 오면 안 된다");
+  });
+
+  it("신형식 정상 노트는 null(정본 경로 parseNoteDecision과 중복 금지)", () => {
+    const lines = buildDecisionFrontmatterLines(
+      { choice: "A", why: "B", assumptions: [{ fact: "F", volatility: "high" }] },
+      "2026-07-23T00:00:00Z",
+    );
+    const note = ["---", 'title: "t"', ...lines, "---", "본문"].join("\n");
+    assert.ok(parseNoteDecision(note), "전제: 신형식으로 파싱되는 노트");
+    assert.equal(parseLegacyDecisionNote(note), null);
+  });
+
+  it("AC-4: decision 태그 없는 일반 노트는 null", () => {
+    const note = ["---", 'title: "메모"', "tags: []", "---", "그냥 본문"].join("\n");
+    assert.equal(parseLegacyDecisionNote(note), null);
+  });
+
+  it("AC-5: frontmatter 없는 노트·깨진 YAML은 null(조용히 skip)", () => {
+    assert.equal(parseLegacyDecisionNote("# 그냥 마크다운\n본문"), null);
+    assert.equal(parseLegacyDecisionNote("---\n:{ 깨진 yaml\n---\n본문"), null);
+  });
+
+  it("AC-7: type: decision인데 3층이 깨진 노트는 폴백으로 환원(의도 손실 방지)", () => {
+    const note = ["---", 'title: "깨진 신형식"', "type: decision", "---", "결정 본문"].join("\n");
+    assert.equal(parseNoteDecision(note), null, "전제: 신형식 파싱은 실패");
+    const r = parseLegacyDecisionNote(note);
+    assert.ok(r);
+    assert.equal(r!.title, "깨진 신형식");
+  });
+
+  it("title이 없으면 첫 # 헤딩을 제목으로 쓴다", () => {
+    const note = ["---", 'tags: ["decision"]', "---", "# 헤딩 제목", "본문 내용"].join("\n");
+    const r = parseLegacyDecisionNote(note);
+    assert.ok(r);
+    assert.equal(r!.title, "헤딩 제목");
+    assert.match(r!.excerpt, /본문 내용/);
+  });
+
+  it("발췌: 본문에 내장된 frontmatter 블록·헤딩은 제외하고 공백을 정규화한다", () => {
+    const note = [
+      "---",
+      'title: "이중 frontmatter"',
+      'tags: ["decision"]',
+      "---",
+      "# 헤딩",
+      "",
+      "---",
+      "audience: ai",
+      "type: decision",
+      "---",
+      "",
+      "실제   본문",
+      "문장이다.",
+    ].join("\n");
+    const r = parseLegacyDecisionNote(note);
+    assert.ok(r);
+    assert.doesNotMatch(r!.excerpt, /audience|type:/, "내장 frontmatter가 발췌에 새면 안 된다");
+    assert.match(r!.excerpt, /실제 본문 문장이다\./);
+  });
+
+  it("발췌는 160자로 잘린다", () => {
+    const long = "가".repeat(300);
+    const note = ["---", 'tags: ["decision"]', "---", long].join("\n");
+    const r = parseLegacyDecisionNote(note);
+    assert.ok(r);
+    assert.ok(r!.excerpt.length <= 160, `발췌 길이 ${r!.excerpt.length} — 160 이하여야`);
   });
 });
