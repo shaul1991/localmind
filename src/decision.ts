@@ -89,6 +89,51 @@ export function parseNoteDecision(noteText: string): Decision | null {
   }
 }
 
+// ── 구형식 폴백 (specs/202607231759) ─────────────────────────────
+
+export interface LegacyDecisionNote {
+  title: string;
+  excerpt: string;
+}
+
+/** 구형식 결정 노트의 관대한 폴백(specs/202607231759). living-memory 이전의 결정 노트
+ *  (frontmatter tags에 "decision")와 3층이 깨진 type: decision 노트를 제목+발췌로 환원한다 —
+ *  구조를 강요하지 않고 과거 결정이 brief에 보이게 하는 게 목적(볼트 실측: 구형식 82건 중
+ *  `## 선택` 절 보유는 12건뿐이라 구조 복원 대신 발췌). 신형식으로 파싱되는 노트는 null
+ *  (정본 경로 parseNoteDecision이 처리). 판정 불가·깨진 노트도 null(AC-9 계승). */
+export function parseLegacyDecisionNote(noteText: string): LegacyDecisionNote | null {
+  try {
+    if (!noteText.startsWith("---")) return null;
+    const end = noteText.indexOf("\n---", 3);
+    if (end < 0) return null;
+    const fm = parseYaml(noteText.slice(3, end + 1)) as Record<string, unknown> | null;
+    if (!fm || typeof fm !== "object") return null;
+    if (parseNoteDecision(noteText)) return null;
+    const tags = Array.isArray(fm.tags) ? fm.tags : [];
+    if (!tags.includes("decision") && fm.type !== "decision") return null;
+    const bodyLineEnd = noteText.indexOf("\n", end + 1);
+    const body = bodyLineEnd < 0 ? "" : noteText.slice(bodyLineEnd + 1);
+    // 본문에 내장된 두 번째 frontmatter 블록(과거 이중 frontmatter 관례)은 발췌에서 제거.
+    // 수평선(---) 오탐 방지: 블록 첫 줄이 yaml key 꼴일 때만 제거한다.
+    const cleaned = body.replace(/(^|\n)---\n(?=[A-Za-z_][\w-]*:)[\s\S]*?\n---(?=\n|$)/g, "\n");
+    const headings = cleaned.split("\n").filter((l) => /^#/.test(l.trim()));
+    const title =
+      typeof fm.title === "string" && fm.title.trim()
+        ? fm.title.trim()
+        : (headings[0]?.replace(/^#+\s*/, "").trim() ?? "");
+    const excerpt = cleaned
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith("#") && l !== "---")
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .slice(0, 160);
+    return { title, excerpt };
+  } catch {
+    return null;
+  }
+}
+
 export interface StaleAssumption {
   fact: string;
   daysSince: number;

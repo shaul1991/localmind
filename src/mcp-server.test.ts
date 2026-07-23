@@ -252,3 +252,82 @@ describe("living-memory: 낡음 신호 (AC-4·7·8·9)", () => {
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });
 });
+
+// ── brief 구형식 폴백 (specs/202607231759) — living-memory 이전 결정 노트도 보이게 ──
+describe("brief 구형식 폴백 (specs/202607231759)", () => {
+  const LEGACY = [
+    "---",
+    'title: "결정: 게이트웨이 정리"',
+    "date: 2026-07-10T09:00:00",
+    'tags: ["decision"]',
+    "source: localmind",
+    "---",
+    "# 결정: 게이트웨이 정리",
+    "",
+    "게이트웨이를 중지하고 인증 직결로 전환했다.",
+    "",
+  ].join("\n");
+
+  it("AC-2·3: 구형식 결정 → (구형식)+제목+발췌+경로 표기, ⏳ 없음 + 미기록 안내", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lm-brief-legacy-"));
+    try {
+      fs.writeFileSync(path.join(dir, "legacy-decision.md"), LEGACY);
+      const r = runMcpProbe(dir, `
+        const b = await call("brief", { hint: "인증" });
+        console.log(JSON.stringify({ bErr: b.isError ?? false, out: text(b) }));
+      `);
+      assert.equal(r.bErr, false);
+      assert.match(r.out, /\(구형식\)/, "구형식 표기(AC-2)");
+      assert.match(r.out, /결정: 게이트웨이 정리/, "제목(AC-2)");
+      assert.match(r.out, /legacy-decision\.md/, "노트 경로(AC-2)");
+      assert.match(r.out, /게이트웨이를 중지하고/, "발췌(AC-2)");
+      assert.doesNotMatch(r.out, /⏳/, "구형식엔 낡음 신호 없음(AC-3)");
+      assert.match(r.out, /미기록/, "낡음 신호 미기록 안내(AC-3)");
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("AC-6·7: 신형식+구형식(깨진 신형식 포함) 혼재 — 신형식 먼저, 합산 건수 표기", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lm-brief-mixed-"));
+    try {
+      fs.writeFileSync(path.join(dir, "legacy-decision.md"), LEGACY);
+      fs.writeFileSync(
+        path.join(dir, "broken-new.md"),
+        '---\ntitle: "깨진 신형식"\ntype: decision\ntags: ["decision"]\n---\n인증 결정 본문만 남음\n',
+      );
+      const r = runMcpProbe(dir, `
+        await call("capture_note", { text: "인증 결정 본문", title: "인증방식",
+          choice: "Auth 2.0 채택", why: "표준 성숙",
+          assumptions: [{ fact: "2.0이 최신", volatility: "low" }] });
+        const b = await call("brief", { hint: "인증" });
+        console.log(JSON.stringify({ bErr: b.isError ?? false, out: text(b) }));
+      `);
+      assert.equal(r.bErr, false);
+      assert.match(r.out, /Auth 2\.0 채택/, "신형식 3층 유지(AC-1)");
+      assert.match(r.out, /깨진 신형식/, "깨진 신형식도 폴백 표기(AC-7)");
+      assert.match(r.out, /결정: 게이트웨이 정리/, "구형식 표기(AC-2)");
+      assert.ok(
+        r.out.indexOf("Auth 2.0 채택") < r.out.indexOf("(구형식)"),
+        "신형식이 구형식보다 먼저(AC-6)",
+      );
+      assert.match(r.out, /결정 3건/, "합산 건수");
+      assert.match(r.out, /구형식 2건/, "구형식 건수 표기");
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("AC-4: decision 태그 없는 일반 노트만 있으면 여전히 빈 브리핑 안내", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lm-brief-plain-"));
+    try {
+      fs.writeFileSync(
+        path.join(dir, "plain.md"),
+        '---\ntitle: "그냥 메모"\ntags: []\n---\n인증 관련 일반 메모\n',
+      );
+      const r = runMcpProbe(dir, `
+        const b = await call("brief", { hint: "인증" });
+        console.log(JSON.stringify({ bErr: b.isError ?? false, out: text(b) }));
+      `);
+      assert.equal(r.bErr, false);
+      assert.doesNotMatch(r.out, /\(구형식\)/, "일반 노트는 결정 아님(AC-4)");
+      assert.match(r.out, /결정 노트가 없습니다|기록되지 않/, "빈 브리핑 안내 유지(AC-4)");
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
