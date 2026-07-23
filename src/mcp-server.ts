@@ -26,6 +26,15 @@ import {
 // 이 두뇌의 정체 — 호스트명으로 식별한다(복수 기기 구분). whoami가 보고한다.
 export const BRAIN_ID = os.hostname().trim();
 
+// 서버 버전은 package.json이 정본 — 릴리스 bump가 그대로 반영되게 동적으로 읽는다(실패 시 폴백).
+const PKG_VERSION: string = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")).version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
+
 function textResult(text: string, isError = false, emoji = "") {
   return { content: [{ type: "text" as const, text: emoji ? `${emoji} ${text}` : text }], isError };
 }
@@ -73,7 +82,7 @@ export function configSummary(): string {
 
 /** 도구가 모두 등록된 새 McpServer를 만든다(HTTP stateless는 요청마다 새로 생성). */
 export function buildServer(): McpServer {
-  const server = new McpServer({ name: "localmind", version: "0.2.0" });
+  const server = new McpServer({ name: "localmind", version: PKG_VERSION });
 
   // ── whoami: 이 두뇌가 어떤 노트를 쓰는지 ─────────────────────────
   server.registerTool(

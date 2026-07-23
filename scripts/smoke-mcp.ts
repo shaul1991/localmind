@@ -1,7 +1,8 @@
 /**
  * localmind MCP 서버를 공식 MCP 클라이언트 SDK로 검증한다.
  *   npm run smoke:mcp
- * 전제: 없음(stdio 자체 기동) — 도구 표면 3개(whoami·capture_note·search_notes)를 확인한다.
+ * 전제: 없음(stdio 자체 기동) — 도구 표면 4개(whoami·capture_note·search_notes·brief)를 확인한다.
+ * (brief 호출 자체는 임베딩이 필요해 여기서 하지 않는다 — 무전제 유지. 동작 검증은 테스트 스위트.)
  */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -26,7 +27,7 @@ async function main() {
   const tools = await client.listTools();
   const names = tools.tools.map((t) => t.name).sort();
   ok(`tools/list → ${names.join(", ")}`);
-  const expected = ["capture_note", "search_notes", "whoami"];
+  const expected = ["brief", "capture_note", "search_notes", "whoami"];
   if (JSON.stringify(names) !== JSON.stringify(expected)) {
     throw new Error(`도구 표면이 다릅니다 — 기대 ${expected.join(",")} / 실제 ${names.join(",")}`);
   }
