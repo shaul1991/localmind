@@ -32,7 +32,13 @@ async function main() {
   const transport = new StdioClientTransport({
     command: "node",
     args: ["dist/mcp.js"],
-    env: { ...process.env, NOTES_DIR } as Record<string, string>,
+    // QUERY_LOG 격리(specs/202607231810) — 노트 폴더처럼 쿼리 로그도 임시 폴더로.
+    // 공용 ~/.localmind/query-log.jsonl 은 실사용 측정 전용(리포트·brief 통계 왜곡 방지).
+    env: {
+      ...process.env,
+      NOTES_DIR,
+      QUERY_LOG: path.join(NOTES_DIR, "query-log.jsonl"),
+    } as Record<string, string>,
   });
   const client = new Client({ name: "smoke-brain", version: "0.1.0" });
   await client.connect(transport);
