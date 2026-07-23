@@ -71,7 +71,7 @@
    make mcp-install                       # 기본 노트 폴더 ~/.localmind
    make mcp-install NOTES_DIR=/내/노트폴더  # 내 .md 노트로 바로 RAG
    ```
-4. 앱 재시작 → `whoami`·`capture_note`·`search_notes` 도구가 생김.
+4. 앱 재시작 → `whoami`·`capture_note`·`search_notes`·`brief` 도구 4종이 생김.
 
 이후 매일 하는 것: **그냥 대화.** 설치는 한 번뿐 — 자세한 사용은 👉 [사용법](usage.md).
 
