@@ -71,7 +71,7 @@
    make mcp-install                       # 기본 노트 폴더 ~/.localmind
    make mcp-install NOTES_DIR=/내/노트폴더  # 내 .md 노트로 바로 RAG
    ```
-4. 앱 재시작 → `whoami`·`capture_note`·`search_notes` 도구가 생김.
+4. 앱 재시작 → `whoami`·`capture_note`·`search_notes`·`brief` 도구 4종이 생김.
 
 이후 매일 하는 것: **그냥 대화.** 설치는 한 번뿐 — 자세한 사용은 👉 [사용법](usage.md).
 
@@ -194,7 +194,8 @@ make backup BACKUP_EXTRA_FILES="~/.claude/CLAUDE.md,~/.codex/config.toml"
 (`.env`는 소유자 전용 600). 원격(http) 모드를 직접 켤 때만 토큰 인증(`MCP_AUTH_TOKEN`)이 강제됩니다.
 
 ### Q. AI가 실수로(또는 악성 노트 지시로) 노트를 지울 수 있나요?
-**아니요 — AI에게 삭제 도구 자체가 없습니다**(도구는 기록·검색·식별 3종뿐). 노트 삭제는
+**아니요 — AI에게 삭제 도구 자체가 없습니다**(도구는 기록·검색·브리핑·식별 4종뿐 — 전부
+쓰기 추가 또는 읽기 전용). 노트 삭제는
 사람이 파일시스템/에디터에서 직접 합니다. 과거 휴지통(`.trash/`)에 남은 노트는
 `make trash-list`로 확인, 완전 비우기(비가역)는 `make trash-empty`(사람이 직접, 확인 후).
 git 백업(`make backup`)을 켜뒀다면 삭제 이력도 git으로 복구할 수 있습니다.

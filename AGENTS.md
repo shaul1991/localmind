@@ -2,6 +2,23 @@
 
 이 저장소에서 작업하는 모든 AI 에이전트(Claude Code, Codex 등)가 따르는 규약이다.
 
+## 최상위 전제 — 왜 이 프로젝트가 존재하는가 (2026-07-23)
+
+**이 전제는 이 문서의 다른 모든 규칙·목표·게이트보다 최우선이다.** 규칙 간 판단이 갈리면
+이 전제로 되돌아와 해석한다.
+
+- 이 프로젝트의 근본 목적은 **AI에게 작업을 위임하기 위해, AI를 잘 사용하는 것**이다.
+- localmind는 그 목적을 위한 도구 중 하나로, **개인화 저장소(개인 second-brain) 겸 RAG
+  시스템**으로 쓰려고 만든 것이다.
+- **1차 사용자는 사람이 아니라 임무를 수행하는 AI다.** 사람이 잘 쓰기 위한 도구이기 이전에,
+  AI가 임무 수행을 잘 하기 위해 스스로 사용할 수 있는 도구여야 한다.
+- 이는 아래 "오픈소스 대상 — 비개발자 포함"과 모순이 아니라 층위가 다르다: **AI에게 업무를
+  위임하는 주체는 모든 사람(비개발자 포함)**이고, localmind는 그 위임받은 AI가 일을 잘 할 수
+  있도록 만들어주는 **보조 도구(수단)**다. 사람 = 위임자·수혜자, AI = 도구의 1차 소비자.
+- 따라서 모든 변경·규칙의 최종 기준은 "이것이 AI 위임·활용을 더 잘하게 하는가?"다. 아래
+  "범위 우선순위 — 코어 우선·메타 동결"을 포함한 하위 규칙들은 이 전제를 실현하는 수단이며,
+  이 전제와 충돌하는 방향으로 해석하지 않는다.
+
 ## SDD 흐름 — 기본값
 
 **실질적(Tier 2) 변경**은 `specs/{timestamp}-{feature-slug}/` 폴더에 3개 문서로 시작한다(tasks.md는
@@ -209,6 +226,26 @@ runtime이 명시 호출을 보증하고 원인자가 spec 폴더 프리픽스(t
    (짧은 sha는 `--commit` 필터가 빈 결과 → 무한 대기 실측). CI 대기 중 유휴 금지 —
    CI가 전제인 단계(device-sync 등)만 뒤로 미루고 나머지 작업은 병렬로 계속한다.
 
+## PR 리뷰 대응 — 자동 리뷰어 (2026-07-23)
+
+PR에 자동 리뷰어(CodeRabbit·Codex 등)가 남긴 리뷰는 다음 절차로 대응한다(PR #48 실전에서 확립):
+
+1. **지적별 검증 — 리뷰를 그대로 믿지 않는다.** 각 지적을 현재 코드·문서 기준으로 실측 검증한
+   뒤 수용/스킵을 판정한다. 리뷰어도 오탐을 낸다(실례: 코드 기본값과 권장값을 혼동한 지적 —
+   근거 반박으로 철회·Learning 등록을 받아냄).
+2. **수용은 최소 수정 + 같은 패턴 전수 검색.** 지적된 지점만 고치지 말고 동일 패턴을 저장소
+   전체에서 검색해 함께 고친다(실례: 도구 열거 누락 2곳 지적 → 전수 검색으로 3곳 수정).
+3. **스킵은 사유와 함께 반박한다.** 스코프 밖·저장소 관례·의도된 설계(제품 원칙 근거 — 예:
+   비차단·복원력)를 명시한다. 근거가 서면 리뷰어가 지적을 철회하고 Learning으로 등록해
+   같은 오탐의 재발이 줄어든다.
+4. **스레드별 개별 회신 — 요약 코멘트로 갈음하지 않는다.** 각 인라인 스레드에 봇 멘션
+   (`@coderabbitai` 등)으로 회신해야 봇이 스레드 단위 해소·철회를 처리한다. 수용 회신에는
+   수정 커밋 SHA를 명시한다.
+5. **리뷰 대응 수정도 새 candidate다.** 커밋·push 후 CI를 다시 감시하고(규약 7의
+   `gh run watch`, full SHA), 영향받은 검증(스위트·스모크)을 재실행한다.
+6. 대응 후 **새 리뷰가 또 달렸는지 확인**하는 것까지가 한 사이클이다 — 회신에 리뷰어가
+   후속 질문을 남겼으면 닫는 답을 남긴다.
+
 ## 버전·릴리스 — 규약7 이후 (CalVer)
 
 이 절은 규약7의 PR 생성 이후 단계(머지 → 버전 확정 확인 → tag → release)를 정한다.
@@ -279,7 +316,8 @@ runtime이 명시 호출을 보증하고 원인자가 spec 폴더 프리픽스(t
 - TDD: 유저 시나리오 → 실패 테스트 → 최소 구현 → 리팩터. AC를 테스트로 1:1 매핑한다.
 - 외과적 변경: 요청과 무관한 리팩터·포매팅 변경을 하지 않는다.
 - **tasks 병렬 메타데이터**: localmind 자체 `tasks.md`를 저작할 때(손작성·goal-ready 산출물
-  모두) `templates/skills/goal-impl/references/tasks-format.md`의 phase 헤더 직하 `depends-on:`·
+  모두) [sdd-toolkit](https://github.com/shaul1991/sdd-toolkit)(2026-07-23 repo째 아카이브 —
+  참고 소스)의 `templates/skills/goal-impl/references/tasks-format.md`의 phase 헤더 직하 `depends-on:`·
   `files:` 선언 문법을 따른다 — goal-impl의 fan-out 판정이 이 선언만 읽는다.
 - **Live-Verify Facts (기억 불신 원칙)**: 기억·주입 컨텍스트·이전 대화는 **100% 신뢰하지
   않는다** — 출발점일 뿐 근거가 아니다. **낡을 수 있는 사실**(외부 API·SDK·라이브러리 거동,
@@ -312,7 +350,8 @@ runtime이 명시 호출을 보증하고 원인자가 spec 폴더 프리픽스(t
 1. **사전 정의 먼저**: 디자이너(designer) 페르소나가 `specs/{timestamp}-{slug}/design.md`를
    완성한다 — 디자인 시스템 패턴, 디자인 토큰(값 표), 컴포넌트 정의(변형·상태·화면 상태
    전이), **실행 에이전트용 프롬프트 전문**까지. 시작점은
-   `cp templates/sdd/design.template.md specs/{timestamp}-{slug}/design.md`.
+   [sdd-toolkit](https://github.com/shaul1991/sdd-toolkit)(아카이브 — 참고 소스)의
+   `templates/sdd/design.template.md`를 `specs/{timestamp}-{slug}/design.md`로 복사.
 2. **사용자 확인 후 실행**: design.md가 확인되기 전에는 워커가 UI 구현에 착수하지
    않는다. design.md가 없으면 진행 전에 사용자에게 알린다(규약 6과 동일). — 이 확인
    규칙은 **SDD 무대(specs/) 기준**이다. **바이브 코딩 무대**에서는 design.md가 없으면
@@ -333,8 +372,8 @@ runtime이 명시 호출을 보증하고 원인자가 spec 폴더 프리픽스(t
 1. **도메인 가이드(완화 게이트)**: 각 도메인 페르소나는 작업 전 노트 폴더의
    `guides/{domain}.md`를 확인한다 — 있으면 그 스택·컨벤션·금지사항을 따르고, **없으면
    일반 모범 사례로 진행하되 그 사실을 보고에 명시**한다(design.md식 강제 금지가 아님 —
-   마찰 최소화). 가이드 시작:
-   `cp templates/guides/guide.template.md <노트 폴더>/guides/{domain}.md`.
+   마찰 최소화). 가이드 시작: [sdd-toolkit](https://github.com/shaul1991/sdd-toolkit)(아카이브 —
+   참고 소스)의 `templates/guides/guide.template.md`를 `<노트 폴더>/guides/{domain}.md`로 복사.
    가이드를 git 노트 저장소에 두면 백업에 포함된다.
 2. **UI 작업은 design.md 게이트가 우선**: 웹/앱 UI 구현에서는 026 디자인 게이트(사전
    정의 — 확인 규칙은 무대별: 위 "디자인·UI/UX 작업" 절 참조)가 완화 게이트보다 우선한다.
@@ -350,8 +389,8 @@ runtime이 명시 호출을 보증하고 원인자가 spec 폴더 프리픽스(t
 1. **문서 4종과 소유**: `context-map.md`·`ubiquitous-language.md`(아키텍트 — 용어 제안은
    누구나, 판정은 아키텍트), `api-contract.md`(backend-dev — API 변경 시 동시 갱신),
    `environments.md`(infra). 디자인 토큰은 복제하지 않는다 — design.md가 정본, context-map은
-   위치 포인터만. 시작:
-   `cp templates/contracts/api-contract.template.md <노트 폴더>/projects/<project>/api-contract.md`
+   위치 포인터만. 시작: [sdd-toolkit](https://github.com/shaul1991/sdd-toolkit)(아카이브 — 참고
+   소스)의 `templates/contracts/api-contract.template.md`를 `<노트 폴더>/projects/<project>/api-contract.md`로 복사
 2. **프로젝트 식별**: cwd 이름과 `projects/` 폴더명을 양방향 정규화(kebab-case·소문자)로
    매칭한다 → 사용자가 명시하면 그것이 우선 → 모호하면 **추측하지 않고 사용자에게 묻는다**.
    폴더 신규 생성은 사용자의 `cp`가 기본(에이전트는 안내만, 명시 요청 시 생성 가능).
@@ -398,7 +437,13 @@ provider·model 매핑·가격·alias는 이 규약의 필수 계약이 **아니
 문서(optional adapter)로 둔다.
 
 이 optional adapter는 온보딩 스킬 `localmind-binding`(설치별 `~/.localmind/_bindings/<runtime-id>.json`)
-으로 구체화됐다(specs/050) — 사용법은 [docs/workflows.md](docs/workflows.md) 참조.
+으로 구체화됐다(specs/050) — 사용법은 [sdd-toolkit](https://github.com/shaul1991/sdd-toolkit)의
+`docs/workflows.md` 참조.
+
+> **sdd-toolkit 위상(2026-07-23 사용자 결정)**: sdd-toolkit repo는 **아카이브(동결·참고 소스)**다 —
+> 재배포하지 않는다. 위 절들의 sdd-toolkit 참조는 역사·참고용이며, 메타(스킬·페르소나·템플릿)의
+> 신규 제작은 별도 repo `localmind-addons`에서 새 기준(localmind 활용 + 모델 능력 최대화)으로
+> 한다. 구현·배포는 순수 localmind 실험 회고(07-24) 이후.
 
 ## 오픈소스 대상 — 비개발자 포함, 특정 개인 아님
 
