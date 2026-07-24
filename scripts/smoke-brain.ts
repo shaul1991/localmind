@@ -16,6 +16,14 @@ function textOf(res: any): string {
 function ok(label: string) {
   console.log(`\x1b[32m✓\x1b[0m ${label}`);
 }
+// 도구가 isError 응답을 반환하면 스모크는 실패다(specs/202607241810 — 응답 텍스트만 찍고
+// 통과로 처리하던 거짓 안심 제거). throw로 전파해 finally가 서버 자식을 정리한 뒤 비0으로
+// 끝난다(process.exit 즉시 종료는 고아 서버가 파이프를 물어 셸 캡처가 매달림 — 실측).
+function expectOk(res: any, label: string) {
+  if (res?.isError) {
+    throw new Error(`${label} — 도구가 오류를 반환했어요: ${textOf(res).slice(0, 200)}`);
+  }
+}
 
 async function main() {
   const NOTES_DIR = path.join(process.env.CLAUDE_JOB_DIR ?? os.tmpdir(), `brain-test-${Date.now()}`);
@@ -44,25 +52,31 @@ async function main() {
   await client.connect(transport);
   console.log(`notes dir: ${NOTES_DIR}\n`);
 
-  const s = await client.callTool({
-    name: "search_notes",
-    arguments: { query: "임베딩 모델 뭐 쓰지?", limit: 2 },
-  });
-  ok(`search_notes → ${JSON.stringify(textOf(s).slice(0, 90))}`);
+  try {
+    const s = await client.callTool({
+      name: "search_notes",
+      arguments: { query: "임베딩 모델 뭐 쓰지?", limit: 2 },
+    });
+    expectOk(s, "search_notes");
+    ok(`search_notes → ${JSON.stringify(textOf(s).slice(0, 90))}`);
 
-  const c = await client.callTool({
-    name: "capture_note",
-    arguments: { text: "백업은 매주 일요일 새벽 3시에 외장 SSD로 자동 수행한다.", title: "백업 정책" },
-  });
-  ok(`capture_note → ${JSON.stringify(textOf(c).slice(0, 60))}`);
+    const c = await client.callTool({
+      name: "capture_note",
+      arguments: { text: "백업은 매주 일요일 새벽 3시에 외장 SSD로 자동 수행한다.", title: "백업 정책" },
+    });
+    expectOk(c, "capture_note");
+    ok(`capture_note → ${JSON.stringify(textOf(c).slice(0, 60))}`);
 
-  const s2 = await client.callTool({
-    name: "search_notes",
-    arguments: { query: "백업은 언제 돌지?", limit: 1 },
-  });
-  ok(`search_notes(새 노트) → ${JSON.stringify(textOf(s2).slice(0, 90))}`);
-
-  await client.close();
+    const s2 = await client.callTool({
+      name: "search_notes",
+      arguments: { query: "백업은 언제 돌지?", limit: 1 },
+    });
+    expectOk(s2, "search_notes(새 노트)");
+    ok(`search_notes(새 노트) → ${JSON.stringify(textOf(s2).slice(0, 90))}`);
+  } finally {
+    // 성공·실패 모두 서버 자식 정리(고아 방지). close 실패가 원 오류를 가리지 않게 삼킨다.
+    await client.close().catch(() => {});
+  }
   console.log("\n\x1b[32m모든 second-brain 도구 통과\x1b[0m");
 }
 
