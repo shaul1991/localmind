@@ -94,8 +94,14 @@ NOTES_DIR=~/my-notes                        # 내 .md 노트 폴더(쉼표로 �
 - 📐 [Product Vision](docs/product-vision.md) — 이 프로젝트가 지향하는 것("살아있는 why 저장소")
 - 🩺 [문제 해결](docs/troubleshooting.md) — 잘 안 될 때 증상별 해결
 
-> 🧰 SDD 워크플로·페르소나·규칙 배포 등 **AI 개발 방법론 도구**는 별도 저장소(`sdd-toolkit`)로
-> 분리됐습니다(2026-07 great-reduction — [rebuild-plan](docs/rebuild-plan.md) 참고).
+> 🧰 SDD 워크플로 등 **AI 작업 방법론**은 이 저장소에 없습니다 — localmind는 기억 계층(코어)만
+> 담당합니다(2026-07 great-reduction — [rebuild-plan](docs/rebuild-plan.md) 참고).
+> 방법론은 애드온으로 갈라져 나가, AI 런타임(Claude Code 등)에 **필요한 것만 골라 설치**하는
+> 형태가 됐습니다 — `localmind-core`(세션 시작 브리핑·결정 3층 캡처), `sdd-5docs`(goal→spec→
+> plan→tasks→review 문서 체계), `goal-impl`(문서에서 구현으로). 모든 애드온의 기준은 두 가지 —
+> **localmind와 연결될 것**, 그리고 **형식으로 모델을 제약하지 말 것**("무엇이 남아야 하는가"만
+> 정하고 "어떻게"는 모델에 맡깁니다). 현재 별도 비공개 저장소에서 다듬는 중이며, localmind
+> 없이도 이 저장소만으로 기억 계층은 온전히 동작합니다.
 
 ---
 
