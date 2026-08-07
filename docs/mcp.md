@@ -7,7 +7,7 @@ localmind의 능력을 **MCP 도구**로 노출해, MCP 호스트(Claude Desktop
 
 | 도구 | 설명 |
 |---|---|
-| `whoami` | 이 두뇌 식별 — 기기 이름과 어떤 노트 폴더를 쓰는지 |
+| `whoami` | 이 두뇌 식별 — 공개 안전한 deployment id와 노트 폴더 라벨(호스트명·절대경로 미노출) |
 | `capture_note` | 마크다운 노트 저장 + 인덱싱 (정본은 `.md` — 결정·지식·맥락 기록). **결정 캡처**: `choice`(선택)·`why`(이유)·`assumptions`(전제 — `fact`+`volatility: high|low`)를 함께 주면 결정이 3층 구조로 저장되고, 각 전제에 `last_verified`(캡처 시각)가 자동 기록됩니다 |
 | `search_notes` | 내 노트 의미검색(원문 스니펫·경로 반환). 결과에 **전제가 낡은 결정**이 있으면 응답 끝에 재검증 권장 한 줄이 붙습니다(본문 무변·비차단) |
 | `brief` | **세션 시작 브리핑** — 힌트(프로젝트·주제)로 관련 결정을 요약(선택·이유·전제 상태·노트 경로). 새 세션이 과거 결정을 가지고 시작하게 합니다 |
@@ -78,7 +78,8 @@ DRY_RUN=1 make mcp-desktop             # 적용 전 미리보기(쓰지 않음)
 
 **홈서버에서 기동**(기본 바인딩은 비공개 `127.0.0.1`):
 ```bash
-make mcp-serve-http        # MCP_AUTH_TOKEN이 없으면 생성해 .env에 저장하고 연결법을 안내
+# 배포마다 구분되는 공개용 식별자를 지정(비밀값이 아님; 상시 운영은 .env에 기록)
+LOCALMIND_DEPLOYMENT_ID=home-main make mcp-serve-http        # MCP_AUTH_TOKEN이 없으면 생성해 .env에 저장하고 연결법을 안내
 ```
 - 기본 포트 `8789`(`MCP_HTTP_PORT`), 경로 `/mcp`(`MCP_HTTP_PATH`), 호스트 `127.0.0.1`(`MCP_HTTP_HOST`).
 - **인증 강제**: 토큰(`MCP_AUTH_TOKEN`) 없이는 기동하지 않는다. 토큰은 **두뇌 접근권**이므로 유출 주의.
@@ -86,9 +87,21 @@ make mcp-serve-http        # MCP_AUTH_TOKEN이 없으면 생성해 .env에 저�
 
 **다른 기기(맥)의 Claude Code에서 연결** — 사설망(Tailscale) URL로:
 ```bash
-claude mcp add --transport http localmind http://<홈서버-Tailscale-IP-또는-이름>:8789/mcp \
-  --header "Authorization: Bearer <MCP_AUTH_TOKEN>"
+export MCP_AUTH_TOKEN='<홈서버의 토큰>'
+claude mcp add --scope user --transport http localmind \
+  http://<홈서버-Tailscale-IP-또는-이름>:8789/mcp \
+  --header 'Authorization: Bearer ${MCP_AUTH_TOKEN}'
+
+# 검색·저장 전에 scope 중복, HTTP transport, 실제 정본 identity를 읽기 전용으로 확인
+npm run remote-check -- home-main
 ```
+
+`remote-check`는 Claude Code의 local/project/user scope를 모두 읽되, 원격 정본은 **user scope HTTP 등록
+하나만** 허용한다. 저장소가 제어할 수 있는 project `.mcp.json`이나 project별 local scope에서 토큰을
+임의 endpoint로 보내지 못하도록 이 두 scope는 단독 등록이어도 실패한다. URL 환경변수는
+`LOCALMIND_MCP_URL`, 인증 헤더 환경변수는 `MCP_AUTH_TOKEN`만 허용한다. 설정을 수정하지 않으며
+URL·토큰·절대경로를 출력하지 않는다. 클라이언트 기기의 로컬 stdio `localmind`가 남아 있다면 먼저
+제거해 **원격 HTTP 정본 하나만** 유지한다.
 
 > ⚠️ **보안**: 기본은 `127.0.0.1`(외부 미개방)이다. 다른 기기 접근은 **Tailscale 같은 사설망**으로
 > 하고, 인터넷에 포트를 직접 열지 마라. Claude **모바일 앱의 원격 커넥터**는 서버가 공개 인터넷에

@@ -8,11 +8,10 @@
  * 이 모듈은 stdout에 아무것도 쓰지 않는다(stdio transport 전용).
  */
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { capture, listFolders, notesDir, searchNotes } from "./brain.js";
+import { capture, listFolders, searchNotes } from "./brain.js";
 import {
   parseLegacyDecisionNote,
   parseNoteDecision,
@@ -25,8 +24,15 @@ import {
   type LegacyDecisionNote,
 } from "./decision.js";
 
-// 이 두뇌의 정체 — 호스트명으로 식별한다(복수 기기 구분). whoami가 보고한다.
-export const BRAIN_ID = os.hostname().trim();
+// 원격에서도 공개해도 되는 배포 식별자. 호스트명·절대경로는 기본 응답에 노출하지 않는다.
+export function safePublicLabel(value: string | undefined): string {
+  const trimmed = value?.trim() ?? "";
+  return /^[\p{L}\p{N}][\p{L}\p{N}._-]{0,63}$/u.test(trimmed) ? trimmed : "unknown";
+}
+
+export const BRAIN_ID = safePublicLabel(process.env.LOCALMIND_DEPLOYMENT_ID) === "unknown"
+  ? "localmind"
+  : safePublicLabel(process.env.LOCALMIND_DEPLOYMENT_ID);
 
 // 서버 버전은 package.json이 정본 — 릴리스 bump가 그대로 반영되게 동적으로 읽는다(실패 시 폴백).
 const PKG_VERSION: string = (() => {
@@ -96,7 +102,11 @@ function staleSignals(decisions: Array<{ path: string; decision: Decision }>): s
 }
 
 export function configSummary(): string {
-  return `brain=${BRAIN_ID}, notes=${notesDir()}`;
+  return `deployment=${BRAIN_ID}, labels=${listFolders().map((f) => safePublicLabel(f.label)).join(",")}`;
+}
+
+export function readyMessage(mode: "http" | "stdio"): string {
+  return `[localmind-mcp] ${mode} ready (${configSummary()})\n`;
 }
 
 /** 도구가 모두 등록된 새 McpServer를 만든다(HTTP stateless는 요청마다 새로 생성). */
@@ -109,14 +119,14 @@ export function buildServer(): McpServer {
     {
       title: "Which brain (notes)",
       description:
-        "Report which brain this is — the host id and notes folder(s) in use. " +
+        "Report which brain this is — the public-safe deployment id and note folder labels in use. " +
         "Use before capture/search to confirm you're on the right notes.",
       inputSchema: {},
     },
     async () => {
-      const folders = listFolders().map((f) => `  - ${f.label}: ${f.dir}`).join("\n");
+      const folders = listFolders().map((f) => `  - ${safePublicLabel(f.label)}`).join("\n");
       return textResult(
-        `brain: ${BRAIN_ID}\n` + `notes folders (label: path):\n${folders}`,
+        `deployment: ${BRAIN_ID}\n` + `notes folder labels:\n${folders}`,
         false, "🧠",
       );
     },

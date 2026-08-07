@@ -3,9 +3,10 @@
 M1 맥북 같은 개인 기기에서 돌던 localmind를 **항상 켜져 있는 홈서버**에 두고, SSH로 접속해
 **휴대폰에서도** 같은 second-brain(노트·메모리·에이전트)을 쓰는 셋업 가이드다.
 
-> **위상**: localmind의 기본은 **기기마다 로컬로 붙는 것**(stdio, `make mcp-install`)이다. 이
-> 문서가 다루는 홈서버 중앙집중·원격(http) 접속은 노트를 한 곳에 모아 여러 기기에서 쓰고 싶은
-> 사용자를 위한 **옵션**이다 — 기본 사용법은 [README](../README.md)를 참고한다.
+> **위상**: 기기별 로컬 stdio와 홈서버 단일 정본 HTTP는 서로 다른 운영 방식이다. 여러 기기에서
+> 같은 second-brain을 쓸 때는 **홈서버 HTTP 등록 하나만** 유지한다. 원격 HTTP의 설치·검증 정본은
+> [MCP 문서의 원격 모드](mcp.md#원격http-모드--홈서버-중앙집중-specs045)이며, 이 문서는 서버 운영과
+> 휴대폰 SSH 접근을 보충한다.
 
 > 이 문서의 외부 사실(MCP transport, Claude 모바일 커넥터 지원 등)은 2026-07 시점 공식 문서(T1)로
 > 검증했다. 아래 "출처"와 "미확인 항목" 참조. 시간이 지나면 재검증이 필요하다.
@@ -14,16 +15,15 @@ M1 맥북 같은 개인 기기에서 돌던 localmind를 **항상 켜져 있는 
 
 ## 0. 핵심 결론 먼저 (왜 이 방식인가)
 
-localmind의 MCP 서버는 **stdio 전송(로컬 프로세스)** 방식이고, `search_notes`·`capture_note`는
-**노트 폴더(NOTES_DIR)의 로컬 파일을 직접** 읽고 쓴다. 즉 **MCP는 노트가 있는 기기에서 돌아야 한다.**
+localmind는 stdio(로컬 프로세스)와 Streamable HTTP(원격 홈서버)를 모두 구현한다.
+`search_notes`·`capture_note`는 서버의 `NOTES_DIR`를 직접 읽고 쓰므로, 여러 기기가 같은 노트를
+써야 한다면 MCP 서버를 **노트가 있는 홈서버 한 곳**에서 HTTP로 실행한다.
 
-그래서 "휴대폰의 Claude 앱이 원격 MCP에 붙는" 방식보다, **홈서버에서 Claude Code를 돌리고 휴대폰은
-그 화면(터미널)에만 붙는** 방식이 가장 견고하다:
-
-- **추천**: 홈서버에 스택 + Claude Code 상시 구동 → 휴대폰은 **Tailscale + SSH 앱 + tmux**로 접속.
-  MCP 프로토콜을 **하나도 바꾸지 않는다**(stdio 그대로). ← 이 문서의 본론(§2~§6).
-- **비추천(현재)**: Claude 모바일 앱의 "커스텀 커넥터"로 홈서버 MCP에 직접 연결. 공식 기능이지만
-  **서버를 공개 인터넷에 노출해야** 하고, localmind에 HTTP 전송을 새로 구현해야 한다(§7).
+- **AI 클라이언트 직접 연결**: Tailscale 사설망 + Bearer 인증의 HTTP MCP를 쓴다. 등록과
+  `remote-check` 절차는 [docs/mcp.md](mcp.md#원격http-모드--홈서버-중앙집중-specs045)가 정본이다.
+- **휴대폰 터미널 사용**: 홈서버의 Claude Code 화면이 필요하면 Tailscale + SSH + tmux를 쓴다.
+- 두 경로 모두 노트와 인덱스는 홈서버 한 곳에 있으며, 클라이언트의 같은 이름 로컬 stdio 등록과
+  병존시키지 않는다.
 
 ### 아키텍처(추천 경로)
 
@@ -46,9 +46,9 @@ localmind의 MCP 서버는 **stdio 전송(로컬 프로세스)** 방식이고, `
 
 | 경로 | 실현성 | localmind 코드 변경 | 인터넷 노출 | 성숙도 |
 |---|---|---|---|---|
-| **Tailscale + SSH 터미널** (추천) | 확실 | 없음 | 없음(사설망) | 높음 |
-| mcp-proxy/supergateway + Cloudflare Tunnel + 인증 | 가능(복잡) | 필요(HTTP화) | 공개 URL(+인증 필수) | 중 |
-| Claude 모바일 앱 커스텀 커넥터(공개 노출) | 요구와 상충 | 필요(HTTP+OAuth) | 공개 노출 | 정식이나 부적합 |
+| **Tailscale + HTTP MCP** (AI 클라이언트 직접 연결) | 구현됨 | 없음 | 없음(사설망) | 높음 |
+| **Tailscale + SSH 터미널** (휴대폰에서 홈서버 세션 사용) | 확실 | 없음 | 없음(사설망) | 높음 |
+| Claude 모바일 앱 커스텀 커넥터(공개 노출) | 사설망 요구와 상충 | 별도 공개 인증 필요 | 공개 노출 | 현재 부적합 |
 | Anthropic MCP tunnels | **현재 불가** | 필요 | 낮음 | research preview·모바일 미지원 |
 
 근거는 §7과 "출처"에.
@@ -162,24 +162,15 @@ claude                # localmind MCP가 stdio 하위 프로세스로 자동 기
 
 ---
 
-## 7. (참고) 모바일 앱 원격 커넥터 방식은 왜 지금 안 쓰나
+## 7. 원격 HTTP MCP 직접 연결
 
-"휴대폰 Claude 앱이 홈서버 MCP에 직접 붙게" 하려면 두 가지 큰 벽이 있다:
+원격 HTTP 전송은 이미 구현되어 있다. 홈서버에서 `LOCALMIND_DEPLOYMENT_ID`와 Bearer token을
+설정해 `make mcp-serve-http`로 실행하고, 클라이언트는 Tailscale 사설 URL을 Claude Code의
+**user scope HTTP `localmind` 하나**로 등록한다. 정확한 명령과 읽기 전용 identity 검사는
+[MCP 문서](mcp.md#원격http-모드--홈서버-중앙집중-specs045)를 따른다.
 
-1. **localmind에 HTTP 전송이 없다.** 현재 stdio 전용이라, 원격 커넥터용으로 Streamable HTTP 전송을
-   새로 구현해야 한다(브릿지 도구 `mcp-proxy`/`supergateway`로 stdio를 HTTP로 감싸는 우회도 가능).
-   이건 별도 기능이라 SDD로 다룬다 — **[specs/045-remote-mcp-access](../specs/045-remote-mcp-access/spec.md)**가
-   이 HTTP 전송(맥 Claude Code가 `claude mcp add --transport http`로 Tailscale 사설 URL에 직접 접속)을
-   정의한다(문서 단계, 구현 미착수). 준비되면 `/goal 045`로 구현.
-2. **공식 커스텀 커넥터는 서버가 공개 인터넷에 노출돼야 한다.** Anthropic 공식 문서(T1)가 명시:
-   *"VPN 뒤나 방화벽에 막힌 서버는 (본인은 접근돼도) 연결되지 않는다."* 즉 Tailscale 사설망에 숨긴
-   홈서버는 이 경로로는 안 붙는다. 공개 노출 + OAuth/인증을 얹는 절충(Cloudflare Tunnel 등)은
-   가능하나 구성이 복잡하고 노출면이 커진다.
-   - Anthropic이 사설망용으로 낸 **"MCP tunnels"는 research preview이고 claude.ai·모바일 앱에서는
-     아직 커넥터로 못 쓴다**(Console 관리 에이전트·Messages API 전용, T1).
-
-**결론**: 지금은 §2~§6(SSH 터미널) 경로가 가장 견고하다. 나중에 localmind에 HTTP 전송을 붙이고
-Anthropic의 모바일 커넥터/터널 지원이 성숙하면 재검토할 가치가 있다(그때는 새 spec으로).
+Claude 모바일 앱의 커스텀 커넥터처럼 공용 인터넷 도달성을 요구하는 경로는 이 사설망 구성과 다르다.
+휴대폰에서 홈서버 Claude Code 세션 자체를 쓸 때는 이 문서의 SSH + tmux 경로를 유지한다.
 
 ---
 
@@ -228,8 +219,9 @@ Anthropic의 모바일 커넥터/터널 지원이 성숙하면 재검토할 가�
 4. **MCP를 다시 등록한다** — `make mcp-install`(Claude Code) · `make mcp-desktop`(Claude Desktop).
 5. **검증한다** — Claude Code를 재시작한 뒤 localmind 도구(`whoami`·검색)로 로컬에서 잘 붙고
    노트가 회수되는지 확인한다.
-6. **(선택) 원격 등록 정리** — 더는 원격을 안 쓰기로 했다면 `claude mcp remove localmind-remote`
-   같은 명령으로 등록을 지운다. 나중에 다시 쓸 수도 있으니 지우지 않고 **병행 유지**해도 된다.
+6. **원격 등록 정리** — 로컬 stdio로 전환하기 전에 원격 HTTP 등록을 제거한다.
+   같은 이름 또는 다른 이름으로 로컬·원격을 병행하면 에이전트가 잘못된 정본을 선택할 수 있으므로
+   `claude mcp remove localmind`(등록한 이름이 다르면 그 이름)로 하나만 남긴다.
 
 ---
 
