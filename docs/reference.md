@@ -55,6 +55,7 @@ README를 가볍게 유지하기 위해 **상세한 동작·설정**을 여기�
 | `MCP_TRANSPORT` | `stdio` | `http`로 원격 모드 |
 | `MCP_HTTP_HOST` / `MCP_HTTP_PORT` / `MCP_HTTP_PATH` | `127.0.0.1` / `8789` / `/mcp` | 바인딩 |
 | `MCP_AUTH_TOKEN` | (필수) | 토큰 없이는 기동 거부 — 두뇌 접근권이므로 유출 주의 |
+| `MCP_HTTP_ALLOWED_ORIGINS` | (빈 목록) | `Origin` 헤더가 있는 요청의 정확한 허용 목록(쉼표 구분, wildcard 없음) |
 
 상세: [MCP로 붙이기 › 원격 모드](mcp.md#원격http-모드--홈서버-중앙집중-specs045) · [홈서버 가이드](home-server.md).
 

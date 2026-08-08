@@ -22,6 +22,8 @@ export interface HttpConfig {
   path: string;
   /** Bearer 인증 토큰. 비어 있으면 http 기동 거부(FR-2, AC-3). */
   token: string;
+  /** 브라우저형 요청에서 허용할 정확한 Origin 목록. 미설정 시 Origin 헤더가 있는 요청은 모두 거부. */
+  allowedOrigins?: readonly string[];
 }
 
 /** http 모드 설정을 env에서 읽는다. 기본값은 사설 우선(127.0.0.1)·8789·/mcp. */
@@ -32,5 +34,9 @@ export function httpConfigFromEnv(env: NodeJS.ProcessEnv = process.env): HttpCon
     port: Number.isInteger(rawPort) && rawPort > 0 ? rawPort : 8789,
     path: env.MCP_HTTP_PATH?.trim() || "/mcp",
     token: env.MCP_AUTH_TOKEN ?? "",
+    allowedOrigins: (env.MCP_HTTP_ALLOWED_ORIGINS ?? "")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean),
   };
 }

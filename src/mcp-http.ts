@@ -50,6 +50,19 @@ function makeBearerAuth(token: string) {
   };
 }
 
+/** 브라우저 DNS rebinding 방어. Origin 없는 CLI/서버 클라이언트는 MCP 사양에 따라 허용한다. */
+function makeOriginGuard(allowedOrigins: readonly string[] = []) {
+  const allowed = new Set(allowedOrigins);
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const origin = req.headers.origin;
+    if (origin && !allowed.has(origin)) {
+      jsonRpcError(res, 403, -32002, "허용되지 않은 Origin입니다.");
+      return;
+    }
+    next();
+  };
+}
+
 /**
  * http 모드 MCP 서버를 띄운다. 토큰이 비어 있으면 포트를 열기 전에 throw한다(FR-2, AC-3 —
  * 호출자 src/mcp.ts가 non-zero로 종료). 반환된 handle.close()로 정리한다.
@@ -62,11 +75,11 @@ export async function serveHttp(cfg: HttpConfig): Promise<ServeHttpHandle> {
   }
 
   const app = express();
-  // 순서가 보안의 핵심: 인증을 **먼저**, JSON 파싱은 그다음. 미인증 요청이 body 파서에 닿으면
-  // 깨진 JSON에 대해 Express 기본 오류 핸들러가 스택트레이스(절대경로)를 인증 전에 노출한다(045
-  // self-review 중대 결함). 인증 통과분만 파싱하고, 파싱 실패는 아래 오류 핸들러가 스택 없는
-  // 표준 JSON-RPC 400으로 응답한다.
+  // 순서가 보안의 핵심: 인증을 **먼저**, Origin 검증과 JSON 파싱은 그다음. 미인증 요청이
+  // Origin 검증이나 body 파서에 닿으면 인증 정책 우선순위가 깨지거나 Express 기본 오류 핸들러가
+  // 스택트레이스(절대경로)를 인증 전에 노출할 수 있다. 인증 통과분만 검증·파싱한다.
   app.use(cfg.path, makeBearerAuth(cfg.token));
+  app.use(cfg.path, makeOriginGuard(cfg.allowedOrigins));
   app.use(cfg.path, express.json());
 
   // 프로세스당 세션맵. 정상 종료(DELETE)·onclose에 축소된다. 유기 세션 방지용 상한(단일 사용자

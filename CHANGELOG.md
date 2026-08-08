@@ -6,6 +6,9 @@ localmind의 주요 변경 이력. 최신이 위.
 
 ## 다음 릴리스
 
+- **원격 HTTP Origin 검증**: 인증된 요청도 `Origin` 헤더가 있으면 명시 allowlist와 정확히
+  일치할 때만 허용하고, 그 밖에는 세션 생성 전에 403으로 거부한다. Origin 없는 CLI 경로와
+  stdio 기본 경로는 유지한다.
 - **원격 정본 preflight**: Claude Code의 local/project/user scope에서 `localmind` 중복·비 HTTP 등록을
   fail-closed로 판정하고, 실제 `whoami` deployment id가 기대값과 일치할 때만 성공하는 읽기 전용
   `npm run remote-check -- <id>`를 추가했다.

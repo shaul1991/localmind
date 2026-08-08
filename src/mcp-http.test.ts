@@ -37,7 +37,13 @@ before(async () => {
     "@modelcontextprotocol/sdk/client/streamableHttp.js"
   ));
   ({ InMemoryTransport: InMemory } = await import("@modelcontextprotocol/sdk/inMemory.js"));
-  handle = await serveHttp({ host: "127.0.0.1", port: 0, path: "/mcp", token: TOKEN });
+  handle = await serveHttp({
+    host: "127.0.0.1",
+    port: 0,
+    path: "/mcp",
+    token: TOKEN,
+    allowedOrigins: ["https://app.example"],
+  });
   baseUrl = `http://127.0.0.1:${handle.port}/mcp`;
 });
 
@@ -92,6 +98,46 @@ test("AC-2: 토큰 없음/틀린 토큰 → 401, 도구 접근 불가", async ()
     body: JSON.stringify(initBody),
   });
   assert.equal(badAuth.status, 401);
+});
+
+test("보안: Origin은 인증 뒤 allowlist로 검증하고 비브라우저 요청은 허용", async () => {
+  const body = JSON.stringify(initBody);
+  const invalidOrigin = await fetch(baseUrl, {
+    method: "POST",
+    headers: {
+      ...jsonHeaders,
+      authorization: `Bearer ${TOKEN}`,
+      origin: "https://evil.example",
+    },
+    body,
+  });
+  assert.equal(invalidOrigin.status, 403);
+  assert.equal(invalidOrigin.headers.get("mcp-session-id"), null, "거부 요청은 세션을 만들면 안 된다");
+
+  const unauthenticatedInvalidOrigin = await fetch(baseUrl, {
+    method: "POST",
+    headers: { ...jsonHeaders, origin: "https://evil.example" },
+    body,
+  });
+  assert.equal(unauthenticatedInvalidOrigin.status, 401, "인증 실패를 Origin 거부보다 먼저 반환해야 한다");
+
+  const absentOrigin = await fetch(baseUrl, {
+    method: "POST",
+    headers: { ...jsonHeaders, authorization: `Bearer ${TOKEN}` },
+    body,
+  });
+  assert.equal(absentOrigin.status, 200, "Origin 없는 비브라우저 MCP 클라이언트는 허용해야 한다");
+
+  const allowedOrigin = await fetch(baseUrl, {
+    method: "POST",
+    headers: {
+      ...jsonHeaders,
+      authorization: `Bearer ${TOKEN}`,
+      origin: "https://app.example",
+    },
+    body,
+  });
+  assert.equal(allowedOrigin.status, 200, "명시 allowlist Origin은 허용해야 한다");
 });
 
 test("AC-5: 미지 세션 → 404, 세션 없는 비-initialize → 400", async () => {
