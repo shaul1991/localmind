@@ -9,7 +9,7 @@
  * stdout은 MCP 프로토콜 전용이므로 로그는 stderr로만 쓴다.
  */
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { buildServer, configSummary } from "./mcp-server.js";
+import { buildServer, readyMessage } from "./mcp-server.js";
 import { watchNotes } from "./brain.js";
 import { resolveTransportMode, httpConfigFromEnv } from "./mcp-transport.js";
 
@@ -20,9 +20,7 @@ async function main() {
     const { serveHttp } = await import("./mcp-http.js");
     const cfg = httpConfigFromEnv();
     const handle = await serveHttp(cfg); // 토큰 공백이면 throw → 아래 catch가 non-zero 종료(AC-3)
-    process.stderr.write(
-      `[localmind-mcp] http ready on ${cfg.host}:${handle.port}${cfg.path} (${configSummary()})\n`,
-    );
+    process.stderr.write(readyMessage("http"));
     const shutdown = () => {
       handle.close().finally(() => process.exit(0));
     };
@@ -35,7 +33,7 @@ async function main() {
   const server = buildServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  process.stderr.write(`[localmind-mcp] ready (${configSummary()})\n`);
+  process.stderr.write(readyMessage("stdio"));
 
   const watcher = watchNotes();
 

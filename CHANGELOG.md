@@ -4,6 +4,16 @@ localmind의 주요 변경 이력. 최신이 위.
 
 > 버전 체계: **CalVer `YYYY.MM.MICRO`** — 버전은 **릴리스(PR 머지) 시점** 기준. 확정 규칙은 `AGENTS.md`의 버전·릴리스 절이 정본이다.
 
+## 다음 릴리스
+
+- **원격 정본 preflight**: Claude Code의 local/project/user scope에서 `localmind` 중복·비 HTTP 등록을
+  fail-closed로 판정하고, 실제 `whoami` deployment id가 기대값과 일치할 때만 성공하는 읽기 전용
+  `npm run remote-check -- <id>`를 추가했다.
+- **원격 privacy 강화**: `whoami`와 서버 준비 로그에서 hostname·노트 절대경로를 제거하고 공개용
+  `LOCALMIND_DEPLOYMENT_ID`와 폴더 라벨만 노출한다.
+- **원격 문서 정합**: 이미 구현된 Streamable HTTP 경로, user scope 등록, 단일 정본 원칙을
+  `docs/mcp.md`와 `docs/home-server.md`에서 일치시켰다.
+
 ## 2026.07.9 — 2026-07-22 — 전면 재개편: great-reduction + living-memory (PR #43·#44)
 
 product-vision(docs/product-vision.md — "살아있는 why 저장소") 확정에 따른 재개편 1·2탄.

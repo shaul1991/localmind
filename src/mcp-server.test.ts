@@ -8,7 +8,7 @@ import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { buildServer } from "./mcp-server.js";
+import { buildServer, configSummary, readyMessage, safePublicLabel } from "./mcp-server.js";
 
 describe("MCP tool surface (great-reduction AC-1)", () => {
   let client: Client;
@@ -31,12 +31,31 @@ describe("MCP tool surface (great-reduction AC-1)", () => {
     assert.deepEqual(names, ["brief", "capture_note", "search_notes", "whoami"]);
   });
 
-  it("whoami가 노트 폴더를 보고하고 게이트웨이·메모리 서비스는 언급하지 않는다", async () => {
+  it("whoami는 공개 안전한 deployment id와 폴더 라벨만 보고한다", async () => {
     const result = await client.callTool({ name: "whoami", arguments: {} });
     assert.equal(result.isError, false);
     const text = (result.content as Array<{ text?: string }>).map((c) => c.text ?? "").join("\n");
-    assert.match(text, /notes folders/);
+    assert.match(text, /deployment: localmind/);
+    assert.match(text, /notes folder labels:/);
     assert.doesNotMatch(text, /gateway|8787|8767|memory:/);
+    assert.doesNotMatch(text, new RegExp(os.hostname().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.doesNotMatch(text, /\/(?:Users|home|root|tmp)\//);
+  });
+
+  it("서버 준비 로그 요약도 hostname·절대경로를 노출하지 않는다", () => {
+    const summary = readyMessage("http");
+    assert.match(summary, /deployment=localmind/);
+    assert.match(summary, /labels=/);
+    assert.doesNotMatch(summary, new RegExp(os.hostname().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.doesNotMatch(summary, /\/(?:Users|home|root|tmp)\//);
+  });
+
+  it("공개 identity 필드는 경로·제어문자·과도한 값을 거부한다", () => {
+    assert.equal(safePublicLabel("home-main"), "home-main");
+    assert.equal(safePublicLabel("second-brain-shared"), "second-brain-shared");
+    assert.equal(safePublicLabel("/Users/private/notes"), "unknown");
+    assert.equal(safePublicLabel("home-main\nsecret"), "unknown");
+    assert.equal(safePublicLabel("x".repeat(65)), "unknown");
   });
 });
 
