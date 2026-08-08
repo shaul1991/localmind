@@ -83,6 +83,9 @@ LOCALMIND_DEPLOYMENT_ID=home-main make mcp-serve-http        # MCP_AUTH_TOKEN이
 ```
 - 기본 포트 `8789`(`MCP_HTTP_PORT`), 경로 `/mcp`(`MCP_HTTP_PATH`), 호스트 `127.0.0.1`(`MCP_HTTP_HOST`).
 - **인증 강제**: 토큰(`MCP_AUTH_TOKEN`) 없이는 기동하지 않는다. 토큰은 **두뇌 접근권**이므로 유출 주의.
+- **Origin 검증**: `Origin` 헤더가 있는 브라우저형 요청은
+  `MCP_HTTP_ALLOWED_ORIGINS`에 정확히 등록한 값만 허용한다(쉼표 구분, 예:
+  `https://app.example`; 경로와 wildcard는 쓰지 않는다). CLI처럼 `Origin`이 없는 요청은 그대로 허용한다.
 - stdio 사용자는 무엇도 바뀌지 않는다 — `MCP_TRANSPORT`가 없거나 `stdio`면 기존 그대로.
 
 **다른 기기(맥)의 Claude Code에서 연결** — 사설망(Tailscale) URL로:
@@ -109,5 +112,5 @@ URL·토큰·절대경로를 출력하지 않는다. 클라이언트 기기의 �
 > 상시 구동은 launchd/systemd로, 맥을 서버로 쓰면 `caffeinate`로 슬립을 막는다.
 
 **상세 knob**: `MCP_TRANSPORT`(stdio|http), `MCP_HTTP_HOST`·`MCP_HTTP_PORT`·`MCP_HTTP_PATH`,
-`MCP_AUTH_TOKEN`. 세션은 `Mcp-Session-Id`로 라우팅되며(미지 세션→404, 세션 없는 비-initialize→400),
-인증 실패는 401이다.
+`MCP_AUTH_TOKEN`, `MCP_HTTP_ALLOWED_ORIGINS`. 세션은 `Mcp-Session-Id`로 라우팅되며(미지
+세션→404, 세션 없는 비-initialize→400), 인증 실패는 401, 허용되지 않은 Origin은 403이다.

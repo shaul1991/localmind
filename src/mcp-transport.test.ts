@@ -34,3 +34,11 @@ test("AC-7: 네트워크 노출은 명시적 opt-in만", () => {
   // 잘못된 포트는 안전 기본으로
   assert.equal(httpConfigFromEnv({ MCP_HTTP_PORT: "not-a-number" }).port, 8789);
 });
+
+test("HTTP Origin allowlist는 쉼표 구분 환경변수를 정확한 목록으로 읽고 wildcard 기본값을 두지 않는다", () => {
+  assert.deepEqual(httpConfigFromEnv({}).allowedOrigins, []);
+  assert.deepEqual(
+    httpConfigFromEnv({ MCP_HTTP_ALLOWED_ORIGINS: " https://app.example,https://admin.example " }).allowedOrigins,
+    ["https://app.example", "https://admin.example"],
+  );
+});
