@@ -17,6 +17,7 @@ NPM_BIN="${NPM_BIN:-/usr/bin/npm}"
 HEALTH_RETRIES="${HEALTH_RETRIES:-12}"
 HEALTH_RETRY_DELAY="${HEALTH_RETRY_DELAY:-2}"
 LOCK_FILE="${LOCK_FILE:-$STATE_DIR/deploy.lock}"
+LAST_GOOD_FILE="${LAST_GOOD_FILE:-$STATE_DIR/last-good-sha}"
 
 say() { printf '%s\n' "$*"; }
 fail() { printf '배포 실패: %s\n' "$*" >&2; exit 1; }
@@ -56,19 +57,31 @@ else
   current_dir=""
 fi
 
+last_good_sha=""
+if [ -f "$LAST_GOOD_FILE" ]; then
+  IFS= read -r last_good_sha < "$LAST_GOOD_FILE" || true
+fi
+recover_current=0
 if [ "$current_dir" = "$release_dir" ]; then
-  if ! systemctl is-active --quiet "$SERVICE_NAME"; then
-    say "최신 release의 MCP 서비스가 중지되어 재시작합니다: ${target_sha:0:7}"
-    systemctl restart "$SERVICE_NAME" || fail "최신 release MCP 서비스 재시작 실패"
+  if [ "$last_good_sha" = "$target_sha" ]; then
+    if ! systemctl is-active --quiet "$SERVICE_NAME"; then
+      say "최신 release의 MCP 서비스가 중지되어 재시작합니다: ${target_sha:0:7}"
+      systemctl restart "$SERVICE_NAME" || fail "최신 release MCP 서비스 재시작 실패"
+    fi
+    say "이미 최신 배포입니다: ${target_sha:0:7}"
+    exit 0
   fi
-  say "이미 최신 배포입니다: ${target_sha:0:7}"
-  exit 0
+  [ -f "$release_dir/.localmind-deploy-ready" ] || fail "current release가 검증 marker 없이 전환되었습니다: $target_sha"
+  recover_current=1
+  say "current와 last-good 불일치를 발견해 health 검증을 재개합니다: ${target_sha:0:7}"
 fi
 
-ci_result="$(gh run list --repo "$GH_REPO" --workflow "$GH_WORKFLOW" --commit "$target_sha" --status completed --limit 1 --json conclusion,headSha --jq '.[0].conclusion // ""' 2>/dev/null || true)"
-if [ "$ci_result" != "success" ]; then
-  say "CI 성공이 확인되지 않아 배포를 보류합니다: ${target_sha:0:7} (CI=${ci_result:-none})"
-  exit 0
+if [ "$recover_current" -eq 0 ]; then
+  ci_result="$(gh run list --repo "$GH_REPO" --workflow "$GH_WORKFLOW" --commit "$target_sha" --status completed --limit 1 --json conclusion,headSha --jq '.[0].conclusion // ""' 2>/dev/null || true)"
+  if [ "$ci_result" != "success" ]; then
+    say "CI 성공이 확인되지 않아 배포를 보류합니다: ${target_sha:0:7} (CI=${ci_result:-none})"
+    exit 0
+  fi
 fi
 
 cleanup_failed_release() {
@@ -77,6 +90,7 @@ cleanup_failed_release() {
   git -C "$SOURCE_REPO" worktree prune >/dev/null 2>&1 || true
 }
 
+if [ "$recover_current" -eq 0 ]; then
 if [ -e "$release_dir" ] && [ ! -f "$release_dir/.localmind-deploy-ready" ]; then
   cleanup_failed_release "$release_dir"
 fi
@@ -128,6 +142,7 @@ chmod -R u=rwX,go=rX "$release_dir" || {
 if ! : > "$release_dir/.localmind-deploy-ready" || ! chmod 0644 "$release_dir/.localmind-deploy-ready"; then
   cleanup_failed_release "$release_dir"
   fail "release 준비 marker 기록 실패"
+fi
 fi
 
 atomic_link() {
@@ -194,13 +209,66 @@ wait_for_health() {
   return 1
 }
 
+write_last_good() {
+  python3 - "$LAST_GOOD_FILE" "$target_sha" <<'PY'
+import os
+from pathlib import Path
+import sys
+import tempfile
+
+path = Path(sys.argv[1])
+sha = sys.argv[2]
+fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+try:
+    os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "w") as stream:
+        stream.write(f"{sha}\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+except BaseException:
+    try:
+        os.close(fd)
+    except OSError:
+        pass
+    try:
+        os.unlink(temporary)
+    except FileNotFoundError:
+        pass
+    raise
+
+# rename이 관찰 가능한 commit point다. 이후 directory fsync 실패 시 current를
+# rollback하면 오히려 새 pointer와 불일치하므로 경고만 남기고 다음 실행의
+# current/last-good 복구 검증에 맡긴다.
+try:
+    directory_fd = os.open(path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+except OSError as error:
+    print(f"warning: last-good directory fsync failed after commit: {error}", file=sys.stderr)
+PY
+}
+
 previous_dir="$current_dir"
-if ! atomic_link "$release_dir"; then
-  cleanup_failed_release "$release_dir"
-  fail "current release 링크 전환 실패"
+if [ "$recover_current" -eq 1 ]; then
+  previous_dir=""
+  if [[ "$last_good_sha" =~ ^[0-9a-f]{40}$ ]] && [ "$last_good_sha" != "$target_sha" ]; then
+    last_good_dir="$(resolve_path "$RELEASE_ROOT/$last_good_sha")"
+    if [ -d "$last_good_dir" ] && [ -f "$last_good_dir/.localmind-deploy-ready" ]; then
+      previous_dir="$last_good_dir"
+    fi
+  fi
+fi
+if [ "$recover_current" -eq 0 ]; then
+  if ! atomic_link "$release_dir"; then
+    cleanup_failed_release "$release_dir"
+    fail "current release 링크 전환 실패"
+  fi
 fi
 if systemctl restart "$SERVICE_NAME" && wait_for_health; then
-  if printf '%s\n' "$target_sha" > "$STATE_DIR/last-good-sha"; then
+  if write_last_good; then
     say "배포 완료: ${target_sha:0:7}"
     exit 0
   fi

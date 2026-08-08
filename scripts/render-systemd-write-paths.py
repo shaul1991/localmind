@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import unicodedata
 
@@ -11,6 +12,11 @@ import unicodedata
 def quote_path(path: str) -> str:
     if not path.startswith("/"):
         raise ValueError(f"absolute path required: {path!r}")
+    if path == "/" or path.startswith("//") or os.path.normpath(path) != path:
+        raise ValueError(f"normalized non-root path required: {path!r}")
+    resolved = os.path.realpath(path)
+    if resolved == "/" or resolved != path:
+        raise ValueError(f"canonical non-root path required: {path!r} -> {resolved!r}")
     if any(unicodedata.category(character) == "Cc" for character in path):
         raise ValueError("path contains a forbidden control character")
     escaped = path.replace("%", "%%")

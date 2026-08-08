@@ -9,9 +9,14 @@ set -euo pipefail
 
 test -x /usr/bin/node
 test -x /usr/bin/npm
+command -v setfacl >/dev/null
+
+: "${LOCALMIND_STATE_ROOT:?export LOCALMIND_STATE_ROOT=/absolute/path/to/localmind-state}"
+: "${LOCALMIND_SHARED_NOTES:?export LOCALMIND_SHARED_NOTES=/absolute/path/to/shared-notes}"
+: "${LOCALMIND_PRIVATE_NOTES:?export LOCALMIND_PRIVATE_NOTES=/absolute/path/to/private-notes}"
 
 install -d -m 0700 -o root -g root /var/lib/localmind-deploy
-git clone git@github.com:shaul1991/localmind.git /var/lib/localmind-deploy/source
+git clone https://github.com/shaul1991/localmind.git /var/lib/localmind-deploy/source
 cd /var/lib/localmind-deploy/source
 
 useradd --system --no-create-home --shell /usr/sbin/nologin localmind
@@ -19,15 +24,22 @@ useradd --system --no-create-home --shell /usr/sbin/nologin localmind-builder
 
 # 설치 환경의 note/index/query-log 쓰기 루트를 명시한다.
 NOTE_WRITE_PATHS=(
-  /root/.localmind
-  /root/personal/shaul-brain/second-brain-shared
-  /root/personal/shaul-brain/second-brain-private
+  "$LOCALMIND_STATE_ROOT"
+  "$LOCALMIND_SHARED_NOTES"
+  "$LOCALMIND_PRIVATE_NOTES"
 )
+write_paths_tmp="$(mktemp)"
+trap 'rm -f "$write_paths_tmp"' EXIT
+python3 scripts/render-systemd-write-paths.py "${NOTE_WRITE_PATHS[@]}" > "$write_paths_tmp"
 
 # MCP 런타임만 지정한 루트를 읽고 쓸 수 있게 한다.
-chgrp localmind /root
-chmod 0710 /root
 for d in "${NOTE_WRITE_PATHS[@]}"; do
+  test -d "$d"
+  parent="$(dirname "$d")"
+  while [ "$parent" != / ]; do
+    setfacl -m u:localmind:--x "$parent"
+    parent="$(dirname "$parent")"
+  done
   chgrp -R localmind "$d"
   chmod -R g+rwX "$d"
   find "$d" -type d -exec chmod g+s {} +
@@ -43,9 +55,6 @@ install -m 0755 scripts/render-systemd-write-paths.py /usr/local/libexec/localmi
 install -m 0644 deploy/systemd/localmind-deploy.service /etc/systemd/system/
 install -m 0644 deploy/systemd/localmind-deploy.timer /etc/systemd/system/
 install -m 0644 deploy/systemd/localmind-mcp.service /etc/systemd/system/
-write_paths_tmp="$(mktemp)"
-trap 'rm -f "$write_paths_tmp"' EXIT
-/usr/local/libexec/localmind-render-systemd-write-paths "${NOTE_WRITE_PATHS[@]}" > "$write_paths_tmp"
 install -m 0644 "$write_paths_tmp" /etc/systemd/system/localmind-mcp.service.d/write-paths.conf
 rm -f "$write_paths_tmp"
 trap - EXIT

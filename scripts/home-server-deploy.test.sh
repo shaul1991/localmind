@@ -96,6 +96,8 @@ new_fixture() {
   git -C "$SOURCE_REPO" branch --set-upstream-to=origin/main main >/dev/null
   OLD_RELEASE="$RELEASE_ROOT/$OLD_SHA"; git -C "$SOURCE_REPO" worktree add -q --detach "$(resolved_path "$OLD_RELEASE")" "$OLD_SHA"
   mkdir -p "$(resolved_path "$OLD_RELEASE")/dist"; printf 'old\n' > "$(resolved_path "$OLD_RELEASE")/dist/mcp.js"
+  : > "$(resolved_path "$OLD_RELEASE")/.localmind-deploy-ready"
+  printf '%s\n' "$OLD_SHA" > "$STATE_DIR/last-good-sha"
   ln -s "$(resolved_path "$OLD_RELEASE")" "$CURRENT_LINK"
 }
 
@@ -195,11 +197,18 @@ assert "deploy unit이 StateDirectory 생성" 'grep -q "^StateDirectory=localmin
 assert "배포 스크립트가 release 부모 traversal 보장" 'grep -q "chmod 0755.*RELEASE_ROOT" "$SCRIPT"'
 assert "MCP unit에 개인 /root 경로 없음" '! grep -q "/root/personal" "$ROOT/deploy/systemd/localmind-mcp.service"'
 assert "설치 문서가 note write allowlist drop-in 안내" 'grep -q "localmind-mcp.service.d.*write-paths.conf" "$ROOT/docs/home-server-deploy.md"'
+assert "설치 문서가 write roots를 설치자에게 요구" 'grep -q "LOCALMIND_STATE_ROOT:?" "$ROOT/docs/home-server-deploy.md" && grep -q "LOCALMIND_SHARED_NOTES:?" "$ROOT/docs/home-server-deploy.md" && grep -q "LOCALMIND_PRIVATE_NOTES:?" "$ROOT/docs/home-server-deploy.md"'
+assert "공개 저장소 bootstrap은 HTTPS clone" 'grep -q "git clone https://github.com/shaul1991/localmind.git" "$ROOT/docs/home-server-deploy.md" && ! grep -q "git clone git@github.com" "$ROOT/docs/home-server-deploy.md"'
 assert "bootstrap 이후에만 MCP 활성화" 'python3 -c '\''from pathlib import Path; import sys; s=Path(sys.argv[1]).read_text(); raise SystemExit(0 if s.index("systemctl start localmind-deploy.service") < s.index("systemctl enable --now localmind-mcp.service") else 1)'\'' "$ROOT/docs/home-server-deploy.md"'
-assert "쓰기 경로 renderer가 공백 경로를 systemd quote" '[ "$(python3 "$ROOT/scripts/render-systemd-write-paths.py" "/tmp/notes with space" /tmp/index)" = '"'"'[Service]
-ReadWritePaths="/tmp/notes with space" "/tmp/index"'"'"' ]'
+assert "쓰기 경로 renderer가 공백 경로를 systemd quote" '[ "$(python3 "$ROOT/scripts/render-systemd-write-paths.py" "/srv/notes with space" /srv/index)" = '"'"'[Service]
+ReadWritePaths="/srv/notes with space" "/srv/index"'"'"' ]'
 assert "쓰기 경로 renderer가 상대경로 거부" '! python3 "$ROOT/scripts/render-systemd-write-paths.py" relative/path >/dev/null 2>&1'
-assert "쓰기 경로 renderer가 TAB·ESC 제어문자 거부" 'python3 -c '\''import subprocess,sys; script=sys.argv[1]; paths=["/tmp/tab\tpath", "/tmp/esc\x1bpath"]; raise SystemExit(0 if all(subprocess.run([sys.executable, script, p], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0 for p in paths) else 1)'\'' "$ROOT/scripts/render-systemd-write-paths.py"'
+assert "쓰기 경로 renderer가 root 경로 거부" '! python3 "$ROOT/scripts/render-systemd-write-paths.py" / >/dev/null 2>&1'
+root_alias="$(resolved_path "$TMP")/root-alias"; ln -s / "$root_alias"
+assert "쓰기 경로 renderer가 root symlink alias 거부" '! python3 "$ROOT/scripts/render-systemd-write-paths.py" "$root_alias" >/dev/null 2>&1'
+assert "쓰기 경로 renderer가 비정규화 경로 거부" '! python3 "$ROOT/scripts/render-systemd-write-paths.py" /srv/notes/../private >/dev/null 2>&1'
+assert "설치 문서가 권한 변경 전에 경로 렌더링 검증" 'python3 -c '\''from pathlib import Path; import sys; s=Path(sys.argv[1]).read_text(); raise SystemExit(0 if s.index("scripts/render-systemd-write-paths.py") < s.index("chgrp -R localmind") else 1)'\'' "$ROOT/docs/home-server-deploy.md"'
+assert "쓰기 경로 renderer가 TAB·ESC 제어문자 거부" 'python3 -c '\''import subprocess,sys; script=sys.argv[1]; paths=["/srv/tab\tpath", "/srv/esc\x1bpath"]; raise SystemExit(0 if all(subprocess.run([sys.executable, script, p], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0 for p in paths) else 1)'\'' "$ROOT/scripts/render-systemd-write-paths.py"'
 assert "쓰기 경로 renderer가 systemd % specifier 이스케이프" '[ "$(python3 "$ROOT/scripts/render-systemd-write-paths.py" "/srv/notes/%n")" = '"'"'[Service]
 ReadWritePaths="/srv/notes/%%n"'"'"' ]'
 assert "deploy unit·script에 개인 source checkout 없음" '! grep -q "/root/personal/shaul1991/localmind" "$ROOT/deploy/systemd/localmind-deploy.service" "$SCRIPT"'
@@ -211,6 +220,45 @@ new_fixture ipv6-loopback; advance_origin; set_env_value MCP_HTTP_HOST ::1; run_
 assert "IPv6 loopback URL bracket 처리" '[ "$RC" -eq 0 ]'
 new_fixture ipv6-wildcard; advance_origin; set_env_value MCP_HTTP_HOST ::; run_deploy EXPECT_CURL_URL="http://[::1]:8789/mcp"
 assert "IPv6 wildcard는 loopback probe" '[ "$RC" -eq 0 ]'
+
+printf '\n\033[1mAC-15 — current 전환 후 last-good 기록 중단 복구\033[0m\n'
+new_fixture interrupted-last-good; advance_origin; run_deploy
+printf '%s\n' "$OLD_SHA" > "$STATE_DIR/last-good-sha"
+builds_before="$(grep -c '^npm ci ' "$EVENT_LOG")"
+health_before="$(grep -c '^curl health ' "$EVENT_LOG")"
+run_deploy GH_RESULT=failure
+builds_after="$(grep -c '^npm ci ' "$EVENT_LOG")"
+health_after="$(grep -c '^curl health ' "$EVENT_LOG")"
+assert "last-good 불일치 current를 재검증" '[ "$RC" -eq 0 ] && [ "$health_after" -gt "$health_before" ] && [ "$(cat "$STATE_DIR/last-good-sha")" = "$NEW_SHA" ]'
+assert "준비된 release 복구 시 재빌드하지 않음" '[ "$builds_after" -eq "$builds_before" ]'
+assert "last-good 상태를 원자적으로 교체" 'grep -q "os.replace" "$SCRIPT" && grep -q "os.fsync" "$SCRIPT"'
+
+printf '\n\033[1mAC-16 — last-good 기록 실패 시 이전 pointer 보존\033[0m\n'
+new_fixture atomic-state-failure; advance_origin
+: > "$STATE_DIR/deploy.lock"; chmod 0500 "$STATE_DIR"
+run_deploy
+chmod 0700 "$STATE_DIR"
+assert "원자 상태 기록 실패를 성공으로 보고하지 않음" '[ "$RC" -ne 0 ]'
+assert "기존 last-good와 current를 보존" '[ "$(cat "$STATE_DIR/last-good-sha")" = "$OLD_SHA" ] && [ "$(resolved_current)" = "$(resolved_path "$OLD_RELEASE")" ]'
+
+printf '\n\033[1mAC-17 — rename 후 directory fsync 실패 일관성\033[0m\n'
+new_fixture post-rename-fsync; advance_origin
+fault_python="$TMP/fail-directory-fsync"; mkdir -p "$fault_python"
+cat > "$fault_python/sitecustomize.py" <<'PY'
+import os
+_original_fsync = os.fsync
+_calls = 0
+def _fail_second_fsync(fd):
+    global _calls
+    _calls += 1
+    if _calls == 2:
+        raise OSError("injected directory fsync failure")
+    return _original_fsync(fd)
+os.fsync = _fail_second_fsync
+PY
+run_deploy PYTHONPATH="$fault_python"
+assert "rename 이후 fsync 실패는 새 pointer·current 일관성 유지" '[ "$RC" -eq 0 ] && [ "$(cat "$STATE_DIR/last-good-sha")" = "$NEW_SHA" ] && [ "$(resolved_current)" = "$(resolved_path "$RELEASE_ROOT/$NEW_SHA")" ]'
+assert "directory fsync 실패를 경고" 'grep -q "directory fsync failed after commit" "$OUT"'
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
