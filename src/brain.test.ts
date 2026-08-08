@@ -761,6 +761,54 @@ describe("listMarkdown 미러 제외 (019 AC-10)", () => {
   });
 });
 
+describe("Markdown 심볼릭 링크 데이터 경계", () => {
+  it("노트 폴더 밖 파일을 가리키는 .md 링크는 색인·검색하지 않고 일반 노트는 유지한다", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "lm-symlink-boundary-"));
+    const vault = path.join(root, "vault");
+    const idxPath = path.join(root, "index.json");
+    const queryLog = path.join(root, "query-log.jsonl");
+    const outsideMarker = "OUTSIDE-SYMLINK-BOUNDARY-MARKER";
+    fs.mkdirSync(path.join(vault, "sub"), { recursive: true });
+    fs.writeFileSync(path.join(vault, "note.md"), "# 일반 노트\n정상 루트 문서");
+    fs.writeFileSync(path.join(vault, "sub", "inner.md"), "# 하위 노트\n정상 하위 문서");
+    fs.writeFileSync(path.join(root, "outside.md"), outsideMarker);
+    fs.symlinkSync(path.join(root, "outside.md"), path.join(vault, "external.md"));
+    fs.symlinkSync(path.join(root, "missing.md"), path.join(vault, "dangling.md"));
+
+    try {
+      await withEmbedStub(async (base) => {
+        await runReindexCli(idxPath, base, { NOTES_DIR: `notes=${vault}`, QUERY_LOG: queryLog });
+        const idx = JSON.parse(fs.readFileSync(idxPath, "utf8"));
+        const keys = Object.keys(idx.files);
+        assert.deepEqual(keys.sort(), ["notes/note.md", "notes/sub/inner.md"]);
+        assert.doesNotMatch(JSON.stringify(idx.files), new RegExp(outsideMarker));
+
+        const script = [
+          `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+          `  const hits = await m.searchNotes(${JSON.stringify(outsideMarker)});`,
+          `  process.stdout.write(JSON.stringify(hits));`,
+          `}).catch((e) => { console.error(e); process.exit(1); });`,
+        ].join("\n");
+        const { stdout } = await execFileP("node", ["--import", "tsx/esm", "-e", script], {
+          cwd: REPO_ROOT,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            NOTES_DIR: `notes=${vault}`,
+            BRAIN_INDEX: idxPath,
+            QUERY_LOG: queryLog,
+            EMBEDDINGS_URL: base,
+            EMBEDDINGS_KEY: "test-key",
+          },
+        });
+        assert.ok(!stdout.includes(outsideMarker), "외부 파일 marker가 검색 결과에 나타나면 안 된다");
+      });
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
 // ── specs/020 — 색인 프루닝 가드 (FR-1~5, AC-1~9) ──────────────────────────
 //
 // 검증 대상은 "명시적 재색인 경로"이므로 scripts/reindex.ts 자체를 자식 프로세스로

@@ -662,7 +662,9 @@ export function listMarkdown(dir: string, isRoot = true, rootEntries?: fs.Dirent
     // 미러 폴더가 스스로를 식별하는 마커로 제외한다(AC-10, 016 FR-10 불변식 유지).
     if (e.isDirectory() && fs.existsSync(path.join(full, ".localmind-mirror"))) continue;
     if (e.isDirectory()) out.push(...listMarkdown(full, false));
-    else if (e.name.toLowerCase().endsWith(".md")) out.push(full);
+    // 노트 폴더는 데이터 접근 경계다. 파일 심볼릭 링크는 실제 대상이 경계 밖일 수 있으므로
+    // 내부/외부를 추적하지 않고 fail-closed로 제외한다. dangling 링크도 같은 정책으로 건너뛴다.
+    else if (!e.isSymbolicLink() && e.name.toLowerCase().endsWith(".md")) out.push(full);
   }
   return out;
 }
