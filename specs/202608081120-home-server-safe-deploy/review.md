@@ -2,7 +2,7 @@
 
 ## 현재 판정
 
-로컬 구현과 품질 게이트는 통과했다. `npm run typecheck`, 200개 Node 테스트, `npm run build`, 전체 셸 테스트(신규 79개 포함)가 모두 성공했다. 독립 리뷰에서 지적된 root 실행, `.env` source, 첫 배포 self-link, readiness 경쟁, capability, restrictive umask 위험을 반영해 비권한 런타임/빌더, 검증 후 `root:root` 읽기 전용 release 회수, systemd sandbox, 리터럴 환경 파서, bounded health 재시도와 명시적 artifact 권한을 추가했다. 홈서버 실배포 관찰은 Draft PR과 별도로 운영 단계에서 수행한다.
+로컬 구현과 품질 게이트는 통과했다. `npm run typecheck`, 200개 Node 테스트, `npm run build`, 전체 셸 테스트(신규 93개 포함)가 모두 성공했다. 독립 리뷰에서 지적된 root 실행, `.env` source, 첫 배포 self-link, readiness 경쟁, capability, restrictive umask 위험을 반영해 비권한 런타임/빌더, 검증 후 `root:root` 읽기 전용 release 회수, systemd sandbox, 리터럴 환경 파서, bounded health 재시도와 명시적 artifact 권한을 추가했다. 홈서버 실배포 관찰은 Draft PR과 별도로 운영 단계에서 수행한다.
 
 ## Codex PR 리뷰 대응
 
@@ -25,6 +25,10 @@
 - health 응답은 임시 파일에 framing을 보존한다. SSE line break는 CRLF·CR·LF만 인정하고 선두의 단일 UTF-8 BOM을 무시하며, 실제 빈 줄로 종료된 event의 `data:` field를 표준대로 조립한다. 성공 `result.protocolVersion`과 실제 정수 request ID만 허용하고 error·boolean ID·EOF에서 잘린 event·VT/FF/NEL separator를 거부한다.
 - 성공 후 current와 직전 rollback release만 보존하고 더 오래된 worktree를 정리한다. locked worktree는 디렉터리를 강제 삭제하지 않고 관리 metadata와 함께 보존하며 경고한다.
 - last-good write 실패 테스트는 UID 0에서도 동작하는 명시적 Python fault injection을 사용한다.
+- CI gate 직후 `GH_TOKEN`·`GITHUB_TOKEN`을 제거해 npm lifecycle·테스트·빌드에 deploy credential이 전달되지 않는다.
+- 원격 연결은 무료로 시작하기 쉬운 Tailscale을 권장하되 WireGuard·ZeroTier도 지원한다. 공개 MCP unit은 network provider 중립으로 유지하며 provider별 ordering은 설치별 drop-in으로 분리한다.
+- bind validator는 RFC1918·Tailscale CGNAT·IPv6 ULA 중 실제 로컬 interface에 할당되고, `UP`이며 non-loopback이고 주소 scope/state가 유효한 주소만 허용한다. 공인·미할당·DOWN·loopback·tentative/dadfailed/deprecated 주소를 거부한다.
+- 공개 저장소는 범용 배포 메커니즘만 유지하며 실제 host root·network·timer·승인 runbook은 비공개 `localmind-home-ops` overlay로 분리한다.
 - Linux 홈서버에서 공백 포함 `ReadWritePaths` drop-in과 unit 전체가 `systemd-analyze verify`를 통과했다.
 
 ## 확인할 위험

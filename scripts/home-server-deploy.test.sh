@@ -30,7 +30,13 @@ printf '%s\n' "${GH_RESULT:-success}"
 SH
 cat > "$BIN/npm" <<'SH'
 #!/bin/sh
-printf 'npm %s cwd=%s\n' "$*" "$PWD" >> "$EVENT_LOG"
+base="$(dirname "$(dirname "$PWD")")"
+npm_event_log="$base/events.log"
+if [ -n "${GH_TOKEN:-}" ] || [ -n "${GITHUB_TOKEN:-}" ]; then
+  printf 'npm credential leak cwd=%s\n' "$PWD" >> "$npm_event_log"
+  exit 42
+fi
+printf 'npm %s cwd=%s\n' "$*" "$PWD" >> "$npm_event_log"
 case "$*" in
   *build*) mkdir -p dist; printf 'built\n' > dist/mcp.js ;;
 esac
@@ -359,6 +365,33 @@ git -C "$SOURCE_REPO" worktree lock "$OLD_RELEASE" --reason fixture
 advance_origin; run_deploy
 assert "locked worktree 정리 실패가 배포 상태를 손상하지 않음" '[ "$RC" -eq 0 ] && [ -d "$OLD_RELEASE" ] && [ "$(resolved_current)" = "$(resolved_path "$RELEASE_ROOT/$NEW_SHA")" ]'
 assert "locked administrative worktree와 디렉터리를 함께 보존" '[ -d "$OLD_RELEASE" ] && git -C "$SOURCE_REPO" worktree list --porcelain | grep -Fqx "worktree $(resolved_path "$OLD_RELEASE")" && git -C "$SOURCE_REPO" worktree list --porcelain | grep -q "^locked fixture$"'
+
+printf '\n\033[1mAC-23 — deploy credential 격리와 원격 overlay bind\033[0m\n'
+new_fixture credential-isolation; advance_origin
+run_deploy GH_TOKEN=primary-deploy-secret GITHUB_TOKEN=alternate-deploy-secret
+assert "npm lifecycle·테스트·빌드에 GitHub credential 미전달" '[ "$RC" -eq 0 ] && ! grep -Fq "npm credential leak" "$EVENT_LOG"'
+assert "설치 문서가 loopback 대신 원격 bind 주소를 요구" 'grep -Fq "LOCALMIND_MCP_BIND_HOST" docs/home-server-deploy.md && ! grep -Fq "MCP_HTTP_HOST=127.0.0.1" docs/home-server-deploy.md'
+assert "Tailscale은 추천하되 다른 overlay 서비스를 허용" 'grep -Fq "Tailscale을 권장" docs/home-server-deploy.md && grep -Eq "WireGuard|ZeroTier" docs/home-server-deploy.md && ! grep -Fq "tailscale_v4" docs/home-server-deploy.md'
+assert "공개 MCP unit은 network provider 중립" '! grep -Eqi "tailscale|tailscaled" deploy/systemd/localmind-mcp.service'
+bind_fixture="$TMP/bind-interfaces.json"
+printf '%s\n' '[
+  {"ifname":"eth0","flags":["BROADCAST","UP","LOWER_UP"],"operstate":"UP","addr_info":[{"local":"10.20.30.40","scope":"global"},{"local":"8.8.8.8","scope":"global"},{"local":"fd00::1234","scope":"global"}]},
+  {"ifname":"tailscale0","flags":["POINTOPOINT","UP","LOWER_UP"],"operstate":"UNKNOWN","addr_info":[{"local":"100.100.30.40","scope":"global"}]},
+  {"ifname":"down0","flags":["BROADCAST"],"operstate":"DOWN","addr_info":[{"local":"10.30.30.40","scope":"global"}]},
+  {"ifname":"lo","flags":["LOOPBACK","UP","LOWER_UP"],"operstate":"UNKNOWN","addr_info":[{"local":"10.40.30.40","scope":"global"}]},
+  {"ifname":"eth1","flags":["BROADCAST","UP","LOWER_UP"],"operstate":"UP","addr_info":[{"local":"fd00::dead","scope":"global","flags":["tentative"]}]}
+]' > "$bind_fixture"
+validator_fixture='env LOCALMIND_BIND_VALIDATOR_TEST=1 python3 scripts/validate-private-bind.py'
+assert "RFC1918 bind 허용" '$validator_fixture 10.20.30.40 --ip-json "$bind_fixture" >/dev/null'
+assert "Tailscale CGNAT UNKNOWN interface bind 허용" '$validator_fixture 100.100.30.40 --ip-json "$bind_fixture" >/dev/null'
+assert "IPv6 ULA bind 허용" '$validator_fixture fd00::1234 --ip-json "$bind_fixture" >/dev/null'
+assert "공인 IPv4 bind 거부" '! $validator_fixture 8.8.8.8 --ip-json "$bind_fixture" >/dev/null 2>&1'
+assert "DOWN interface bind 거부" '! $validator_fixture 10.30.30.40 --ip-json "$bind_fixture" >/dev/null 2>&1'
+assert "loopback interface bind 거부" '! $validator_fixture 10.40.30.40 --ip-json "$bind_fixture" >/dev/null 2>&1'
+assert "tentative IPv6 bind 거부" '! $validator_fixture fd00::dead --ip-json "$bind_fixture" >/dev/null 2>&1'
+assert "호스트에 미할당된 private bind 거부" '! $validator_fixture 10.20.30.41 --ip-json "$bind_fixture" >/dev/null 2>&1'
+assert "fixture override는 test opt-in 없이 거부" '! python3 scripts/validate-private-bind.py 10.20.30.40 --ip-json "$bind_fixture" >/dev/null 2>&1'
+assert "설치 문서가 공통 private bind validator 사용" 'grep -Fq "scripts/validate-private-bind.py" docs/home-server-deploy.md'
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

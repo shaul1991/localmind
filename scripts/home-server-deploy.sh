@@ -86,6 +86,9 @@ if [ "$recover_current" -eq 0 ]; then
   fi
 fi
 
+# GitHub 배포 자격증명은 CI gate까지만 사용하고 빌드·health 하위 프로세스에는 전달하지 않는다.
+unset GH_TOKEN GITHUB_TOKEN
+
 cleanup_failed_release() {
   local path line registered=0
   path="$(resolve_path "$1")"

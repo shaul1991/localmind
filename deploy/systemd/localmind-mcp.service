@@ -1,8 +1,8 @@
 [Unit]
-Description=localmind MCP server (HTTP transport, Tailscale-bound)
+Description=localmind MCP server (HTTP transport)
 Documentation=https://github.com/shaul1991/localmind
-After=network-online.target tailscaled.service docker.service
-Wants=network-online.target tailscaled.service
+After=network-online.target docker.service
+Wants=network-online.target
 
 [Service]
 Type=simple
