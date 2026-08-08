@@ -4,6 +4,12 @@ localmind의 주요 변경 이력. 최신이 위.
 
 > 버전 체계: **CalVer `YYYY.MM.MICRO`** — 버전은 **릴리스(PR 머지) 시점** 기준. 확정 규칙은 `AGENTS.md`의 버전·릴리스 절이 정본이다.
 
+## 2026.08.1 — 2026-08-08 — 사용자 지정 색인 경로 안정화
+
+- **파생 색인 경로 이식성**: 사용자 지정 `BRAIN_INDEX`의 부모 폴더가 없으면 첫 저장 전에
+  자동 생성하고, 만들 수 없는 경로는 절대경로를 노출하지 않는 한국어 오류로 즉시 실패해
+  lock 재시도로 인한 무한 대기를 막는다.
+
 ## 2026.08.0 — 2026-08-08 — 원격 운영·안전 배포 기반
 
 - **홈서버 안전 배포**: GitHub `main`의 CI 성공 full SHA만 비권한 builder로 검증·빌드하고, immutable release·원자적 `current` 전환·인증 health·자동 rollback을 수행하는 pull 기반 배포 엔진을 추가했다.
@@ -11,9 +17,6 @@ localmind의 주요 변경 이력. 최신이 위.
 - **provider-neutral 원격 bind**: Tailscale을 기본 추천하되 WireGuard·ZeroTier도 허용하고, 실제 `UP`·non-loopback interface에 할당된 RFC1918·CGNAT·ULA 주소만 수용한다.
 - **안전한 설치 직렬화**: systemd write path와 EnvironmentFile 값을 별도 renderer로 검증·인코딩하고 설치 오류를 평이한 한국어로 제공한다.
 
-- **파생 색인 경로 이식성**: 사용자 지정 `BRAIN_INDEX`의 부모 폴더가 없으면 첫 저장 전에
-  자동 생성하고, 만들 수 없는 경로는 절대경로를 노출하지 않는 한국어 오류로 즉시 실패해
-  lock 재시도로 인한 무한 대기를 막는다.
 - **원격 HTTP Origin 검증**: 인증된 요청도 `Origin` 헤더가 있으면 명시 allowlist와 정확히
   일치할 때만 허용하고, 그 밖에는 세션 생성 전에 403으로 거부한다. Origin 없는 CLI 경로와
   stdio 기본 경로는 유지한다.
