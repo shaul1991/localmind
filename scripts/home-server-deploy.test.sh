@@ -404,7 +404,12 @@ raw, expected = sys.argv[1].split("=", 1)[1], sys.argv[2]
 raise SystemExit(0 if json.loads(raw) == expected else 1)
 PY'
 assert "설치 문서가 raw path printf를 사용하지 않음" 'grep -Fq "scripts/render-systemd-env.py" docs/home-server-deploy.md && ! grep -Fq "printf '\''\\nNOTES_DIR=%s,%s" docs/home-server-deploy.md'
-assert "bind validator 오류는 평이한 한국어" '! python3 scripts/validate-private-bind.py 8.8.8.8 >"$TMP/bind-ko.out" 2>&1 && grep -Eq "[가-힣]" "$TMP/bind-ko.out"'
+assert "bind validator 오류는 평이한 한국어" '! python3 scripts/validate-private-bind.py 8.8.8.8 >"$TMP/bind-ko.out" 2>&1 && python3 - "$TMP/bind-ko.out" <<'"'"'PY'"'"'
+from pathlib import Path
+import sys
+text = Path(sys.argv[1]).read_text()
+raise SystemExit(0 if any("가" <= character <= "힣" for character in text) else 1)
+PY'
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
