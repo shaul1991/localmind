@@ -470,6 +470,13 @@ function sleepSync(ms: number): void {
  *  죽은 프로세스의 고아 락으로 보고 제거한다. 최악의 경우에도 유한 시간 안에 진행한다
  *  (영구 대기 금지 — 락은 정확성 보조 수단이고 최종 방어는 reload-merge다). */
 function acquireLock(): void {
+  // BRAIN_INDEX는 노트 정본 밖의 파생 색인 경로로 옮길 수 있다. 첫 저장 전에 부모를
+  // 준비해 lock 생성 실패가 영구 재시도로 바뀌지 않게 한다. 생성 불가 경로는 즉시 실패한다.
+  try {
+    fs.mkdirSync(path.dirname(INDEX_PATH), { recursive: true });
+  } catch {
+    throw new Error("색인 저장 폴더를 준비할 수 없어요. BRAIN_INDEX 설정과 폴더 쓰기 권한을 확인해 주세요.");
+  }
   const deadline = Date.now() + LOCK_STALE_MS * 2;
   for (;;) {
     try {

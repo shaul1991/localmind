@@ -283,6 +283,73 @@ function runBrainProbe(scriptBody: string): any {
 }
 
 describe("인덱스 캐시·원자성·동시성 (009)", () => {
+  it("사용자 지정 BRAIN_INDEX의 부모가 없어도 생성하고 유한 시간 안에 저장한다", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-index-parent-"));
+    const notesDir = path.join(tmp, "notes");
+    const idxPath = path.join(tmp, "derived", "nested", ".brain-index.json");
+    fs.mkdirSync(notesDir);
+    const script = [
+      `import * as fs from "node:fs";`,
+      `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+      `  const stats = await m.reindex();`,
+      `  process.stdout.write(JSON.stringify({ files: stats.files, saved: fs.existsSync(process.env.BRAIN_INDEX) }));`,
+      `}).catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        timeout: 2_000,
+        env: {
+          ...process.env,
+          NOTES_DIR: `notes=${notesDir}`,
+          BRAIN_INDEX: idxPath,
+        },
+      });
+      assert.deepEqual(JSON.parse(out), { files: 0, saved: true });
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("사용자 지정 BRAIN_INDEX의 부모를 만들 수 없으면 경로를 노출하지 않고 유한 실패한다", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-index-invalid-parent-"));
+    const notesDir = path.join(tmp, "notes");
+    const parentFile = path.join(tmp, "parent-is-file");
+    const idxPath = path.join(parentFile, "private-index-name.json");
+    fs.mkdirSync(notesDir);
+    fs.writeFileSync(parentFile, "not-a-directory");
+    const script = [
+      `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+      `  try {`,
+      `    await m.reindex();`,
+      `    process.stdout.write(JSON.stringify({ ok: true }));`,
+      `  } catch (e) {`,
+      `    process.stdout.write(JSON.stringify({ ok: false, message: String(e.message) }));`,
+      `  }`,
+      `}).catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        timeout: 2_000,
+        env: {
+          ...process.env,
+          NOTES_DIR: `notes=${notesDir}`,
+          BRAIN_INDEX: idxPath,
+        },
+      });
+      const result = JSON.parse(out);
+      assert.equal(result.ok, false, "생성 불가능한 경로를 조용히 fallback하면 안 된다");
+      assert.ok(result.message.includes("색인 저장 폴더를 준비할 수 없어요"), result.message);
+      assert.ok(!result.message.includes(tmp), "오류에 절대경로를 노출하면 안 된다");
+      assert.ok(!result.message.includes("private-index-name"), "오류에 색인 파일명을 노출하면 안 된다");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("AC-1: 파일 변경이 없으면 두 번째 loadIndex는 같은 객체를 반환한다(캐시 적중)", () => {
     const r = runBrainProbe(`
       const V = m.loadIndex().version;
