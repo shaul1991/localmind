@@ -77,6 +77,8 @@ if [ "$current_dir" = "$release_dir" ]; then
 fi
 
 if [ "$recover_current" -eq 0 ]; then
+  command -v gh >/dev/null 2>&1 || fail "GitHub CLI(gh)가 없습니다."
+  gh auth status --active --hostname github.com >/dev/null 2>&1 || fail "GitHub CLI 인증이 없습니다. deploy 전용 GH_TOKEN을 확인하세요."
   ci_result="$(gh run list --repo "$GH_REPO" --workflow "$GH_WORKFLOW" --commit "$target_sha" --status completed --limit 1 --json conclusion,headSha --jq '.[0].conclusion // ""' 2>/dev/null || true)"
   if [ "$ci_result" != "success" ]; then
     say "CI 성공이 확인되지 않아 배포를 보류합니다: ${target_sha:0:7} (CI=${ci_result:-none})"

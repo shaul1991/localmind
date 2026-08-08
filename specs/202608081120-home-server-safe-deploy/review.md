@@ -2,7 +2,7 @@
 
 ## 현재 판정
 
-로컬 구현과 품질 게이트는 통과했다. `npm run typecheck`, 200개 Node 테스트, `npm run build`, 전체 셸 테스트(신규 59개 포함)가 모두 성공했다. 독립 리뷰에서 지적된 root 실행, `.env` source, 첫 배포 self-link, readiness 경쟁, capability, restrictive umask 위험을 반영해 비권한 런타임/빌더, 검증 후 `root:root` 읽기 전용 release 회수, systemd sandbox, 리터럴 환경 파서, bounded health 재시도와 명시적 artifact 권한을 추가했다. 홈서버 실배포 관찰은 Draft PR과 별도로 운영 단계에서 수행한다.
+로컬 구현과 품질 게이트는 통과했다. `npm run typecheck`, 200개 Node 테스트, `npm run build`, 전체 셸 테스트(신규 65개 포함)가 모두 성공했다. 독립 리뷰에서 지적된 root 실행, `.env` source, 첫 배포 self-link, readiness 경쟁, capability, restrictive umask 위험을 반영해 비권한 런타임/빌더, 검증 후 `root:root` 읽기 전용 release 회수, systemd sandbox, 리터럴 환경 파서, bounded health 재시도와 명시적 artifact 권한을 추가했다. 홈서버 실배포 관찰은 Draft PR과 별도로 운영 단계에서 수행한다.
 
 ## Codex PR 리뷰 대응
 
@@ -18,6 +18,9 @@
 - `current`와 `last-good-sha`가 어긋나면 준비된 release를 재빌드하지 않고 GitHub 재조회와 무관하게 health 검증을 즉시 재개한다.
 - `last-good-sha`는 파일 fsync 후 원자적으로 교체한다. 교체 전 실패는 이전 pointer로 롤백하고, 교체 후 디렉터리 fsync 실패는 새 pointer·current 일관성을 유지하며 경고한다.
 - 쓰기 루트는 권한 변경 전에 절대·정규화·non-root 경로인지 검증한다.
+- fresh install은 `.env.example`에서 `.env`를 만들고 인증 token·노트·인덱스·query log 경로를 명시한다.
+- GitHub 자격증명은 root-only `/etc/localmind/deploy.env`로 MCP 환경과 분리하고 bootstrap 전에 인증을 검증한다.
+- MCP는 `/var/lib/localmind` StateDirectory와 강제 HOME을 가져 `QUERY_LOG` 미설정 시에도 writable 기본값을 사용한다.
 - Linux 홈서버에서 공백 포함 `ReadWritePaths` drop-in과 unit 전체가 `systemd-analyze verify`를 통과했다.
 
 ## 확인할 위험

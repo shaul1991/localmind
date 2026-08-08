@@ -10,6 +10,7 @@ Environment=BUILD_USER=localmind-builder
 Environment=NPM_BIN=/usr/bin/npm
 Environment=HOME=/root
 Environment=SOURCE_REPO=/var/lib/localmind-deploy/source
+EnvironmentFile=/etc/localmind/deploy.env
 ExecStart=/usr/local/sbin/localmind-deploy
 TimeoutStartSec=30min
 Nice=10

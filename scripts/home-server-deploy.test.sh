@@ -4,7 +4,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT="$ROOT/scripts/home-server-deploy.sh"
-pass=0; fail=0
+pass=0; fail=0; advance_count=0
 assert() { if eval "$2"; then printf '  \033[32m✓\033[0m %s\n' "$1"; pass=$((pass+1)); else printf '  \033[31m✗\033[0m %s\n' "$1"; fail=$((fail+1)); fi; }
 
 TMP="$(mktemp -d)"; trap '[ -n "${KEEP_TMP:-}" ] || rm -rf "$TMP"' EXIT
@@ -17,6 +17,15 @@ exit 0
 SH
 cat > "$BIN/gh" <<'SH'
 #!/bin/sh
+if [ "${1:-}" = "auth" ] && [ "${2:-}" = "status" ]; then
+  [ -z "${GH_AUTH_FAIL:-}" ] || exit 4
+  if [ -n "${GH_STALE_ACCOUNT:-}" ]; then
+    active=0
+    for argument in "$@"; do [ "$argument" = "--active" ] && active=1; done
+    [ "$active" -eq 1 ] || exit 1
+  fi
+  exit 0
+fi
 printf '%s\n' "${GH_RESULT:-success}"
 SH
 cat > "$BIN/npm" <<'SH'
@@ -102,7 +111,8 @@ new_fixture() {
 }
 
 advance_origin() {
-  local w="$TMP/advance-$RANDOM"
+  advance_count=$((advance_count + 1))
+  local w="$TMP/advance-$advance_count"
   git clone -q "$ORIGIN" "$w"; git_id "$w"
   printf 'next\n' >> "$w/README.md"; git -C "$w" add README.md; git -C "$w" commit -qm next; git -C "$w" push -q origin main
   NEW_SHA="$(git -C "$w" rev-parse HEAD)"
@@ -192,13 +202,16 @@ new_fixture immutable-release; advance_origin; run_deploy TEST_UMASK=077
 assert "활성화 전 root:root 소유권 회수" 'grep -q "chown -R root:root .*releases/" "$EVENT_LOG"'
 
 printf '\n\033[1mAC-13 — fresh install transport·sandbox 경로·이식성\033[0m\n'
-assert "MCP ExecStart가 EnvironmentFile보다 HTTP transport 우선" 'grep -q "^ExecStart=/usr/bin/env MCP_TRANSPORT=http /usr/bin/node " "$ROOT/deploy/systemd/localmind-mcp.service"'
+assert "MCP ExecStart가 EnvironmentFile보다 HTTP transport 우선" 'grep -q "^ExecStart=/usr/bin/env MCP_TRANSPORT=http HOME=/var/lib/localmind /usr/bin/node " "$ROOT/deploy/systemd/localmind-mcp.service"'
+assert "MCP unit이 writable default HOME 생성" 'grep -q "^StateDirectory=localmind$" "$ROOT/deploy/systemd/localmind-mcp.service" && grep -q "^StateDirectoryMode=0700$" "$ROOT/deploy/systemd/localmind-mcp.service"'
 assert "deploy unit이 StateDirectory 생성" 'grep -q "^StateDirectory=localmind-deploy$" "$ROOT/deploy/systemd/localmind-deploy.service"'
 assert "배포 스크립트가 release 부모 traversal 보장" 'grep -q "chmod 0755.*RELEASE_ROOT" "$SCRIPT"'
 assert "MCP unit에 개인 /root 경로 없음" '! grep -q "/root/personal" "$ROOT/deploy/systemd/localmind-mcp.service"'
 assert "설치 문서가 note write allowlist drop-in 안내" 'grep -q "localmind-mcp.service.d.*write-paths.conf" "$ROOT/docs/home-server-deploy.md"'
 assert "설치 문서가 write roots를 설치자에게 요구" 'grep -q "LOCALMIND_STATE_ROOT:?" "$ROOT/docs/home-server-deploy.md" && grep -q "LOCALMIND_SHARED_NOTES:?" "$ROOT/docs/home-server-deploy.md" && grep -q "LOCALMIND_PRIVATE_NOTES:?" "$ROOT/docs/home-server-deploy.md"'
 assert "공개 저장소 bootstrap은 HTTPS clone" 'grep -q "git clone https://github.com/shaul1991/localmind.git" "$ROOT/docs/home-server-deploy.md" && ! grep -q "git clone git@github.com" "$ROOT/docs/home-server-deploy.md"'
+assert "fresh install이 .env를 생성한 뒤 설치" 'python3 -c '\''from pathlib import Path; import sys; s=Path(sys.argv[1]).read_text(); raise SystemExit(0 if s.index("cp .env.example .env") < s.index("install -m 0640 -o root -g localmind .env") else 1)'\'' "$ROOT/docs/home-server-deploy.md"'
+assert "deploy 전용 GitHub token을 별도 환경 파일로 제한" 'grep -q "^EnvironmentFile=/etc/localmind/deploy.env$" "$ROOT/deploy/systemd/localmind-deploy.service" && grep -q "GH_TOKEN:?" "$ROOT/docs/home-server-deploy.md" && grep -q "/etc/localmind/deploy.env" "$ROOT/docs/home-server-deploy.md"'
 assert "bootstrap 이후에만 MCP 활성화" 'python3 -c '\''from pathlib import Path; import sys; s=Path(sys.argv[1]).read_text(); raise SystemExit(0 if s.index("systemctl start localmind-deploy.service") < s.index("systemctl enable --now localmind-mcp.service") else 1)'\'' "$ROOT/docs/home-server-deploy.md"'
 assert "쓰기 경로 renderer가 공백 경로를 systemd quote" '[ "$(python3 "$ROOT/scripts/render-systemd-write-paths.py" "/srv/notes with space" /srv/index)" = '"'"'[Service]
 ReadWritePaths="/srv/notes with space" "/srv/index"'"'"' ]'
@@ -259,6 +272,13 @@ PY
 run_deploy PYTHONPATH="$fault_python"
 assert "rename 이후 fsync 실패는 새 pointer·current 일관성 유지" '[ "$RC" -eq 0 ] && [ "$(cat "$STATE_DIR/last-good-sha")" = "$NEW_SHA" ] && [ "$(resolved_current)" = "$(resolved_path "$RELEASE_ROOT/$NEW_SHA")" ]'
 assert "directory fsync 실패를 경고" 'grep -q "directory fsync failed after commit" "$OUT"'
+
+printf '\n\033[1mAC-18 — GitHub CLI 인증 preflight\033[0m\n'
+new_fixture github-auth-failure; advance_origin; run_deploy GH_AUTH_FAIL=1
+assert "GitHub 인증 부재를 명시적 실패" '[ "$RC" -ne 0 ] && grep -q "GitHub CLI 인증" "$OUT"'
+assert "인증 실패 시 build·전환 없음" '! grep -q "^npm " "$EVENT_LOG" && [ "$(resolved_current)" = "$(resolved_path "$OLD_RELEASE")" ]'
+new_fixture github-stale-account; advance_origin; run_deploy GH_STALE_ACCOUNT=1
+assert "유효한 active GH_TOKEN은 stale 저장 계정과 격리" '[ "$RC" -eq 0 ] && [ "$(resolved_current)" = "$(resolved_path "$RELEASE_ROOT/$NEW_SHA")" ]'
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

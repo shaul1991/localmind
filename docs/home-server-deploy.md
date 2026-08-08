@@ -9,15 +9,30 @@ set -euo pipefail
 
 test -x /usr/bin/node
 test -x /usr/bin/npm
+test -x /usr/bin/gh
+test -x /usr/bin/openssl
 command -v setfacl >/dev/null
 
 : "${LOCALMIND_STATE_ROOT:?export LOCALMIND_STATE_ROOT=/absolute/path/to/localmind-state}"
 : "${LOCALMIND_SHARED_NOTES:?export LOCALMIND_SHARED_NOTES=/absolute/path/to/shared-notes}"
 : "${LOCALMIND_PRIVATE_NOTES:?export LOCALMIND_PRIVATE_NOTES=/absolute/path/to/private-notes}"
+: "${GH_TOKEN:?export a deploy-only GitHub token with Actions read permission}"
+GH_TOKEN="$GH_TOKEN" gh auth status --active --hostname github.com >/dev/null
 
 install -d -m 0700 -o root -g root /var/lib/localmind-deploy
 git clone https://github.com/shaul1991/localmind.git /var/lib/localmind-deploy/source
 cd /var/lib/localmind-deploy/source
+
+cp .env.example .env
+MCP_AUTH_TOKEN="$(openssl rand -hex 32)"
+{
+  printf '\nNOTES_DIR=%s,%s\n' "$LOCALMIND_SHARED_NOTES" "$LOCALMIND_PRIVATE_NOTES"
+  printf 'BRAIN_INDEX=%s/brain-index.json\n' "$LOCALMIND_STATE_ROOT"
+  printf 'QUERY_LOG=%s/query-log.jsonl\n' "$LOCALMIND_STATE_ROOT"
+  printf 'LOCALMIND_DEPLOYMENT_ID=home-main\n'
+  printf 'MCP_AUTH_TOKEN=%s\n' "$MCP_AUTH_TOKEN"
+  printf 'MCP_HTTP_HOST=127.0.0.1\nMCP_HTTP_PORT=8789\nMCP_HTTP_PATH=/mcp\n'
+} >> .env
 
 useradd --system --no-create-home --shell /usr/sbin/nologin localmind
 useradd --system --no-create-home --shell /usr/sbin/nologin localmind-builder
@@ -50,6 +65,9 @@ install -d -m 0755 -o root -g root /opt/localmind/releases
 install -d -m 0755 -o root -g root /usr/local/libexec
 install -d -m 0755 -o root -g root /etc/systemd/system/localmind-mcp.service.d
 install -m 0640 -o root -g localmind .env /etc/localmind/localmind.env
+(umask 077; printf 'GH_TOKEN=%s\n' "$GH_TOKEN" > /etc/localmind/deploy.env)
+chown root:root /etc/localmind/deploy.env
+chmod 0600 /etc/localmind/deploy.env
 install -m 0755 scripts/home-server-deploy.sh /usr/local/sbin/localmind-deploy
 install -m 0755 scripts/render-systemd-write-paths.py /usr/local/libexec/localmind-render-systemd-write-paths
 install -m 0644 deploy/systemd/localmind-deploy.service /etc/systemd/system/
