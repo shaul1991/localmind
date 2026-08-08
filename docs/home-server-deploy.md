@@ -5,32 +5,59 @@
 ## 설치
 
 ```bash
+set -euo pipefail
+
+install -d -m 0700 -o root -g root /var/lib/localmind-deploy
+git clone git@github.com:shaul1991/localmind.git /var/lib/localmind-deploy/source
+cd /var/lib/localmind-deploy/source
+
 useradd --system --no-create-home --shell /usr/sbin/nologin localmind
 useradd --system --no-create-home --shell /usr/sbin/nologin localmind-builder
 
-# MCP 런타임만 지정한 노트 루트와 환경 파일을 읽고 쓸 수 있게 한다.
+# 설치 환경의 note/index/query-log 쓰기 루트를 명시한다.
+NOTE_WRITE_PATHS=(
+  /root/.localmind
+  /root/personal/shaul-brain/second-brain-shared
+  /root/personal/shaul-brain/second-brain-private
+)
+
+# MCP 런타임만 지정한 루트를 읽고 쓸 수 있게 한다.
 chgrp localmind /root
 chmod 0710 /root
-for d in /root/.localmind \
-  /root/personal/shaul-brain/second-brain-shared \
-  /root/personal/shaul-brain/second-brain-private; do
+for d in "${NOTE_WRITE_PATHS[@]}"; do
   chgrp -R localmind "$d"
   chmod -R g+rwX "$d"
   find "$d" -type d -exec chmod g+s {} +
 done
 
 install -d -m 0750 -o root -g localmind /etc/localmind
+install -d -m 0755 -o root -g root /opt/localmind/releases
+install -d -m 0755 -o root -g root /usr/local/libexec
+install -d -m 0755 -o root -g root /etc/systemd/system/localmind-mcp.service.d
 install -m 0640 -o root -g localmind .env /etc/localmind/localmind.env
 install -m 0755 scripts/home-server-deploy.sh /usr/local/sbin/localmind-deploy
+install -m 0755 scripts/render-systemd-write-paths.py /usr/local/libexec/localmind-render-systemd-write-paths
 install -m 0644 deploy/systemd/localmind-deploy.service /etc/systemd/system/
 install -m 0644 deploy/systemd/localmind-deploy.timer /etc/systemd/system/
 install -m 0644 deploy/systemd/localmind-mcp.service /etc/systemd/system/
+write_paths_tmp="$(mktemp)"
+trap 'rm -f "$write_paths_tmp"' EXIT
+/usr/local/libexec/localmind-render-systemd-write-paths "${NOTE_WRITE_PATHS[@]}" > "$write_paths_tmp"
+install -m 0644 "$write_paths_tmp" /etc/systemd/system/localmind-mcp.service.d/write-paths.conf
+rm -f "$write_paths_tmp"
+trap - EXIT
 systemctl daemon-reload
+```
+
+최초 배포 service가 CI-green `main`을 검증·빌드하고 bootstrap release와 `current` 링크를 만든다. 성공한 뒤에만 서비스를 활성화한다.
+
+```bash
+systemctl start localmind-deploy.service
+test -L /opt/localmind/current
+systemctl is-active --quiet localmind-mcp.service
 systemctl enable --now localmind-mcp.service
 systemctl enable --now localmind-deploy.timer
 ```
-
-최초에는 현재 정상 SHA를 `/opt/localmind/releases/<sha>` worktree로 준비하고, 빌드가 끝난 release를 `root:root`로 회수한 뒤 `u=rwX,go=rX`로 고정한다. `/opt/localmind/current`가 이를 가리키게 한 다음 MCP unit을 전환한다. `localmind-builder`는 candidate build 중에만 쓰기 권한을 가지며 현재·롤백 release는 수정할 수 없어야 한다.
 
 ## 동작 확인
 

@@ -176,5 +176,20 @@ printf '\n\033[1mAC-12 — 검증 완료 release는 builder에게서 회수\033[
 new_fixture immutable-release; advance_origin; run_deploy TEST_UMASK=077
 assert "활성화 전 root:root 소유권 회수" 'grep -q "chown -R root:root .*releases/" "$EVENT_LOG"'
 
+printf '\n\033[1mAC-13 — fresh install transport·sandbox 경로·이식성\033[0m\n'
+assert "MCP ExecStart가 EnvironmentFile보다 HTTP transport 우선" 'grep -q "^ExecStart=/usr/bin/env MCP_TRANSPORT=http /usr/bin/node " "$ROOT/deploy/systemd/localmind-mcp.service"'
+assert "deploy unit이 StateDirectory 생성" 'grep -q "^StateDirectory=localmind-deploy$" "$ROOT/deploy/systemd/localmind-deploy.service"'
+assert "배포 스크립트가 release 부모 traversal 보장" 'grep -q "chmod 0755.*RELEASE_ROOT" "$SCRIPT"'
+assert "MCP unit에 개인 /root 경로 없음" '! grep -q "/root/personal" "$ROOT/deploy/systemd/localmind-mcp.service"'
+assert "설치 문서가 note write allowlist drop-in 안내" 'grep -q "localmind-mcp.service.d.*write-paths.conf" "$ROOT/docs/home-server-deploy.md"'
+assert "bootstrap 이후에만 MCP 활성화" 'python3 -c '\''from pathlib import Path; import sys; s=Path(sys.argv[1]).read_text(); raise SystemExit(0 if s.index("systemctl start localmind-deploy.service") < s.index("systemctl enable --now localmind-mcp.service") else 1)'\'' "$ROOT/docs/home-server-deploy.md"'
+assert "쓰기 경로 renderer가 공백 경로를 systemd quote" '[ "$(python3 "$ROOT/scripts/render-systemd-write-paths.py" "/tmp/notes with space" /tmp/index)" = '"'"'[Service]
+ReadWritePaths="/tmp/notes with space" "/tmp/index"'"'"' ]'
+assert "쓰기 경로 renderer가 상대경로 거부" '! python3 "$ROOT/scripts/render-systemd-write-paths.py" relative/path >/dev/null 2>&1'
+assert "쓰기 경로 renderer가 TAB·ESC 제어문자 거부" 'python3 -c '\''import subprocess,sys; script=sys.argv[1]; paths=["/tmp/tab\tpath", "/tmp/esc\x1bpath"]; raise SystemExit(0 if all(subprocess.run([sys.executable, script, p], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0 for p in paths) else 1)'\'' "$ROOT/scripts/render-systemd-write-paths.py"'
+assert "쓰기 경로 renderer가 systemd % specifier 이스케이프" '[ "$(python3 "$ROOT/scripts/render-systemd-write-paths.py" "/srv/notes/%n")" = '"'"'[Service]
+ReadWritePaths="/srv/notes/%%n"'"'"' ]'
+assert "deploy unit·script에 개인 source checkout 없음" '! grep -q "/root/personal/shaul1991/localmind" "$ROOT/deploy/systemd/localmind-deploy.service" "$SCRIPT"'
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

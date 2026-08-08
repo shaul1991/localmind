@@ -8,17 +8,20 @@ Wants=network-online.target
 Type=oneshot
 Environment=BUILD_USER=localmind-builder
 Environment=HOME=/root
+Environment=SOURCE_REPO=/var/lib/localmind-deploy/source
 ExecStart=/usr/local/sbin/localmind-deploy
 TimeoutStartSec=30min
 Nice=10
 IOSchedulingClass=idle
 UMask=0077
+StateDirectory=localmind-deploy
+StateDirectoryMode=0700
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/root/personal/shaul1991/localmind /opt/localmind /var/lib/localmind-deploy
+ReadWritePaths=/opt/localmind
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectKernelLogs=true

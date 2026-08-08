@@ -2,7 +2,7 @@
 # GitHub main의 CI-green 커밋만 release 디렉터리에 검증 배포하고 health 실패 시 이전 release로 롤백한다.
 set -uo pipefail
 
-SOURCE_REPO="${SOURCE_REPO:-/root/personal/shaul1991/localmind}"
+SOURCE_REPO="${SOURCE_REPO:-/var/lib/localmind-deploy/source}"
 RELEASE_ROOT="${RELEASE_ROOT:-/opt/localmind/releases}"
 CURRENT_LINK="${CURRENT_LINK:-/opt/localmind/current}"
 STATE_DIR="${STATE_DIR:-/var/lib/localmind-deploy}"
@@ -20,7 +20,9 @@ LOCK_FILE="${LOCK_FILE:-$STATE_DIR/deploy.lock}"
 say() { printf '%s\n' "$*"; }
 fail() { printf '배포 실패: %s\n' "$*" >&2; exit 1; }
 
-mkdir -p "$RELEASE_ROOT" "$STATE_DIR" "$(dirname "$CURRENT_LINK")" || fail "배포 디렉터리 준비 실패"
+current_parent="$(dirname "$CURRENT_LINK")"
+mkdir -p "$RELEASE_ROOT" "$STATE_DIR" "$current_parent" || fail "배포 디렉터리 준비 실패"
+chmod 0755 "$RELEASE_ROOT" "$current_parent" || fail "release 부모 traversal 권한 설정 실패"
 if ! exec 9>"$LOCK_FILE"; then
   fail "배포 lock 파일을 열 수 없습니다: $LOCK_FILE"
 fi
