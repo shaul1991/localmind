@@ -150,7 +150,7 @@ run_deploy() {
     env PATH="$BIN:$PATH" EVENT_LOG="$EVENT_LOG" CURRENT_LINK="$CURRENT_LINK" \
       SOURCE_REPO="$SOURCE_REPO" RELEASE_ROOT="$RELEASE_ROOT" STATE_DIR="$STATE_DIR" ENV_FILE="$ENV_FILE" \
       SERVICE_NAME=localmind-mcp.service GH_REPO=shaul1991/localmind GH_WORKFLOW=CI BUILD_USER="$(id -un)" NPM_BIN="$BIN/npm" \
-      HEALTH_RETRIES=3 HEALTH_RETRY_DELAY=0 \
+      HEALTH_RETRIES=3 HEALTH_RETRY_DELAY=0 LOCALMIND_DEPLOY_TEST_MODE=1 \
       "$@" bash "$SCRIPT" > "$OUT" 2>&1
   )
   RC=$?
@@ -392,6 +392,19 @@ assert "tentative IPv6 bind 거부" '! $validator_fixture fd00::dead --ip-json "
 assert "호스트에 미할당된 private bind 거부" '! $validator_fixture 10.20.30.41 --ip-json "$bind_fixture" >/dev/null 2>&1'
 assert "fixture override는 test opt-in 없이 거부" '! python3 scripts/validate-private-bind.py 10.20.30.40 --ip-json "$bind_fixture" >/dev/null 2>&1'
 assert "설치 문서가 공통 private bind validator 사용" 'grep -Fq "scripts/validate-private-bind.py" docs/home-server-deploy.md'
+assert "builder를 systemd control-group 격리 후 artifact 승격" 'python3 - <<'"'"'PY'"'"'
+from pathlib import Path
+text = Path("scripts/home-server-deploy.sh").read_text()
+raise SystemExit(0 if text.index("systemd-run") < text.index("chown -R root:root") and "KillMode=control-group" in text else 1)
+PY'
+assert "deploy env가 test mode·builder를 우회하지 못함" 'grep -Eq "^ExecStart=/usr/bin/env LOCALMIND_DEPLOY_TEST_MODE=0 BUILD_USER=localmind-builder " deploy/systemd/localmind-deploy.service'
+assert "EnvironmentFile 특수문자 경로를 안전하게 직렬화" 'value="/srv/owner'"'"'s \\notes"; rendered="$(python3 scripts/render-systemd-env.py "NOTES_DIR=$value")"; python3 - "$rendered" "$value" <<'"'"'PY'"'"'
+import json, sys
+raw, expected = sys.argv[1].split("=", 1)[1], sys.argv[2]
+raise SystemExit(0 if json.loads(raw) == expected else 1)
+PY'
+assert "설치 문서가 raw path printf를 사용하지 않음" 'grep -Fq "scripts/render-systemd-env.py" docs/home-server-deploy.md && ! grep -Fq "printf '\''\\nNOTES_DIR=%s,%s" docs/home-server-deploy.md'
+assert "bind validator 오류는 평이한 한국어" '! python3 scripts/validate-private-bind.py 8.8.8.8 >"$TMP/bind-ko.out" 2>&1 && grep -Eq "[가-힣]" "$TMP/bind-ko.out"'
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

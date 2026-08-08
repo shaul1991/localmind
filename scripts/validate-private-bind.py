@@ -31,11 +31,11 @@ def approved(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
 def load_ip_interfaces(path: str | None) -> Any:
     if path is not None:
         if os.environ.get("LOCALMIND_BIND_VALIDATOR_TEST") != "1":
-            raise SystemExit("--ip-json is available only to the test harness")
+            raise SystemExit("--ip-json 옵션은 테스트 환경에서만 사용할 수 있습니다.")
         try:
             return json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:
-            raise SystemExit("cannot read test interface metadata") from error
+            raise SystemExit("테스트용 네트워크 인터페이스 정보를 읽을 수 없습니다.") from error
 
     try:
         completed = subprocess.run(
@@ -47,12 +47,12 @@ def load_ip_interfaces(path: str | None) -> Any:
         )
         return json.loads(completed.stdout)
     except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
-        raise SystemExit("cannot verify local interfaces with `ip -j address show`") from error
+        raise SystemExit("`ip -j address show` 명령으로 로컬 네트워크 인터페이스를 확인할 수 없습니다.") from error
 
 
 def reachable_addresses(interfaces: Any) -> Iterable[ipaddress.IPv4Address | ipaddress.IPv6Address]:
     if not isinstance(interfaces, list):
-        raise SystemExit("unexpected output from `ip -j address show`")
+        raise SystemExit("`ip -j address show` 명령이 예상하지 못한 형식으로 응답했습니다.")
 
     for interface in interfaces:
         if not isinstance(interface, dict):
@@ -102,16 +102,16 @@ def main() -> None:
     try:
         address = ipaddress.ip_address(args.address)
     except ValueError as error:
-        raise SystemExit("bind host must be an IP address") from error
+        raise SystemExit("bind 주소에는 올바른 IP 주소를 입력해야 합니다.") from error
 
     if not approved(address):
         raise SystemExit(
-            "bind host must be RFC1918, Tailscale CGNAT (100.64.0.0/10), or IPv6 ULA"
+            "bind 주소는 RFC1918 사설 IPv4, Tailscale CGNAT(100.64.0.0/10), IPv6 ULA 중 하나여야 합니다."
         )
 
     interfaces = load_ip_interfaces(args.ip_json)
     if address not in set(reachable_addresses(interfaces)):
-        raise SystemExit("bind host is not on an UP, non-loopback interface with a usable global address")
+        raise SystemExit("bind 주소가 사용 가능한 UP 상태의 non-loopback 로컬 인터페이스에 할당되어 있지 않습니다.")
 
     print(address)
 

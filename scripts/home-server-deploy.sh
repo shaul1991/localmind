@@ -137,15 +137,22 @@ if [ ! -d "$release_dir" ]; then
 fi
 
 id "$BUILD_USER" >/dev/null 2>&1 || fail "빌드 전용 사용자가 없습니다: $BUILD_USER"
+current_user="$(id -un)"
+if [ "$current_user" = "$BUILD_USER" ]; then
+  [ "${LOCALMIND_DEPLOY_TEST_MODE:-0}" = 1 ] || fail "배포 프로세스와 빌드 사용자는 분리되어야 합니다."
+else
+  command -v systemd-run >/dev/null 2>&1 || fail "systemd-run이 없어 빌드를 격리할 수 없습니다."
+  command -v pgrep >/dev/null 2>&1 || fail "pgrep가 없어 빌드 사용자 프로세스를 검증할 수 없습니다."
+  pgrep -u "$BUILD_USER" >/dev/null 2>&1 && fail "빌드 사용자에 기존 프로세스가 남아 있어 안전하게 시작할 수 없습니다: $BUILD_USER"
+fi
 build_home="$release_dir/.build-home"
 mkdir -p "$build_home" || fail "빌드 HOME 준비 실패"
-if [ "$(id -un)" != "$BUILD_USER" ]; then
-  command -v runuser >/dev/null 2>&1 || fail "runuser가 없어 비권한 빌드를 실행할 수 없습니다."
+if [ "$current_user" != "$BUILD_USER" ]; then
   chown -R "$BUILD_USER" "$release_dir" || fail "release 소유권을 빌드 사용자에게 넘기지 못했습니다."
 fi
 
 build_ok=1
-if [ "$(id -un)" = "$BUILD_USER" ]; then
+if [ "$current_user" = "$BUILD_USER" ]; then
   (
     cd "$release_dir" || exit 1
     HOME="$build_home" NPM_CONFIG_CACHE="$build_home/npm-cache" "$NPM_BIN" ci &&
@@ -155,9 +162,13 @@ if [ "$(id -un)" = "$BUILD_USER" ]; then
     test -f dist/mcp.js
   ) || build_ok=0
 else
-  runuser -u "$BUILD_USER" -- env HOME="$build_home" NPM_CONFIG_CACHE="$build_home/npm-cache" \
-    sh -c 'cd "$1" && "$2" ci && "$2" test && "$2" run typecheck && "$2" run build && test -f dist/mcp.js' \
-    sh "$release_dir" "$NPM_BIN" || build_ok=0
+  build_unit="localmind-build-${target_sha:0:12}-$$"
+  systemd-run --quiet --wait --collect --unit="$build_unit" --uid="$BUILD_USER" \
+    --service-type=oneshot --property=KillMode=control-group \
+    --setenv=HOME="$build_home" --setenv=NPM_CONFIG_CACHE="$build_home/npm-cache" \
+    --working-directory="$release_dir" \
+    /bin/sh -c '"$1" ci && "$1" test && "$1" run typecheck && "$1" run build && test -f dist/mcp.js' \
+    sh "$NPM_BIN" || build_ok=0
 fi
 if [ "$build_ok" -ne 1 ]; then
   cleanup_failed_release "$release_dir"

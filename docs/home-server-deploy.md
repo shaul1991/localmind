@@ -12,6 +12,7 @@ test -x /usr/bin/npm
 test -x /usr/bin/gh
 test -x /usr/bin/openssl
 command -v setfacl >/dev/null
+command -v systemd-run >/dev/null
 
 : "${LOCALMIND_STATE_ROOT:?export LOCALMIND_STATE_ROOT=/absolute/path/to/localmind-state}"
 : "${LOCALMIND_SHARED_NOTES:?export LOCALMIND_SHARED_NOTES=/absolute/path/to/shared-notes}"
@@ -27,14 +28,15 @@ LOCALMIND_MCP_BIND_HOST="$(python3 scripts/validate-private-bind.py "$LOCALMIND_
 
 cp .env.example .env
 MCP_AUTH_TOKEN="$(openssl rand -hex 32)"
-{
-  printf '\nNOTES_DIR=%s,%s\n' "$LOCALMIND_SHARED_NOTES" "$LOCALMIND_PRIVATE_NOTES"
-  printf 'BRAIN_INDEX=%s/brain-index.json\n' "$LOCALMIND_STATE_ROOT"
-  printf 'QUERY_LOG=%s/query-log.jsonl\n' "$LOCALMIND_STATE_ROOT"
-  printf 'LOCALMIND_DEPLOYMENT_ID=home-main\n'
-  printf 'MCP_AUTH_TOKEN=%s\n' "$MCP_AUTH_TOKEN"
-  printf 'MCP_HTTP_HOST=%s\nMCP_HTTP_PORT=8789\nMCP_HTTP_PATH=/mcp\n' "$LOCALMIND_MCP_BIND_HOST"
-} >> .env
+python3 scripts/render-systemd-env.py \
+  "NOTES_DIR=$LOCALMIND_SHARED_NOTES,$LOCALMIND_PRIVATE_NOTES" \
+  "BRAIN_INDEX=$LOCALMIND_STATE_ROOT/brain-index.json" \
+  "QUERY_LOG=$LOCALMIND_STATE_ROOT/query-log.jsonl" \
+  "LOCALMIND_DEPLOYMENT_ID=home-main" \
+  "MCP_AUTH_TOKEN=$MCP_AUTH_TOKEN" \
+  "MCP_HTTP_HOST=$LOCALMIND_MCP_BIND_HOST" \
+  "MCP_HTTP_PORT=8789" \
+  "MCP_HTTP_PATH=/mcp" >> .env
 
 useradd --system --no-create-home --shell /usr/sbin/nologin localmind
 useradd --system --no-create-home --shell /usr/sbin/nologin localmind-builder
