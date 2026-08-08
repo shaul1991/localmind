@@ -31,6 +31,7 @@ import {
   createNoteFile,
   listMarkdown,
   buildNoteFrontmatter,
+  normalizeLockStaleMs,
   type BrainIndex,
 } from "./brain.js";
 
@@ -256,7 +257,7 @@ describe("capture() 검증 루프 (통합 — 임베딩 서버 필요)", { skip:
 // loadIndex/saveIndex는 INDEX_PATH(모듈 로드 시 고정)에 묶여 있어, 실제 ~/.localmind
 // 오염을 막으려면 자식 프로세스로 BRAIN_INDEX/NOTES_DIR을 격리해야 한다.
 
-function runBrainProbe(scriptBody: string): any {
+function runBrainProbe(scriptBody: string, envOverrides: NodeJS.ProcessEnv = {}): any {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-index-"));
   const idxPath = path.join(tmp, ".brain-index.json");
   const script = [
@@ -274,6 +275,7 @@ function runBrainProbe(scriptBody: string): any {
         ...process.env,
         NOTES_DIR: `notes=${tmp}`,
         BRAIN_INDEX: idxPath,
+        ...envOverrides,
       },
     });
     return JSON.parse(out);
@@ -345,6 +347,82 @@ describe("인덱스 캐시·원자성·동시성 (009)", () => {
       assert.ok(result.message.includes("색인 저장 폴더를 준비할 수 없어요"), result.message);
       assert.ok(!result.message.includes(tmp), "오류에 절대경로를 노출하면 안 된다");
       assert.ok(!result.message.includes("private-index-name"), "오류에 색인 파일명을 노출하면 안 된다");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("사용자 지정 BRAIN_INDEX의 기존 부모에 쓰기 권한이 없으면 lock 재시도 없이 유한 실패한다", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-index-readonly-parent-"));
+    const notesDir = path.join(tmp, "notes");
+    const readOnlyParent = path.join(tmp, "readonly");
+    const idxPath = path.join(readOnlyParent, "private-index-name.json");
+    fs.mkdirSync(notesDir);
+    fs.mkdirSync(readOnlyParent, { mode: 0o500 });
+    const script = [
+      `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+      `  try {`,
+      `    await m.reindex();`,
+      `    process.stdout.write(JSON.stringify({ ok: true }));`,
+      `  } catch (e) {`,
+      `    process.stdout.write(JSON.stringify({ ok: false, message: String(e.message) }));`,
+      `  }`,
+      `}).catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        timeout: 2_000,
+        env: {
+          ...process.env,
+          NOTES_DIR: `notes=${notesDir}`,
+          BRAIN_INDEX: idxPath,
+        },
+      });
+      const result = JSON.parse(out);
+      assert.equal(result.ok, false, "쓰기 불가능한 경로를 lock 재시도하면 안 된다");
+      assert.ok(result.message.includes("색인 저장 폴더를 준비할 수 없어요"), result.message);
+      assert.ok(!result.message.includes(tmp), "오류에 절대경로를 노출하면 안 된다");
+      assert.ok(!result.message.includes("private-index-name"), "오류에 색인 파일명을 노출하면 안 된다");
+    } finally {
+      fs.chmodSync(readOnlyParent, 0o700);
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("사용자 지정 BRAIN_INDEX가 디렉터리여도 저장 오류에 경로를 노출하지 않고 유한 실패한다", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-index-rename-failure-"));
+    const notesDir = path.join(tmp, "notes");
+    const idxPath = path.join(tmp, "private-index-name");
+    fs.mkdirSync(notesDir);
+    fs.mkdirSync(idxPath);
+    const script = [
+      `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+      `  try {`,
+      `    await m.reindex();`,
+      `    process.stdout.write(JSON.stringify({ ok: true }));`,
+      `  } catch (e) {`,
+      `    process.stdout.write(JSON.stringify({ ok: false, message: String(e.message) }));`,
+      `  }`,
+      `}).catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        timeout: 2_000,
+        env: {
+          ...process.env,
+          NOTES_DIR: `notes=${notesDir}`,
+          BRAIN_INDEX: idxPath,
+        },
+      });
+      const result = JSON.parse(out);
+      assert.equal(result.ok, false, "디렉터리를 색인 파일로 조용히 수용하면 안 된다");
+      assert.ok(result.message.includes("색인 저장 폴더를 준비할 수 없어요"), result.message);
+      assert.ok(!result.message.includes(tmp), "오류에 절대경로를 노출하면 안 된다");
+      assert.ok(!result.message.includes("private-index-name"), "오류에 색인 이름을 노출하면 안 된다");
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -685,6 +763,53 @@ describe("인덱스 다중 프로세스 안전 (013)", () => {
     assert.ok(r.saved, "저장이 완료돼야 한다");
     assert.ok(r.lockGone, "저장 후 락이 남지 않는다");
     assert.ok(r.ms < 5000, `영구 대기 없이 완료돼야 한다(${r.ms}ms)`);
+  });
+
+  it("잘못된 BRAIN_LOCK_STALE_MS는 기본값으로 복구하고 큰 유한값은 상한으로 제한한다", () => {
+    assert.equal(normalizeLockStaleMs("1e308"), 60_000);
+    assert.equal(normalizeLockStaleMs("Infinity"), 10_000);
+    assert.equal(normalizeLockStaleMs("not-a-number"), 10_000);
+    assert.equal(normalizeLockStaleMs("0"), 10_000);
+    for (const value of ["not-a-number", "Infinity", "0", "-1", "1e308"]) {
+      const r = runBrainProbe(`
+        const V = m.loadIndex().version;
+        fs.writeFileSync(idxPath + ".lock", "");
+        const past = (Date.now() - 60_000) / 1000;
+        fs.utimesSync(idxPath + ".lock", past, past);
+        const t0 = Date.now();
+        m.saveIndex({ version: V, files: {} });
+        process.stdout.write(JSON.stringify({ ms: Date.now() - t0, saved: fs.existsSync(idxPath) }));
+      `, { BRAIN_LOCK_STALE_MS: value });
+      assert.ok(r.saved, `${value}: 저장이 완료돼야 한다`);
+      assert.ok(r.ms < 5000, `${value}: 영구 대기 없이 완료돼야 한다(${r.ms}ms)`);
+    }
+  });
+
+  it("오래됐어도 살아 있는 PID가 소유한 lock은 강제 제거하지 않고 유한 실패한다", () => {
+    const ownerPid = process.pid;
+    const r = runBrainProbe(`
+      const V = m.loadIndex().version;
+      const token = ${JSON.stringify(String(process.pid))} + ":00000000-0000-4000-8000-000000000000";
+      fs.writeFileSync(idxPath + ".lock", token);
+      const past = (Date.now() - 60_000) / 1000;
+      fs.utimesSync(idxPath + ".lock", past, past);
+      const t0 = Date.now();
+      try {
+        m.saveIndex({ version: V, files: {} });
+        process.stdout.write(JSON.stringify({ ok: true }));
+      } catch (e) {
+        process.stdout.write(JSON.stringify({
+          ok: false,
+          ms: Date.now() - t0,
+          preserved: fs.readFileSync(idxPath + ".lock", "utf8") === token,
+          safe: !String(e.message).includes(idxPath),
+        }));
+      }
+    `, { BRAIN_LOCK_STALE_MS: "1000" });
+    assert.equal(r.ok, false, `살아 있는 owner(${ownerPid}) lock을 회수하면 안 된다`);
+    assert.ok(r.preserved, "기존 owner token을 보존해야 한다");
+    assert.ok(r.safe, "오류에 색인 절대경로를 노출하면 안 된다");
+    assert.ok(r.ms < 5000, `유한 시간 안에 실패해야 한다(${r.ms}ms)`);
   });
 
   it("결함1 회귀: 중간의 무관한 loadIndex가 있어도 병합 기준(객체별 스냅샷)이 유지된다", () => {
