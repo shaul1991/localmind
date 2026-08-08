@@ -1,0 +1,38 @@
+[Unit]
+Description=localmind MCP server (HTTP transport)
+Documentation=https://github.com/shaul1991/localmind
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=localmind
+Group=localmind
+WorkingDirectory=/opt/localmind/current
+EnvironmentFile=/etc/localmind/localmind.env
+ExecStart=/usr/bin/env MCP_TRANSPORT=http HOME=/var/lib/localmind /usr/bin/node /opt/localmind/current/dist/mcp.js
+StateDirectory=localmind
+StateDirectoryMode=0700
+Restart=always
+RestartSec=5
+UMask=0007
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+# 설치별 note/index/query-log 쓰기 경로는 write-paths.conf drop-in으로 허용한다.
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target
