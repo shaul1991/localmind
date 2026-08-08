@@ -1,0 +1,32 @@
+[Unit]
+Description=Deploy latest CI-green LocalMind main release
+Documentation=https://github.com/shaul1991/localmind
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=BUILD_USER=localmind-builder
+Environment=HOME=/root
+ExecStart=/usr/local/sbin/localmind-deploy
+TimeoutStartSec=30min
+Nice=10
+IOSchedulingClass=idle
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/root/personal/shaul1991/localmind /opt/localmind /var/lib/localmind-deploy
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+CapabilityBoundingSet=CAP_CHOWN CAP_FOWNER CAP_SETUID CAP_SETGID CAP_DAC_OVERRIDE
+AmbientCapabilities=
