@@ -459,43 +459,146 @@ function notifyReindexOnce(reason: string): void {
 // 직전에 디스크가 내 로드 시점 이후 바뀌었으면 다시 읽어 병합한다(reload-merge).
 
 const LOCK_PATH = `${INDEX_PATH}.lock`;
-const LOCK_STALE_MS = Math.max(1000, Number(process.env.BRAIN_LOCK_STALE_MS ?? 10_000));
+const LOCK_GUARD_PATH = `${LOCK_PATH}.guard`;
+export function normalizeLockStaleMs(raw: string | undefined): number {
+  const parsed = Number(raw ?? 10_000);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 10_000;
+  return Math.min(60_000, Math.max(1000, parsed));
+}
+const LOCK_STALE_MS = normalizeLockStaleMs(process.env.BRAIN_LOCK_STALE_MS);
+let ownedLockToken: string | null = null;
 
 /** 동기 대기(외부 의존성 없이). saveIndex가 동기 함수라 setTimeout을 쓸 수 없다. */
 function sleepSync(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
-/** 락 획득: O_EXCL 생성. 실패 시 재시도하되, 락 파일이 LOCK_STALE_MS보다 오래됐으면
- *  죽은 프로세스의 고아 락으로 보고 제거한다. 최악의 경우에도 유한 시간 안에 진행한다
- *  (영구 대기 금지 — 락은 정확성 보조 수단이고 최종 방어는 reload-merge다). */
-function acquireLock(): void {
-  const deadline = Date.now() + LOCK_STALE_MS * 2;
+/** 락 획득: O_EXCL 생성. 충돌 시 재시도하되, 락 파일이 LOCK_STALE_MS보다 오래됐고
+ *  기록된 PID도 살아 있지 않을 때만 고아 락으로 회수한다. 살아 있는 owner나 판정 불가
+ *  가드는 강제 제거하지 않고 유한 시간 뒤 안전하게 실패한다. */
+function indexStorageError(): Error {
+  return new Error("색인 저장 폴더를 준비할 수 없어요. BRAIN_INDEX 설정과 폴더 쓰기 권한을 확인해 주세요.");
+}
+
+/** lock 메타데이터의 생성·검사·제거를 짧은 별도 가드로 직렬화한다.
+ * 가드는 강제 회수하지 않는다. 가드 보유 중 프로세스가 죽으면 안전한 자동 판단이 불가능하므로
+ * 유한 시간 뒤 실패한다(후속 소유자의 lock을 지우는 것보다 보수적 실패가 낫다). */
+function withLockGuard<T>(action: () => T): T {
+  const deadline = Date.now() + Math.min(LOCK_STALE_MS, 2_000);
+  let guardFd: number;
   for (;;) {
     try {
-      fs.closeSync(fs.openSync(LOCK_PATH, "wx"));
-      return;
+      guardFd = fs.openSync(LOCK_GUARD_PATH, "wx");
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST" || Date.now() > deadline) {
+        throw indexStorageError();
+      }
+      sleepSync(10);
+    }
+  }
+  try {
+    return action();
+  } finally {
+    try {
+      fs.closeSync(guardFd);
+      fs.rmSync(LOCK_GUARD_PATH);
     } catch {
-      try {
-        const st = fs.statSync(LOCK_PATH);
-        if (Date.now() - st.mtimeMs > LOCK_STALE_MS) {
-          fs.rmSync(LOCK_PATH, { force: true }); // stale — 강제 해제 후 재시도
-          continue;
-        }
-      } catch {
-        continue; // 락이 방금 사라짐 — 즉시 재시도
-      }
-      if (Date.now() > deadline) {
-        fs.rmSync(LOCK_PATH, { force: true }); // 데드라인 초과 — 영구 대기 대신 강제 진행
-        continue;
-      }
-      sleepSync(50);
+      throw indexStorageError();
     }
   }
 }
 
+function lockOwnerIsAlive(token: string): boolean {
+  const match = /^(\d+):[0-9a-f-]+$/i.exec(token);
+  if (!match) return false; // 구버전의 빈 lock은 mtime 기반 stale 회수 대상으로 유지한다.
+  const pid = Number(match[1]);
+  if (!Number.isSafeInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM"; // 존재하지만 신호 권한만 없음
+  }
+}
+
+function acquireLock(): void {
+  // BRAIN_INDEX는 노트 정본 밖의 파생 색인 경로로 옮길 수 있다. 첫 저장 전에 부모를
+  // 준비해 lock 생성 실패가 영구 재시도로 바뀌지 않게 한다. 생성 불가 경로는 즉시 실패한다.
+  try {
+    fs.mkdirSync(path.dirname(INDEX_PATH), { recursive: true });
+  } catch {
+    throw indexStorageError();
+  }
+
+  const token = `${process.pid}:${crypto.randomUUID()}`;
+  const deadline = Date.now() + LOCK_STALE_MS * 2;
+  for (;;) {
+    const acquired = withLockGuard(() => {
+      let fd: number | null = null;
+      try {
+        fd = fs.openSync(LOCK_PATH, "wx");
+        fs.writeFileSync(fd, token, "utf8");
+        fs.fsyncSync(fd);
+        fs.closeSync(fd);
+        fd = null;
+        ownedLockToken = token;
+        return true;
+      } catch (error) {
+        if (fd !== null) {
+          try { fs.closeSync(fd); } catch { /* 아래에서 안전 실패 */ }
+          try { fs.rmSync(LOCK_PATH); } catch { /* 아래에서 안전 실패 */ }
+        }
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw indexStorageError();
+      }
+
+      let st: fs.Stats;
+      let existingToken: string;
+      try {
+        st = fs.lstatSync(LOCK_PATH);
+        if (!st.isFile()) throw indexStorageError();
+        existingToken = fs.readFileSync(LOCK_PATH, "utf8");
+      } catch {
+        throw indexStorageError();
+      }
+      if (Date.now() - st.mtimeMs > LOCK_STALE_MS && !lockOwnerIsAlive(existingToken)) {
+        try {
+          fs.rmSync(LOCK_PATH);
+        } catch {
+          throw indexStorageError();
+        }
+      }
+      return false;
+    });
+    if (acquired) return;
+    if (Date.now() > deadline) throw indexStorageError();
+    sleepSync(50);
+  }
+}
+
 function releaseLock(): void {
-  fs.rmSync(LOCK_PATH, { force: true });
+  const token = ownedLockToken;
+  if (!token) throw indexStorageError();
+  try {
+    withLockGuard(() => {
+      let currentToken: string;
+      try {
+        const st = fs.lstatSync(LOCK_PATH);
+        if (!st.isFile()) throw indexStorageError();
+        currentToken = fs.readFileSync(LOCK_PATH, "utf8");
+      } catch {
+        throw indexStorageError();
+      }
+      if (currentToken !== token) throw indexStorageError();
+      try {
+        fs.rmSync(LOCK_PATH);
+      } catch {
+        throw indexStorageError();
+      }
+    });
+  } finally {
+    ownedLockToken = null;
+  }
 }
 
 /** 같은 파일 키가 양쪽에 있으면: 해시가 같으면 내 것 유지, 다르면 실제 파일 내용(정본)과
@@ -605,6 +708,8 @@ export function saveIndex(idx: BrainIndex): void {
       cachedIndex = null;
       cachedStat = null;
     }
+  } catch {
+    throw indexStorageError();
   } finally {
     releaseLock();
   }
@@ -629,6 +734,8 @@ function resetIndex(): void {
       cachedIndex = null;
       cachedStat = null;
     }
+  } catch {
+    throw indexStorageError();
   } finally {
     releaseLock();
   }
