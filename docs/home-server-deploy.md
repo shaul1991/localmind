@@ -7,6 +7,9 @@
 ```bash
 set -euo pipefail
 
+test -x /usr/bin/node
+test -x /usr/bin/npm
+
 install -d -m 0700 -o root -g root /var/lib/localmind-deploy
 git clone git@github.com:shaul1991/localmind.git /var/lib/localmind-deploy/source
 cd /var/lib/localmind-deploy/source

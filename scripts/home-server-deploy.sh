@@ -13,6 +13,7 @@ GH_WORKFLOW="${GH_WORKFLOW:-CI}"
 REMOTE="${REMOTE:-origin}"
 BRANCH="${BRANCH:-main}"
 BUILD_USER="${BUILD_USER:-localmind-builder}"
+NPM_BIN="${NPM_BIN:-/usr/bin/npm}"
 HEALTH_RETRIES="${HEALTH_RETRIES:-12}"
 HEALTH_RETRY_DELAY="${HEALTH_RETRY_DELAY:-2}"
 LOCK_FILE="${LOCK_FILE:-$STATE_DIR/deploy.lock}"
@@ -97,16 +98,16 @@ build_ok=1
 if [ "$(id -un)" = "$BUILD_USER" ]; then
   (
     cd "$release_dir" || exit 1
-    HOME="$build_home" NPM_CONFIG_CACHE="$build_home/npm-cache" npm ci &&
-    HOME="$build_home" NPM_CONFIG_CACHE="$build_home/npm-cache" npm test &&
-    HOME="$build_home" NPM_CONFIG_CACHE="$build_home/npm-cache" npm run typecheck &&
-    HOME="$build_home" NPM_CONFIG_CACHE="$build_home/npm-cache" npm run build &&
+    HOME="$build_home" NPM_CONFIG_CACHE="$build_home/npm-cache" "$NPM_BIN" ci &&
+    HOME="$build_home" NPM_CONFIG_CACHE="$build_home/npm-cache" "$NPM_BIN" test &&
+    HOME="$build_home" NPM_CONFIG_CACHE="$build_home/npm-cache" "$NPM_BIN" run typecheck &&
+    HOME="$build_home" NPM_CONFIG_CACHE="$build_home/npm-cache" "$NPM_BIN" run build &&
     test -f dist/mcp.js
   ) || build_ok=0
 else
   runuser -u "$BUILD_USER" -- env HOME="$build_home" NPM_CONFIG_CACHE="$build_home/npm-cache" \
-    sh -c 'cd "$1" && npm ci && npm test && npm run typecheck && npm run build && test -f dist/mcp.js' \
-    sh "$release_dir" || build_ok=0
+    sh -c 'cd "$1" && "$2" ci && "$2" test && "$2" run typecheck && "$2" run build && test -f dist/mcp.js' \
+    sh "$release_dir" "$NPM_BIN" || build_ok=0
 fi
 if [ "$build_ok" -ne 1 ]; then
   cleanup_failed_release "$release_dir"
@@ -160,13 +161,18 @@ PY
 }
 
 health_check() {
-  local token host port path url response auth_header
+  local token host probe_host port path url response auth_header
   token="$(read_env_value MCP_AUTH_TOKEN)"
   host="$(read_env_value MCP_HTTP_HOST)"; host="${host:-127.0.0.1}"
-  [ "$host" = "0.0.0.0" ] && host="127.0.0.1"
+  case "$host" in
+    0.0.0.0) probe_host="127.0.0.1" ;;
+    ::) probe_host="[::1]" ;;
+    *:*) probe_host="[$host]" ;;
+    *) probe_host="$host" ;;
+  esac
   port="$(read_env_value MCP_HTTP_PORT)"; port="${port:-8789}"
   path="$(read_env_value MCP_HTTP_PATH)"; path="${path:-/mcp}"
-  url="http://$host:$port$path"
+  url="http://$probe_host:$port$path"
   [ -n "$token" ] || return 1
   printf -v auth_header '%s%s' 'Authorization: Bearer ' "${token}"
   response="$(curl --fail --silent --show-error --max-time 15 \

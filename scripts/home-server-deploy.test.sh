@@ -42,12 +42,16 @@ cat > "$BIN/curl" <<'SH'
 #!/bin/sh
 printf 'curl health current=%s\n' "$(readlink -f "$CURRENT_LINK" 2>/dev/null || true)" >> "$EVENT_LOG"
 auth_ok=0
+url_ok=0
 previous=''
 for argument in "$@"; do
   if [ "$previous" = '-H' ] && [ "$argument" = 'Authorization: Bearer test-token' ]; then auth_ok=1; fi
+  if [ -n "${EXPECT_CURL_URL:-}" ] && [ "$argument" = "$EXPECT_CURL_URL" ]; then url_ok=1; fi
+  case "$argument" in http://*) printf 'curl url=%s\n' "$argument" >> "$EVENT_LOG";; esac
   previous="$argument"
 done
 [ "$auth_ok" -eq 1 ] || exit 22
+[ -z "${EXPECT_CURL_URL:-}" ] || [ "$url_ok" -eq 1 ] || exit 22
 [ -z "${CURL_ALWAYS_FAIL:-}" ] || exit 22
 if [ -n "${CURL_FAIL_ONCE_FILE:-}" ] && [ ! -e "$CURL_FAIL_ONCE_FILE" ]; then
   : > "$CURL_FAIL_ONCE_FILE"
@@ -64,6 +68,15 @@ PY
 }
 resolved_current() { resolved_path "$CURRENT_LINK"; }
 git_id() { git -C "$1" config user.email test@example.com; git -C "$1" config user.name test; }
+set_env_value() {
+  python3 - "$ENV_FILE" "$1" "$2" <<'PY'
+from pathlib import Path
+import sys
+path, key, value = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+lines = path.read_text().splitlines()
+path.write_text("\n".join(f"{key}={value}" if line.startswith(f"{key}=") else line for line in lines) + "\n")
+PY
+}
 
 new_fixture() {
   local name="$1" base="$TMP/$1"
@@ -98,7 +111,7 @@ run_deploy() {
     umask "${TEST_UMASK:-022}"
     env PATH="$BIN:$PATH" EVENT_LOG="$EVENT_LOG" CURRENT_LINK="$CURRENT_LINK" \
       SOURCE_REPO="$SOURCE_REPO" RELEASE_ROOT="$RELEASE_ROOT" STATE_DIR="$STATE_DIR" ENV_FILE="$ENV_FILE" \
-      SERVICE_NAME=localmind-mcp.service GH_REPO=shaul1991/localmind GH_WORKFLOW=CI BUILD_USER="$(id -un)" \
+      SERVICE_NAME=localmind-mcp.service GH_REPO=shaul1991/localmind GH_WORKFLOW=CI BUILD_USER="$(id -un)" NPM_BIN="$BIN/npm" \
       HEALTH_RETRIES=3 HEALTH_RETRY_DELAY=0 \
       "$@" bash "$SCRIPT" > "$OUT" 2>&1
   )
@@ -190,6 +203,14 @@ assert "쓰기 경로 renderer가 TAB·ESC 제어문자 거부" 'python3 -c '\''
 assert "쓰기 경로 renderer가 systemd % specifier 이스케이프" '[ "$(python3 "$ROOT/scripts/render-systemd-write-paths.py" "/srv/notes/%n")" = '"'"'[Service]
 ReadWritePaths="/srv/notes/%%n"'"'"' ]'
 assert "deploy unit·script에 개인 source checkout 없음" '! grep -q "/root/personal/shaul1991/localmind" "$ROOT/deploy/systemd/localmind-deploy.service" "$SCRIPT"'
+
+printf '\n\033[1mAC-14 — system Node/npm·IPv6 health URL\033[0m\n'
+assert "deploy unit이 system npm 경로 명시" 'grep -q "^Environment=NPM_BIN=/usr/bin/npm$" "$ROOT/deploy/systemd/localmind-deploy.service"'
+assert "설치 문서가 system-wide Node/npm 확인" 'grep -q "test -x /usr/bin/node" "$ROOT/docs/home-server-deploy.md" && grep -q "test -x /usr/bin/npm" "$ROOT/docs/home-server-deploy.md"'
+new_fixture ipv6-loopback; advance_origin; set_env_value MCP_HTTP_HOST ::1; run_deploy EXPECT_CURL_URL="http://[::1]:8789/mcp"
+assert "IPv6 loopback URL bracket 처리" '[ "$RC" -eq 0 ]'
+new_fixture ipv6-wildcard; advance_origin; set_env_value MCP_HTTP_HOST ::; run_deploy EXPECT_CURL_URL="http://[::1]:8789/mcp"
+assert "IPv6 wildcard는 loopback probe" '[ "$RC" -eq 0 ]'
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

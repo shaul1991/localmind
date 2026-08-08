@@ -7,6 +7,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 Environment=BUILD_USER=localmind-builder
+Environment=NPM_BIN=/usr/bin/npm
 Environment=HOME=/root
 Environment=SOURCE_REPO=/var/lib/localmind-deploy/source
 ExecStart=/usr/local/sbin/localmind-deploy
