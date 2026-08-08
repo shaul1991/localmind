@@ -87,14 +87,45 @@ if [ "$recover_current" -eq 0 ]; then
 fi
 
 cleanup_failed_release() {
-  local path="$1"
-  git -C "$SOURCE_REPO" worktree remove --force "$path" >/dev/null 2>&1 || rm -rf "$path"
+  local path line registered=0
+  path="$(resolve_path "$1")"
+  while IFS= read -r line; do
+    if [ "$line" = "worktree $path" ]; then
+      registered=1
+      break
+    fi
+  done < <(git -C "$SOURCE_REPO" worktree list --porcelain)
+  if [ "$registered" -eq 1 ]; then
+    git -C "$SOURCE_REPO" worktree remove --force "$path" >/dev/null 2>&1 || return 1
+  else
+    rm -rf "$path" || return 1
+  fi
   git -C "$SOURCE_REPO" worktree prune >/dev/null 2>&1 || true
+}
+
+prune_superseded_releases() {
+  local candidate name candidate_dir prune_failed=0
+  for candidate in "$RELEASE_ROOT"/*; do
+    [ -e "$candidate" ] || [ -L "$candidate" ] || continue
+    name="$(basename "$candidate")"
+    [[ "$name" =~ ^[0-9a-f]{40}$ ]] || continue
+    if [ -L "$candidate" ]; then
+      rm -f "$candidate" || prune_failed=1
+      continue
+    fi
+    [ -d "$candidate" ] || continue
+    candidate_dir="$(resolve_path "$candidate")"
+    [ "$candidate_dir" = "$release_dir" ] && continue
+    [ -n "${previous_dir:-}" ] && [ "$candidate_dir" = "$previous_dir" ] && continue
+    cleanup_failed_release "$candidate"
+    [ ! -e "$candidate" ] || prune_failed=1
+  done
+  return "$prune_failed"
 }
 
 if [ "$recover_current" -eq 0 ]; then
 if [ -e "$release_dir" ] && [ ! -f "$release_dir/.localmind-deploy-ready" ]; then
-  cleanup_failed_release "$release_dir"
+  cleanup_failed_release "$release_dir" || fail "기존 미완료 release worktree를 안전하게 정리하지 못했습니다."
 fi
 if [ ! -d "$release_dir" ]; then
   if ! git -C "$SOURCE_REPO" worktree add --detach "$release_dir" "$target_sha"; then
@@ -141,9 +172,22 @@ chmod -R u=rwX,go=rX "$release_dir" || {
   cleanup_failed_release "$release_dir"
   fail "런타임 artifact 읽기·불변 권한 설정 실패"
 }
-if ! : > "$release_dir/.localmind-deploy-ready" || ! chmod 0644 "$release_dir/.localmind-deploy-ready"; then
+if ! python3 - "$release_dir/.localmind-deploy-ready" <<'PY'
+import os
+import sys
+
+path = sys.argv[1]
+flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+fd = os.open(path, flags, 0o600)
+try:
+    os.fchmod(fd, 0o644)
+    os.fsync(fd)
+finally:
+    os.close(fd)
+PY
+then
   cleanup_failed_release "$release_dir"
-  fail "release 준비 marker 기록 실패"
+  fail "release 준비 marker의 기존 entry 또는 안전하지 않은 경로를 거부했습니다."
 fi
 fi
 
@@ -178,7 +222,7 @@ PY
 }
 
 health_check() {
-  local token host probe_host port path url response auth_header
+  local token host probe_host port path url response_file auth_header parser_status
   token="$(read_env_value MCP_AUTH_TOKEN)"
   host="$(read_env_value MCP_HTTP_HOST)"; host="${host:-127.0.0.1}"
   case "$host" in
@@ -192,13 +236,71 @@ health_check() {
   url="http://$probe_host:$port$path"
   [ -n "$token" ] || return 1
   printf -v auth_header '%s%s' 'Authorization: Bearer ' "${token}"
-  response="$(curl --fail --silent --show-error --max-time 15 \
+  response_file="$(mktemp "$STATE_DIR/.health-response.XXXXXX")" || return 1
+  if ! curl --fail --silent --show-error --max-time 15 \
+    --output "$response_file" \
     -X POST "$url" \
     -H 'Content-Type: application/json' \
     -H 'Accept: application/json, text/event-stream' \
     -H "${auth_header}" \
-    --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"localmind-deployer","version":"1"}}}')" || return 1
-  case "$response" in *protocolVersion*) return 0;; *) return 1;; esac
+    --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"localmind-deployer","version":"1"}}}'; then
+    rm -f "$response_file"
+    return 1
+  fi
+  python3 - "$response_file" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+try:
+    raw = Path(sys.argv[1]).read_bytes().decode("utf-8")
+except (OSError, UnicodeDecodeError):
+    raise SystemExit(1)
+payloads = []
+try:
+    payloads.append(json.loads(raw))
+except json.JSONDecodeError:
+    event_data = []
+    sse_raw = raw[1:] if raw.startswith("\ufeff") else raw
+    normalized = sse_raw.replace("\r\n", "\n").replace("\r", "\n")
+    lines = normalized.split("\n")
+    if normalized.endswith("\n"):
+        lines.pop()
+    for line in lines:
+        if line == "":
+            if event_data:
+                data = "\n".join(event_data)
+                if data != "[DONE]":
+                    try:
+                        payloads.append(json.loads(data))
+                    except json.JSONDecodeError:
+                        pass
+                event_data = []
+            continue
+        if line.startswith(":"):
+            continue
+        if line == "data":
+            event_data.append("")
+        elif line.startswith("data:"):
+            value = line[5:]
+            if value.startswith(" "):
+                value = value[1:]
+            event_data.append(value)
+valid = any(
+    isinstance(payload, dict)
+    and payload.get("jsonrpc") == "2.0"
+    and type(payload.get("id")) is int
+    and payload["id"] == 1
+    and "error" not in payload
+    and isinstance(payload.get("result"), dict)
+    and payload["result"].get("protocolVersion") == "2025-06-18"
+    for payload in payloads
+)
+raise SystemExit(0 if valid else 1)
+PY
+  parser_status=$?
+  rm -f "$response_file" || return 1
+  return "$parser_status"
 }
 
 wait_for_health() {
@@ -271,6 +373,7 @@ if [ "$recover_current" -eq 0 ]; then
 fi
 if systemctl restart "$SERVICE_NAME" && wait_for_health; then
   if write_last_good; then
+    prune_superseded_releases || say "경고: superseded release 일부를 정리하지 못했습니다." >&2
     say "배포 완료: ${target_sha:0:7}"
     exit 0
   fi

@@ -52,9 +52,11 @@ cat > "$BIN/curl" <<'SH'
 printf 'curl health current=%s\n' "$(readlink -f "$CURRENT_LINK" 2>/dev/null || true)" >> "$EVENT_LOG"
 auth_ok=0
 url_ok=0
+output_file=''
 previous=''
 for argument in "$@"; do
   if [ "$previous" = '-H' ] && [ "$argument" = 'Authorization: Bearer test-token' ]; then auth_ok=1; fi
+  if [ "$previous" = '--output' ] || [ "$previous" = '-o' ]; then output_file="$argument"; fi
   if [ -n "${EXPECT_CURL_URL:-}" ] && [ "$argument" = "$EXPECT_CURL_URL" ]; then url_ok=1; fi
   case "$argument" in http://*) printf 'curl url=%s\n' "$argument" >> "$EVENT_LOG";; esac
   previous="$argument"
@@ -66,7 +68,14 @@ if [ -n "${CURL_FAIL_ONCE_FILE:-}" ] && [ ! -e "$CURL_FAIL_ONCE_FILE" ]; then
   : > "$CURL_FAIL_ONCE_FILE"
   exit 22
 fi
-printf '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18"}}\n'
+emit_response() {
+  if [ -n "${HEALTH_RESPONSE+x}" ]; then
+    printf '%s\n' "$HEALTH_RESPONSE"
+  else
+    printf '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18"}}\n'
+  fi
+}
+if [ -n "$output_file" ]; then emit_response > "$output_file"; else emit_response; fi
 SH
 chmod +x "$BIN/flock" "$BIN/gh" "$BIN/npm" "$BIN/chown" "$BIN/systemctl" "$BIN/curl"
 
@@ -115,6 +124,17 @@ advance_origin() {
   local w="$TMP/advance-$advance_count"
   git clone -q "$ORIGIN" "$w"; git_id "$w"
   printf 'next\n' >> "$w/README.md"; git -C "$w" add README.md; git -C "$w" commit -qm next; git -C "$w" push -q origin main
+  NEW_SHA="$(git -C "$w" rev-parse HEAD)"
+}
+
+advance_origin_with_ready_symlink() {
+  local victim="$1" w
+  advance_origin
+  w="$TMP/advance-$advance_count"
+  ln -s "$victim" "$w/.localmind-deploy-ready"
+  git -C "$w" add .localmind-deploy-ready
+  git -C "$w" commit -qm malicious-marker
+  git -C "$w" push -q origin main
   NEW_SHA="$(git -C "$w" rev-parse HEAD)"
 }
 
@@ -248,9 +268,17 @@ assert "last-good 상태를 원자적으로 교체" 'grep -q "os.replace" "$SCRI
 
 printf '\n\033[1mAC-16 — last-good 기록 실패 시 이전 pointer 보존\033[0m\n'
 new_fixture atomic-state-failure; advance_origin
-: > "$STATE_DIR/deploy.lock"; chmod 0500 "$STATE_DIR"
-run_deploy
-chmod 0700 "$STATE_DIR"
+fault_python="$TMP/fail-state-mkstemp"; mkdir -p "$fault_python"
+cat > "$fault_python/sitecustomize.py" <<'PY'
+import tempfile
+_original_mkstemp = tempfile.mkstemp
+def _fail_last_good(*args, **kwargs):
+    if str(kwargs.get("prefix", "")).startswith(".last-good-sha."):
+        raise OSError("injected last-good temp-file failure")
+    return _original_mkstemp(*args, **kwargs)
+tempfile.mkstemp = _fail_last_good
+PY
+run_deploy PYTHONPATH="$fault_python"
 assert "원자 상태 기록 실패를 성공으로 보고하지 않음" '[ "$RC" -ne 0 ]'
 assert "기존 last-good와 current를 보존" '[ "$(cat "$STATE_DIR/last-good-sha")" = "$OLD_SHA" ] && [ "$(resolved_current)" = "$(resolved_path "$OLD_RELEASE")" ]'
 
@@ -279,6 +307,58 @@ assert "GitHub 인증 부재를 명시적 실패" '[ "$RC" -ne 0 ] && grep -q "G
 assert "인증 실패 시 build·전환 없음" '! grep -q "^npm " "$EVENT_LOG" && [ "$(resolved_current)" = "$(resolved_path "$OLD_RELEASE")" ]'
 new_fixture github-stale-account; advance_origin; run_deploy GH_STALE_ACCOUNT=1
 assert "유효한 active GH_TOKEN은 stale 저장 계정과 격리" '[ "$RC" -eq 0 ] && [ "$(resolved_current)" = "$(resolved_path "$RELEASE_ROOT/$NEW_SHA")" ]'
+
+printf '\n\033[1mAC-19 — initialize JSON-RPC 결과 구조 검증\033[0m\n'
+new_fixture health-json-error; advance_origin
+run_deploy HEALTH_RESPONSE='{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"protocolVersion negotiation failed"}}'
+assert "protocolVersion 문자열을 포함한 JSON-RPC error 거부" '[ "$RC" -ne 0 ]'
+assert "initialize error 시 이전 정상 release rollback" '[ "$(resolved_current)" = "$(resolved_path "$OLD_RELEASE")" ] && [ "$(cat "$STATE_DIR/last-good-sha")" = "$OLD_SHA" ]'
+new_fixture health-sse-result; advance_origin
+run_deploy HEALTH_RESPONSE=$'event: message\ndata: {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18"}}\n'
+assert "SSE data의 성공 initialize result 허용" '[ "$RC" -eq 0 ] && [ "$(resolved_current)" = "$(resolved_path "$RELEASE_ROOT/$NEW_SHA")" ]'
+new_fixture health-sse-multiline; advance_origin
+run_deploy HEALTH_RESPONSE=$'event: message\ndata: {"jsonrpc":"2.0",\ndata: "id":1,"result":{"protocolVersion":"2025-06-18"}}\n\n'
+assert "여러 SSE data field를 한 event payload로 조립" '[ "$RC" -eq 0 ] && [ "$(resolved_current)" = "$(resolved_path "$RELEASE_ROOT/$NEW_SHA")" ]'
+new_fixture health-boolean-id; advance_origin
+run_deploy HEALTH_RESPONSE='{"jsonrpc":"2.0","id":true,"result":{"protocolVersion":"2025-06-18"}}'
+assert "boolean true를 numeric JSON-RPC id 1로 허용하지 않음" '[ "$RC" -ne 0 ] && [ "$(resolved_current)" = "$(resolved_path "$OLD_RELEASE")" ]'
+new_fixture health-sse-unterminated; advance_origin
+run_deploy HEALTH_RESPONSE='data: {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18"}}'
+assert "빈 줄로 종료되지 않은 truncated SSE event 거부" '[ "$RC" -ne 0 ] && [ "$(resolved_current)" = "$(resolved_path "$OLD_RELEASE")" ]'
+separator_failures=0; separator_index=0
+for separator in $'\v\v' $'\f\f' $'\u0085\u0085'; do
+  separator_index=$((separator_index + 1))
+  new_fixture "health-sse-nonstandard-$separator_index"; advance_origin
+  run_deploy HEALTH_RESPONSE="data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-06-18\"}}${separator}"
+  [ "$RC" -ne 0 ] || separator_failures=$((separator_failures + 1))
+done
+assert "VT·FF·NEL을 SSE line separator로 취급하지 않음" '[ "$separator_failures" -eq 0 ]'
+new_fixture health-sse-bom; advance_origin
+bom="$(printf '\357\273\277')"
+run_deploy HEALTH_RESPONSE="${bom}"$'data: {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18"}}\n'
+assert "SSE stream 선두의 단일 UTF-8 BOM 무시" '[ "$RC" -eq 0 ] && [ "$(resolved_current)" = "$(resolved_path "$RELEASE_ROOT/$NEW_SHA")" ]'
+
+printf '\n\033[1mAC-20 — builder가 만든 ready marker symlink 거부\033[0m\n'
+victim="$TMP/ready-marker-victim"; printf 'preserve-me\n' > "$victim"
+new_fixture ready-marker-symlink; advance_origin_with_ready_symlink "$victim"; run_deploy
+assert "기존 ready marker entry를 배포 실패 처리" '[ "$RC" -ne 0 ] && [ "$(resolved_current)" = "$(resolved_path "$OLD_RELEASE")" ]'
+assert "ready marker symlink 대상 파일을 변경하지 않음" '[ "$(cat "$victim")" = "preserve-me" ]'
+
+printf '\n\033[1mAC-21 — 성공 후 current·rollback 외 release 정리\033[0m\n'
+new_fixture release-pruning; advance_origin; run_deploy
+first_sha="$NEW_SHA"; first_release="$RELEASE_ROOT/$first_sha"
+advance_origin; run_deploy
+second_sha="$NEW_SHA"; second_release="$RELEASE_ROOT/$second_sha"
+assert "두 세대 이전 release 삭제" '[ ! -e "$OLD_RELEASE" ]'
+assert "current와 직전 rollback release 보존" '[ -d "$first_release" ] && [ -d "$second_release" ] && [ "$(resolved_current)" = "$(resolved_path "$second_release")" ]'
+
+printf '\n\033[1mAC-22 — locked superseded worktree fail-closed 보존\033[0m\n'
+new_fixture locked-release-pruning; advance_origin; run_deploy
+first_release="$RELEASE_ROOT/$NEW_SHA"
+git -C "$SOURCE_REPO" worktree lock "$OLD_RELEASE" --reason fixture
+advance_origin; run_deploy
+assert "locked worktree 정리 실패가 배포 상태를 손상하지 않음" '[ "$RC" -eq 0 ] && [ -d "$OLD_RELEASE" ] && [ "$(resolved_current)" = "$(resolved_path "$RELEASE_ROOT/$NEW_SHA")" ]'
+assert "locked administrative worktree와 디렉터리를 함께 보존" '[ -d "$OLD_RELEASE" ] && git -C "$SOURCE_REPO" worktree list --porcelain | grep -Fqx "worktree $(resolved_path "$OLD_RELEASE")" && git -C "$SOURCE_REPO" worktree list --porcelain | grep -q "^locked fixture$"'
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

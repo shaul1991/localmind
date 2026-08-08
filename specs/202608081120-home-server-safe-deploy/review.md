@@ -2,7 +2,7 @@
 
 ## 현재 판정
 
-로컬 구현과 품질 게이트는 통과했다. `npm run typecheck`, 200개 Node 테스트, `npm run build`, 전체 셸 테스트(신규 65개 포함)가 모두 성공했다. 독립 리뷰에서 지적된 root 실행, `.env` source, 첫 배포 self-link, readiness 경쟁, capability, restrictive umask 위험을 반영해 비권한 런타임/빌더, 검증 후 `root:root` 읽기 전용 release 회수, systemd sandbox, 리터럴 환경 파서, bounded health 재시도와 명시적 artifact 권한을 추가했다. 홈서버 실배포 관찰은 Draft PR과 별도로 운영 단계에서 수행한다.
+로컬 구현과 품질 게이트는 통과했다. `npm run typecheck`, 200개 Node 테스트, `npm run build`, 전체 셸 테스트(신규 79개 포함)가 모두 성공했다. 독립 리뷰에서 지적된 root 실행, `.env` source, 첫 배포 self-link, readiness 경쟁, capability, restrictive umask 위험을 반영해 비권한 런타임/빌더, 검증 후 `root:root` 읽기 전용 release 회수, systemd sandbox, 리터럴 환경 파서, bounded health 재시도와 명시적 artifact 권한을 추가했다. 홈서버 실배포 관찰은 Draft PR과 별도로 운영 단계에서 수행한다.
 
 ## Codex PR 리뷰 대응
 
@@ -21,6 +21,10 @@
 - fresh install은 `.env.example`에서 `.env`를 만들고 인증 token·노트·인덱스·query log 경로를 명시한다.
 - GitHub 자격증명은 root-only `/etc/localmind/deploy.env`로 MCP 환경과 분리하고 bootstrap 전에 인증을 검증한다.
 - MCP는 `/var/lib/localmind` StateDirectory와 강제 HOME을 가져 `QUERY_LOG` 미설정 시에도 writable 기본값을 사용한다.
+- ready marker는 기존 entry를 거부하고 `O_EXCL`·`O_NOFOLLOW`로 생성해 builder symlink를 따라가지 않는다.
+- health 응답은 임시 파일에 framing을 보존한다. SSE line break는 CRLF·CR·LF만 인정하고 선두의 단일 UTF-8 BOM을 무시하며, 실제 빈 줄로 종료된 event의 `data:` field를 표준대로 조립한다. 성공 `result.protocolVersion`과 실제 정수 request ID만 허용하고 error·boolean ID·EOF에서 잘린 event·VT/FF/NEL separator를 거부한다.
+- 성공 후 current와 직전 rollback release만 보존하고 더 오래된 worktree를 정리한다. locked worktree는 디렉터리를 강제 삭제하지 않고 관리 metadata와 함께 보존하며 경고한다.
+- last-good write 실패 테스트는 UID 0에서도 동작하는 명시적 Python fault injection을 사용한다.
 - Linux 홈서버에서 공백 포함 `ReadWritePaths` drop-in과 unit 전체가 `systemd-analyze verify`를 통과했다.
 
 ## 확인할 위험
