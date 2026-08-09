@@ -428,6 +428,459 @@ describe("인덱스 캐시·원자성·동시성 (009)", () => {
     }
   });
 
+  it("삭제 처리 전에 시작된 임베딩이 끝나도 삭제된 노트를 색인에 되살리지 않는다", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-index-delete-race-"));
+    const notesDir = path.join(tmp, "notes");
+    const idxPath = path.join(tmp, ".brain-index.json");
+    fs.mkdirSync(notesDir);
+    fs.writeFileSync(path.join(notesDir, "victim.md"), "삭제 경쟁을 재현하기 위한 충분히 긴 테스트 노트 본문입니다.");
+    const script = [
+      `const http = require("node:http");`,
+      `const fs = require("node:fs");`,
+      `const path = require("node:path");`,
+      `let brain;`,
+      `const srv = http.createServer((req, res) => {`,
+      `  let raw = ""; req.on("data", (c) => (raw += c));`,
+      `  req.on("end", () => {`,
+      `    fs.unlinkSync(path.join(process.env.NOTES_ROOT, "victim.md"));`,
+      `    brain.removeFromIndex("notes/victim.md");`,
+      `    const n = JSON.parse(raw).input.length;`,
+      `    res.setHeader("content-type", "application/json");`,
+      `    res.end(JSON.stringify({ data: Array.from({ length: n }, (_, i) => ({ index: i, embedding: [1, 0] })) }));`,
+      `  });`,
+      `});`,
+      `srv.listen(0, async () => {`,
+      `  process.env.EMBEDDINGS_URL = "http://127.0.0.1:" + srv.address().port + "/v1";`,
+      `  brain = await import(${JSON.stringify(BRAIN_JS)});`,
+      `  try {`,
+      `    await brain.reindex();`,
+      `    const memoryKeys = Object.keys(brain.loadIndex().files);`,
+      `    const diskKeys = Object.keys(JSON.parse(fs.readFileSync(process.env.BRAIN_INDEX, "utf8")).files);`,
+      `    process.stdout.write(JSON.stringify({ sourceExists: fs.existsSync(path.join(process.env.NOTES_ROOT, "victim.md")), memoryKeys, diskKeys }));`,
+      `  } finally { srv.close(); }`,
+      `});`,
+    ].join("\n");
+    try {
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          NOTES_DIR: `notes=${notesDir}`,
+          NOTES_ROOT: notesDir,
+          BRAIN_INDEX: idxPath,
+          EMBEDDINGS_KEY: "test-key",
+          EMBED_RETRIES: "1",
+        },
+      });
+      assert.deepEqual(JSON.parse(out), { sourceExists: false, memoryKeys: [], diskKeys: [] });
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("다른 프로세스의 삭제가 완료된 뒤 늦은 임베딩 writer가 기존 항목을 되살리지 않는다", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-index-delete-multiprocess-"));
+    const notesDir = path.join(tmp, "notes");
+    const idxPath = path.join(tmp, ".brain-index.json");
+    fs.mkdirSync(notesDir);
+    fs.writeFileSync(path.join(notesDir, "victim.md"), "처음 색인되어 있던 노트 본문입니다.");
+    const script = [
+      `(async () => {`,
+      `const http = require("node:http");`,
+      `const fs = require("node:fs");`,
+      `const path = require("node:path");`,
+      `const crypto = require("node:crypto");`,
+      `const { execFileSync } = require("node:child_process");`,
+      `const source = path.join(process.env.NOTES_ROOT, "victim.md");`,
+      `let brain;`,
+      `const srv = http.createServer((req, res) => {`,
+      `  let raw = ""; req.on("data", (c) => (raw += c));`,
+      `  req.on("end", () => {`,
+      `    fs.unlinkSync(source);`,
+      `    execFileSync("node", ["--import", "tsx/esm", "-e",`,
+      `      "import(" + JSON.stringify(${JSON.stringify(BRAIN_JS)}) + ").then((m) => m.removeFromIndex('notes/victim.md'))"`,
+      `    ], { cwd: ${JSON.stringify(REPO_ROOT)}, env: process.env });`,
+      `    const n = JSON.parse(raw).input.length;`,
+      `    res.setHeader("content-type", "application/json");`,
+      `    res.end(JSON.stringify({ data: Array.from({ length: n }, (_, i) => ({ index: i, embedding: [1, 0] })) }));`,
+      `  });`,
+      `});`,
+      `await new Promise((resolve) => srv.listen(0, resolve));`,
+      `process.env.EMBEDDINGS_URL = "http://127.0.0.1:" + srv.address().port + "/v1";`,
+      `brain = await import(${JSON.stringify(BRAIN_JS)});`,
+      `const initial = fs.readFileSync(source, "utf8");`,
+      `brain.saveIndex({`,
+      `  version: brain.loadIndex().version, embeddingModel: process.env.EMBEDDINGS_MODEL || "text-embedding-3-small",`,
+      `  files: { "notes/victim.md": { hash: crypto.createHash("sha256").update(initial).digest("hex"), folder: "notes", chunks: [], linksOut: [] } },`,
+      `});`,
+      `fs.writeFileSync(source, "임베딩이 진행되는 동안 삭제될 변경된 노트 본문입니다.");`,
+      `try {`,
+      `  await brain.reindex();`,
+      `  process.stdout.write(JSON.stringify({ sourceExists: fs.existsSync(source), keys: Object.keys(brain.loadIndex().files) }));`,
+      `} finally { srv.close(); }`,
+      `})().catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        timeout: 5_000,
+        env: {
+          ...process.env,
+          NOTES_DIR: `notes=${notesDir}`,
+          NOTES_ROOT: notesDir,
+          BRAIN_INDEX: idxPath,
+          EMBEDDINGS_KEY: "test-key",
+          EMBED_RETRIES: "1",
+        },
+      });
+      assert.deepEqual(JSON.parse(out), { sourceExists: false, keys: [] });
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("삭제 의도와 무관한 동시 저장이 경쟁해도 삭제된 항목만 되살아나지 않는다", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-index-delete-unrelated-save-"));
+    const notesDir = path.join(tmp, "notes");
+    const idxPath = path.join(tmp, ".brain-index.json");
+    fs.mkdirSync(notesDir);
+    const script = [
+      `(async () => {`,
+      `const crypto = require("node:crypto");`,
+      `const { execFileSync } = require("node:child_process");`,
+      `const hash = (text) => crypto.createHash("sha256").update(text).digest("hex");`,
+      `const brain = await import(${JSON.stringify(BRAIN_JS)});`,
+      `const victimHash = hash("삭제될 revision");`,
+      `brain.saveIndex({ version: brain.loadIndex().version, embeddingModel: "text-embedding-3-small", files: {`,
+      `  "notes/victim.md": { hash: victimHash, folder: "notes", chunks: [], linksOut: [] },`,
+      `} });`,
+      `const stale = brain.loadIndex();`,
+      `delete stale.files["notes/victim.md"];`,
+      `execFileSync("node", ["--import", "tsx/esm", "-e",`,
+      `  "import(" + JSON.stringify(${JSON.stringify(BRAIN_JS)}) + ").then((m) => { const i=m.loadIndex(); i.files['notes/unrelated.md']={hash:'unrelated',folder:'notes',chunks:[],linksOut:[]}; m.saveIndex(i); })"`,
+      `], { cwd: ${JSON.stringify(REPO_ROOT)}, env: process.env });`,
+      `brain.saveIndex(stale, [], [{ key: "notes/victim.md", expectedHash: victimHash, fullPath: process.env.NOTES_ROOT + "/victim.md", rootDir: process.env.NOTES_ROOT }]);`,
+      `process.stdout.write(JSON.stringify(Object.keys(brain.loadIndex().files).sort()));`,
+      `})().catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        timeout: 5_000,
+        env: {
+          ...process.env,
+          NOTES_DIR: `notes=${notesDir}`,
+          NOTES_ROOT: notesDir,
+          BRAIN_INDEX: idxPath,
+        },
+      });
+      assert.deepEqual(JSON.parse(out), ["notes/unrelated.md"]);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("같은 경로에 같은 내용으로 재생성된 source는 늦은 삭제 의도가 지우지 않는다", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-index-identical-recreate-"));
+    const notesDir = path.join(tmp, "notes");
+    const idxPath = path.join(tmp, ".brain-index.json");
+    fs.mkdirSync(notesDir);
+    const source = path.join(notesDir, "victim.md");
+    fs.writeFileSync(source, "동일하게 재생성될 내용");
+    const script = [
+      `(async () => {`,
+      `const fs = require("node:fs");`,
+      `const crypto = require("node:crypto");`,
+      `const { execFileSync } = require("node:child_process");`,
+      `const hash = crypto.createHash("sha256").update("동일하게 재생성될 내용").digest("hex");`,
+      `const brain = await import(${JSON.stringify(BRAIN_JS)});`,
+      `brain.saveIndex({ version: brain.loadIndex().version, embeddingModel: "text-embedding-3-small", files: {`,
+      `  "notes/victim.md": { hash, folder: "notes", chunks: [], linksOut: [] },`,
+      `} });`,
+      `const stale = brain.loadIndex();`,
+      `delete stale.files["notes/victim.md"];`,
+      `fs.unlinkSync(process.env.SOURCE_PATH);`,
+      `fs.writeFileSync(process.env.SOURCE_PATH, "동일하게 재생성될 내용");`,
+      `execFileSync("node", ["--import", "tsx/esm", "-e",`,
+      `  "import(" + JSON.stringify(${JSON.stringify(BRAIN_JS)}) + ").then((m) => m.saveIndex(m.loadIndex()))"`,
+      `], { cwd: ${JSON.stringify(REPO_ROOT)}, env: process.env });`,
+      `brain.saveIndex(stale, [], [{ key: "notes/victim.md", expectedHash: hash, fullPath: process.env.SOURCE_PATH, rootDir: process.env.NOTES_ROOT }]);`,
+      `process.stdout.write(JSON.stringify(Object.keys(brain.loadIndex().files)));`,
+      `})().catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        timeout: 5_000,
+        env: {
+          ...process.env,
+          NOTES_DIR: `notes=${notesDir}`,
+          NOTES_ROOT: notesDir,
+          SOURCE_PATH: source,
+          BRAIN_INDEX: idxPath,
+        },
+      });
+      assert.deepEqual(JSON.parse(out), ["notes/victim.md"]);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("스캔 프루닝과 무관한 동시 저장이 경쟁해도 삭제 source를 되살리지 않는다", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-index-prune-unrelated-save-"));
+    const notesDir = path.join(tmp, "notes");
+    const idxPath = path.join(tmp, ".brain-index.json");
+    fs.mkdirSync(notesDir);
+    const script = [
+      `(async () => {`,
+      `const http = require("node:http");`,
+      `const fs = require("node:fs");`,
+      `const crypto = require("node:crypto");`,
+      `const { execFileSync } = require("node:child_process");`,
+      `const hash = (text) => crypto.createHash("sha256").update(text).digest("hex");`,
+      `const srv = http.createServer((req, res) => {`,
+      `  let raw = ""; req.on("data", (c) => (raw += c));`,
+      `  req.on("end", () => {`,
+      `    execFileSync("node", ["--import", "tsx/esm", "-e",`,
+      `      "import(" + JSON.stringify(${JSON.stringify(BRAIN_JS)}) + ").then((m) => { const i=m.loadIndex(); i.files['notes/unrelated.md']={hash:'unrelated',folder:'notes',chunks:[],linksOut:[]}; m.saveIndex(i); })"`,
+      `    ], { cwd: ${JSON.stringify(REPO_ROOT)}, env: process.env });`,
+      `    const n = JSON.parse(raw).input.length;`,
+      `    res.setHeader("content-type", "application/json");`,
+      `    res.end(JSON.stringify({ data: Array.from({ length: n }, (_, i) => ({ index: i, embedding: [1, 0] })) }));`,
+      `  });`,
+      `});`,
+      `await new Promise((resolve) => srv.listen(0, resolve));`,
+      `process.env.EMBEDDINGS_URL = "http://127.0.0.1:" + srv.address().port + "/v1";`,
+      `const brain = await import(${JSON.stringify(BRAIN_JS)});`,
+      `brain.saveIndex({ version: brain.loadIndex().version, embeddingModel: "text-embedding-3-small", files: {`,
+      `  "notes/victim.md": { hash: hash("삭제될 source"), folder: "notes", chunks: [], linksOut: [] },`,
+      `} });`,
+      `fs.writeFileSync(process.env.NEW_SOURCE, "새 노트를 임베딩해 경쟁을 여는 충분히 긴 본문입니다.");`,
+      `try {`,
+      `  await brain.reindex();`,
+      `  process.stdout.write(JSON.stringify(Object.keys(brain.loadIndex().files).sort()));`,
+      `} finally { srv.close(); }`,
+      `})().catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        timeout: 5_000,
+        env: {
+          ...process.env,
+          NOTES_DIR: `notes=${notesDir}`,
+          NEW_SOURCE: path.join(notesDir, "new.md"),
+          BRAIN_INDEX: idxPath,
+          EMBEDDINGS_KEY: "test-key",
+          EMBED_RETRIES: "1",
+        },
+      });
+      assert.deepEqual(JSON.parse(out), ["notes/new.md", "notes/unrelated.md"]);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("노트 폴더가 사라지고 디스크 stat이 그대로여도 기존 durable 항목을 보존한다", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-index-missing-folder-baseline-"));
+    const notesDir = path.join(tmp, "notes");
+    const idxPath = path.join(tmp, ".brain-index.json");
+    fs.mkdirSync(notesDir);
+    const source = path.join(notesDir, "victim.md");
+    fs.writeFileSync(source, "기존 durable revision");
+    const script = [
+      `(async () => {`,
+      `const fs = require("node:fs");`,
+      `const crypto = require("node:crypto");`,
+      `const hash = (text) => crypto.createHash("sha256").update(text).digest("hex");`,
+      `const brain = await import(${JSON.stringify(BRAIN_JS)});`,
+      `const durableHash = hash("기존 durable revision");`,
+      `const pendingHash = hash("늦은 writer의 pending revision");`,
+      `brain.saveIndex({ version: brain.loadIndex().version, embeddingModel: "text-embedding-3-small", files: {`,
+      `  "notes/victim.md": { hash: durableHash, folder: "notes", chunks: [], linksOut: [] },`,
+      `} });`,
+      `const stale = brain.loadIndex();`,
+      `stale.files["notes/victim.md"].hash = pendingHash;`,
+      `fs.rmSync(process.env.NOTES_ROOT, { recursive: true, force: true });`,
+      `brain.saveIndex(stale, [{ key: "notes/victim.md", fullPath: process.env.SOURCE_PATH, rootDir: process.env.NOTES_ROOT, hash: pendingHash }]);`,
+      `process.stdout.write(JSON.stringify({ finalHash: brain.loadIndex().files["notes/victim.md"]?.hash ?? null, durableHash }));`,
+      `})().catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        timeout: 5_000,
+        env: {
+          ...process.env,
+          NOTES_DIR: `notes=${notesDir}`,
+          NOTES_ROOT: notesDir,
+          SOURCE_PATH: source,
+          BRAIN_INDEX: idxPath,
+        },
+      });
+      const result = JSON.parse(out);
+      assert.equal(result.finalHash, result.durableHash);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("노트 폴더가 사라져도 다른 embedding model의 durable 항목을 복원하지 않는다", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-index-incompatible-winner-"));
+    const notesDir = path.join(tmp, "notes");
+    const idxPath = path.join(tmp, ".brain-index.json");
+    fs.mkdirSync(notesDir);
+    const source = path.join(notesDir, "victim.md");
+    fs.writeFileSync(source, "기존 revision");
+    const script = [
+      `(async () => {`,
+      `const fs = require("node:fs");`,
+      `const crypto = require("node:crypto");`,
+      `const hash = (text) => crypto.createHash("sha256").update(text).digest("hex");`,
+      `const brain = await import(${JSON.stringify(BRAIN_JS)});`,
+      `const pendingHash = hash("현재 model의 pending revision");`,
+      `const incompatibleHash = hash("다른 model의 durable revision");`,
+      `brain.saveIndex({ version: brain.loadIndex().version, embeddingModel: "text-embedding-3-small", files: {`,
+      `  "notes/victim.md": { hash: hash("기존 revision"), folder: "notes", chunks: [], linksOut: [] },`,
+      `} });`,
+      `const stale = brain.loadIndex();`,
+      `stale.files["notes/victim.md"].hash = pendingHash;`,
+      `fs.writeFileSync(process.env.BRAIN_INDEX, JSON.stringify({ version: stale.version, embeddingModel: "incompatible-model", files: {`,
+      `  "notes/victim.md": { hash: incompatibleHash, folder: "notes", chunks: [], linksOut: [] },`,
+      `} }));`,
+      `fs.rmSync(process.env.NOTES_ROOT, { recursive: true, force: true });`,
+      `brain.saveIndex(stale, [{ key: "notes/victim.md", fullPath: process.env.SOURCE_PATH, rootDir: process.env.NOTES_ROOT, hash: pendingHash }]);`,
+      `const final = brain.loadIndex();`,
+      `process.stdout.write(JSON.stringify({ finalHash: final.files["notes/victim.md"]?.hash ?? null, model: final.embeddingModel }));`,
+      `})().catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        timeout: 5_000,
+        env: {
+          ...process.env,
+          NOTES_DIR: `notes=${notesDir}`,
+          NOTES_ROOT: notesDir,
+          SOURCE_PATH: source,
+          BRAIN_INDEX: idxPath,
+        },
+      });
+      assert.deepEqual(JSON.parse(out), { finalHash: null, model: "text-embedding-3-small" });
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("dims stamp가 없는 다른 차원 sidecar의 durable 항목을 병합하지 않는다", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-index-incompatible-sidecar-"));
+    const notesDir = path.join(tmp, "notes");
+    const idxPath = path.join(tmp, ".brain-index.json");
+    fs.mkdirSync(notesDir);
+    const source = path.join(notesDir, "victim.md");
+    fs.writeFileSync(source, "현재 model의 pending revision");
+    const script = [
+      `(async () => {`,
+      `const fs = require("node:fs");`,
+      `const path = require("node:path");`,
+      `const crypto = require("node:crypto");`,
+      `const hash = (text) => crypto.createHash("sha256").update(text).digest("hex");`,
+      `const brain = await import(${JSON.stringify(BRAIN_JS)});`,
+      `const pendingHash = hash("현재 model의 pending revision");`,
+      `const incompatibleHash = hash("다른 차원의 durable revision");`,
+      `brain.saveIndex({ version: brain.loadIndex().version, embeddingModel: "text-embedding-3-small", dims: 2, files: {`,
+      `  "notes/victim.md": { hash: pendingHash, folder: "notes", chunks: [{ path: "notes/victim.md", text: "pending", vector: [1, 0] }], linksOut: [] },`,
+      `} });`,
+      `const stale = brain.loadIndex();`,
+      `const vectorFile = path.basename(process.env.BRAIN_INDEX) + ".vec-incompatible";`,
+      `const sidecar = Buffer.alloc(28);`,
+      `sidecar.write("LMV1", 0, "ascii"); sidecar.writeUInt32LE(3, 4); sidecar.writeUInt32LE(1, 8);`,
+      `sidecar.writeFloatLE(1, 16); sidecar.writeFloatLE(2, 20); sidecar.writeFloatLE(3, 24);`,
+      `fs.writeFileSync(path.join(path.dirname(process.env.BRAIN_INDEX), vectorFile), sidecar);`,
+      `fs.writeFileSync(process.env.BRAIN_INDEX, JSON.stringify({ version: stale.version, embeddingModel: "text-embedding-3-small", vectorFile, files: {`,
+      `  "notes/victim.md": { hash: incompatibleHash, folder: "notes", chunks: [{ path: "notes/victim.md", text: "incompatible", slot: 0 }], linksOut: [] },`,
+      `} }));`,
+      `fs.rmSync(process.env.NOTES_ROOT, { recursive: true, force: true });`,
+      `brain.saveIndex(stale, [{ key: "notes/victim.md", fullPath: process.env.SOURCE_PATH, rootDir: process.env.NOTES_ROOT, hash: pendingHash }]);`,
+      `process.stdout.write(JSON.stringify({ finalHash: brain.loadIndex().files["notes/victim.md"]?.hash ?? null }));`,
+      `})().catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        timeout: 5_000,
+        env: {
+          ...process.env,
+          NOTES_DIR: `notes=${notesDir}`,
+          NOTES_ROOT: notesDir,
+          SOURCE_PATH: source,
+          BRAIN_INDEX: idxPath,
+        },
+      });
+      assert.deepEqual(JSON.parse(out), { finalHash: null });
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("노트 폴더가 사라지면 다른 프로세스의 최신 색인을 삭제하지 않고 보존한다", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-index-missing-folder-race-"));
+    const notesDir = path.join(tmp, "notes");
+    const idxPath = path.join(tmp, ".brain-index.json");
+    fs.mkdirSync(notesDir);
+    const source = path.join(notesDir, "victim.md");
+    fs.writeFileSync(source, "처음 revision");
+    const script = [
+      `(async () => {`,
+      `const fs = require("node:fs");`,
+      `const crypto = require("node:crypto");`,
+      `const { execFileSync } = require("node:child_process");`,
+      `const hash = (text) => crypto.createHash("sha256").update(text).digest("hex");`,
+      `const brain = await import(${JSON.stringify(BRAIN_JS)});`,
+      `const oldHash = hash("처음 revision");`,
+      `const latestHash = hash("다른 프로세스의 최신 revision");`,
+      `const pendingHash = hash("늦은 writer의 pending revision");`,
+      `brain.saveIndex({ version: brain.loadIndex().version, embeddingModel: "text-embedding-3-small", files: {`,
+      `  "notes/victim.md": { hash: oldHash, folder: "notes", chunks: [], linksOut: [] },`,
+      `} });`,
+      `const stale = brain.loadIndex();`,
+      `fs.writeFileSync(process.env.SOURCE_PATH, "다른 프로세스의 최신 revision");`,
+      `execFileSync("node", ["--import", "tsx/esm", "-e",`,
+      `  "import(" + JSON.stringify(${JSON.stringify(BRAIN_JS)}) + ").then((m) => { const i=m.loadIndex(); i.files['notes/victim.md'].hash=" + JSON.stringify(latestHash) + "; m.saveIndex(i); })"`,
+      `], { cwd: ${JSON.stringify(REPO_ROOT)}, env: process.env });`,
+      `fs.rmSync(process.env.NOTES_ROOT, { recursive: true, force: true });`,
+      `brain.saveIndex(stale, [{ key: "notes/victim.md", fullPath: process.env.SOURCE_PATH, rootDir: process.env.NOTES_ROOT, hash: pendingHash }]);`,
+      `process.stdout.write(JSON.stringify({ finalHash: brain.loadIndex().files["notes/victim.md"]?.hash ?? null, latestHash }));`,
+      `})().catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        timeout: 5_000,
+        env: {
+          ...process.env,
+          NOTES_DIR: `notes=${notesDir}`,
+          NOTES_ROOT: notesDir,
+          SOURCE_PATH: source,
+          BRAIN_INDEX: idxPath,
+        },
+      });
+      const result = JSON.parse(out);
+      assert.equal(result.finalHash, result.latestHash);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("AC-1: 파일 변경이 없으면 두 번째 loadIndex는 같은 객체를 반환한다(캐시 적중)", () => {
     const r = runBrainProbe(`
       const V = m.loadIndex().version;

@@ -631,11 +631,31 @@ function mergeIndexFromDisk(ours: BrainIndex, disk: BrainIndex): void {
   }
 }
 
-/** 내부·테스트용: 인덱스 파일을 원자적으로 저장한다(락 + reload-merge + 캐시 갱신). */
-export function saveIndex(idx: BrainIndex): void {
+function indexesCompatible(ours: BrainIndex, disk: BrainIndex): boolean {
+  return (
+    disk.version === ours.version &&
+    Boolean(disk.files) &&
+    disk.embeddingModel === ours.embeddingModel &&
+    (disk.dims === undefined || ours.dims === undefined || disk.dims === ours.dims)
+  );
+}
+
+type SourceGuard = { key: string; fullPath: string; rootDir: string; hash: string };
+type DeletionIntent = { key: string; expectedHash: string } &
+  ({ fullPath: string; rootDir: string } | { force: true });
+
+/** 내부·테스트용: 인덱스 파일을 원자적으로 저장한다(락 + reload-merge + 캐시 갱신).
+ * sourceGuards는 비동기 임베딩이 읽은 revision을 durable commit 직전에 다시 확인하고,
+ * deletions는 reload-merge 뒤에도 삭제 의도를 유지한다. */
+export function saveIndex(
+  idx: BrainIndex,
+  sourceGuards: readonly SourceGuard[] = [],
+  deletions: readonly DeletionIntent[] = [],
+): void {
   saveRunCount++;
   acquireLock();
   try {
+    let diskAtSave: BrainIndex | null = null;
     // reload-merge: 이 객체의 로드 시점 이후 다른 프로세스가 저장했으면 병합(FR-6).
     // 기준은 객체별 스냅샷(LOAD_STAT) — 공유 cachedStat을 기준으로 삼으면 중간의 무관한
     // loadIndex가 기준을 전진시켜 병합이 무력화된다(self-review 결함 1). 스냅샷이 없는
@@ -643,23 +663,81 @@ export function saveIndex(idx: BrainIndex): void {
     try {
       const stat = fs.statSync(INDEX_PATH);
       const base = getLoadStat(idx) === undefined ? cachedStat : getLoadStat(idx);
-      if (!base || base.mtimeMs !== stat.mtimeMs || base.size !== stat.size) {
+      const diskChanged = !base || base.mtimeMs !== stat.mtimeMs || base.size !== stat.size;
+      // source root가 commit 직전에 사라지면 pending revision 대신 durable baseline을 복원해야
+      // 한다. stat이 그대로인 경우에도 guarded save는 디스크 후보를 읽어 둔다.
+      if (diskChanged || sourceGuards.length > 0) {
         // 디스크가 v5면 그 사이드카로 하이드레이션해 병합한다(specs/023 — 병합 채택 항목도
         // 인메모리 형태(벡터 보유)여야 재직렬화가 성립). 해석 불가 항목은 병합에서 제외
         // (재임베딩 자가 치유). v4 등 다른 버전은 아래 가드가 병합을 건너뛴다.
         const disk = JSON.parse(fs.readFileSync(INDEX_PATH, "utf8")) as BrainIndex;
         if (disk.version === INDEX_VERSION && disk.files) {
           const dsc = disk.vectorFile ? readSidecarFile(sidecarAbs(disk.vectorFile)) : null;
+          // stamp가 없는 v5 후보도 sidecar의 실제 차원을 compatibility gate에 반영한다.
+          // 그렇지 않으면 다른 차원 벡터를 병합한 뒤 ours.dims로 잘라 재직렬화할 수 있다.
+          if (disk.dims === undefined && dsc) disk.dims = dsc.dims;
           hydrateV5(disk, scUsable(dsc, disk.dims) ? dsc : null);
         }
+        diskAtSave = disk;
         // 버전·임베딩 모델이 다른 인덱스(마이그레이션·모델 교체 중)는 병합하지 않는다 —
         // 낡은 벡터를 되살리면 차원 불일치가 재발한다.
-        if (disk.version === idx.version && disk.files && disk.embeddingModel === idx.embeddingModel) {
+        if (diskChanged && indexesCompatible(idx, disk)) {
           mergeIndexFromDisk(idx, disk);
         }
       }
     } catch {
       /* 디스크에 없음/손상 — 그대로 저장 */
+    }
+
+    // 단순한 map 부재는 stale writer가 키를 몰랐던 것과 구분할 수 없다. 삭제 시점의 hash를
+    // tombstone으로 전달해 reload-merge가 같은 revision을 복원했을 때만 제거한다. 그 사이
+    // 다른 writer가 새 revision을 저장했다면 expectedHash가 달라 보존한다.
+    for (const deletion of deletions) {
+      if (idx.files[deletion.key]?.hash !== deletion.expectedHash) continue;
+      if ("force" in deletion) {
+        delete idx.files[deletion.key];
+        continue;
+      }
+      try {
+        fs.readFileSync(deletion.fullPath);
+        continue; // 같은 경로가 이미 재생성됨 — hash가 같아도 stale 삭제를 적용하지 않는다
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") continue;
+      }
+      try {
+        fs.readdirSync(deletion.rootDir);
+        delete idx.files[deletion.key]; // root는 읽히고 source만 없음 — 확인된 삭제
+      } catch {
+        /* root 부재·권한 실패는 삭제로 오판하지 않는다 */
+      }
+    }
+
+    // 삭제 watcher가 다른 프로세스에서 먼저 저장한 뒤 늦은 임베딩 writer가 reload-merge하면,
+    // writer의 낡은 메모리 항목이 다시 살아날 수 있다. 같은 index lock 안에서 정본 파일을
+    // 재확인해 이 writer가 관측한 revision과 다른 항목만 제거한다. 현재 hash와 일치하는
+    // 다른 프로세스의 최신 항목은 보존하고, 권한 등 일시적 읽기 실패는 기존 보존 정책을
+    // 유지하되 이 writer가 새로 만든 미검증 revision만 폐기한다.
+    for (const guard of sourceGuards) {
+      const preserveDurableWinner = (): void => {
+        const durable = diskAtSave && indexesCompatible(idx, diskAtSave) ? diskAtSave.files[guard.key] : undefined;
+        if (durable) idx.files[guard.key] = durable;
+        else if (idx.files[guard.key]?.hash === guard.hash) delete idx.files[guard.key];
+      };
+      let currentHash: string | null;
+      try {
+        currentHash = sha(fs.readFileSync(guard.fullPath, "utf8"));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          try {
+            fs.readdirSync(guard.rootDir);
+            delete idx.files[guard.key]; // source root를 읽었는데 파일만 없음 — 확인된 삭제
+          } catch {
+            preserveDurableWinner(); // 미마운트·권한 실패 — 삭제로 오판하지 않는다
+          }
+        } else preserveDurableWinner();
+        continue;
+      }
+      if (currentHash !== guard.hash && idx.files[guard.key]?.hash !== currentHash) delete idx.files[guard.key];
     }
 
     // specs/023 FR-1·2 — 디스크 인코딩: 벡터를 사이드카로 분리(JSON은 slot 참조만).
@@ -942,7 +1020,7 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
     }
   };
 
-  const pending: { key: string; folder: string; hash: string; chunks: string[]; linksOut: string[] }[] = [];
+  const pending: { key: string; fullPath: string; folder: string; hash: string; chunks: string[]; linksOut: string[] }[] = [];
   for (const f of FOLDERS) {
     let rootEntries = readDirOrNull(f.dir);
     if (rootEntries === null && !Object.values(idx.files).some((fe) => fe.folder === f.label)) {
@@ -973,11 +1051,24 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
       }
       const h = sha(text);
       if (idx.files[key]?.hash === h) continue; // 변경 없음
-      pending.push({ key, folder: f.label, hash: h, chunks: chunkText(text), linksOut: extractLinks(text) });
+      pending.push({ key, fullPath: full, folder: f.label, hash: h, chunks: chunkText(text), linksOut: extractLinks(text) });
     }
   }
+  const sourceGuards: SourceGuard[] = pending.map(({ key, fullPath, folder, hash }) => ({
+    key,
+    fullPath,
+    rootDir: FOLDER_BY_LABEL.get(folder)!.dir,
+    hash,
+  }));
 
   if (pending.length) {
+    const sourceStillMatches = (p: (typeof pending)[number]): boolean => {
+      try {
+        return sha(fs.readFileSync(p.fullPath, "utf8")) === p.hash;
+      } catch {
+        return false;
+      }
+    };
     const vecs = new Map<string, (number[] | undefined)[]>();
     const remaining = new Map<string, number>();
     const byKey = new Map(pending.map((p) => [p.key, p]));
@@ -985,7 +1076,8 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
       vecs.set(p.key, new Array(p.chunks.length));
       remaining.set(p.key, p.chunks.length);
       // 빈 파일 즉시 커밋(청크 없어도 링크는 추출·저장)
-      if (p.chunks.length === 0) idx.files[p.key] = { hash: p.hash, folder: p.folder, chunks: [], linksOut: p.linksOut };
+      if (p.chunks.length === 0 && sourceStillMatches(p))
+        idx.files[p.key] = { hash: p.hash, folder: p.folder, chunks: [], linksOut: p.linksOut };
     }
 
     type Ref = { key: string; ci: number; text: string };
@@ -1016,6 +1108,7 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
           remaining.set(r.key, rem);
           if (rem === 0) {
             const p = byKey.get(r.key)!;
+            if (!sourceStillMatches(p)) continue;
             idx.files[r.key] = {
               hash: p.hash,
               folder: p.folder,
@@ -1030,7 +1123,7 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
         // lastSaveAt은 워커 간 공유지만 saveIndex가 락으로 직렬화되고 내용이 같은 idx라
         // 경합은 "저장이 조금 더/덜" 수준 — 정합성 무관.
         if (SAVE_INTERVAL_MS === 0 || Date.now() - lastSaveAt >= SAVE_INTERVAL_MS) {
-          saveIndex(idx); // 완료된 파일만 반영해 진행 저장
+          saveIndex(idx, sourceGuards); // 완료된 파일만 반영해 진행 저장
           lastSaveAt = Date.now();
         }
       }
@@ -1046,7 +1139,7 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
       // 파일 전량을 저장한다(유실 상한이 스로틀로 나빠지지 않게). 성공 경로에서는
       // 저장하지 않는다 — 말미(프루닝 후) 저장이 전량 기록하므로 여기서도 저장하면
       // 성공할 때마다 색인 전량 쓰기가 1회 낭비된다.
-      if (!completed) saveIndex(idx);
+      if (!completed) saveIndex(idx, sourceGuards);
     }
   }
 
@@ -1067,6 +1160,7 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
     adoptIgnored: [],
   };
   let deletedCount = 0; // specs/022 FR-1 — 이번 실행의 삭제 반영 수(dirty 판정 재료)
+  const deletionIntents: DeletionIntent[] = [];
   let bindingsChanged = false; // specs/024 — 바인딩 기록·갱신은 dirty(색인 데이터 변경)
   const rebindPreserve = new Set<string>(); // 재바인딩 감지·미수락 라벨 — 프루닝 보존(FR-2)
   const rebindAdopt = new Set<string>(); // 수락된 라벨 — seen 아님 항목 제거(FR-3)
@@ -1133,6 +1227,7 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
         // 손상·수기 편집으로만 생기는 folder 없는 엔트리 — 라벨 판정이 불가능하므로
         // 기존 프루닝의 자가 치유를 유지한다(스캔 미매칭이면 삭제, 요약·안내에서 제외).
         if (!seen.has(key)) {
+          deletionIntents.push({ key, expectedHash: fe.hash, force: true });
           delete idx.files[key];
           deletedCount++;
         }
@@ -1146,6 +1241,13 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
           if (rb) rb.preserved++;
           continue;
         }
+        const sourceFolder = FOLDER_BY_LABEL.get(fe.folder)!;
+        const sourceRel = key.slice(fe.folder.length + 1);
+        deletionIntents.push(
+          rebindAdopt.has(fe.folder)
+            ? { key, expectedHash: fe.hash, force: true }
+            : { key, expectedHash: fe.hash, fullPath: path.join(sourceFolder.dir, sourceRel), rootDir: sourceFolder.dir },
+        );
         delete idx.files[key]; // 대상 라벨 내 삭제 반영(020 FR-1 — 수락 라벨의 옛 항목 포함)
         deletedCount++;
         if (rebindAdopt.has(fe.folder)) {
@@ -1154,6 +1256,7 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
           else summary.rebindAdopted.push({ label: fe.folder, removed: 1 });
         }
       } else if (pruneSet.has(fe.folder)) {
+        deletionIntents.push({ key, expectedHash: fe.hash, force: true });
         delete idx.files[key]; // 명시적 고아 정리(FR-5)
         deletedCount++;
         prunedCount.set(fe.folder, (prunedCount.get(fe.folder) ?? 0) + 1);
@@ -1203,7 +1306,7 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
     migrationPending ||
     sidecarMissing ||
     !fs.existsSync(INDEX_PATH);
-  if (dirty) saveIndex(idx);
+  if (dirty) saveIndex(idx, sourceGuards, deletionIntents);
   return idx;
 }
 
@@ -1523,9 +1626,19 @@ function logCapture(result: CaptureResult, query: string, folder: string): void 
 export function removeFromIndex(key: string): void {
   try {
     const idx = loadIndex();
-    if (key in idx.files) {
+    const removed = idx.files[key];
+    if (removed) {
       delete idx.files[key];
-      saveIndex(idx);
+      const sourceFolder = FOLDER_BY_LABEL.get(removed.folder);
+      const deletion: DeletionIntent = sourceFolder
+        ? {
+            key,
+            expectedHash: removed.hash,
+            fullPath: path.join(sourceFolder.dir, key.slice(removed.folder.length + 1)),
+            rootDir: sourceFolder.dir,
+          }
+        : { key, expectedHash: removed.hash, force: true };
+      saveIndex(idx, [], [deletion]);
     }
   } catch {
     /* 인덱스 없음 — 무시 */
