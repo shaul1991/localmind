@@ -23,6 +23,18 @@ row() {
 }
 have() { command -v "$1" >/dev/null 2>&1; }
 http() { curl -fsS -m 2 "$1" >/dev/null 2>&1; } # 2초 타임아웃, 무응답이면 실패
+public_http_url() {
+  [ -n "${1:-}" ] && have node || return 1
+  printf '%s' "$1" | node -e '
+    const fs = require("fs");
+    const raw = fs.readFileSync(0, "utf8");
+    try {
+      const u = new URL(raw);
+      if (raw !== raw.trim() || !["http:", "https:"].includes(u.protocol) ||
+          u.username || u.password || u.href.includes("?") || u.href.includes("#")) process.exit(1);
+    } catch { process.exit(1); }
+  ' >/dev/null 2>&1
+}
 
 OS="$(uname -s 2>/dev/null || echo unknown)"
 ARCH="$(uname -m 2>/dev/null || echo unknown)"
@@ -67,10 +79,19 @@ EMB_URL="$(read_env_val EMBEDDINGS_URL "$ENV_FILE")"
 EMB_URL="${EMB_URL:-http://localhost:11434/v1}"
 EMB_MODEL="$(read_env_val EMBEDDINGS_MODEL "$ENV_FILE")"
 EMB_MODEL="${EMB_MODEL:-bge-m3}"
-route_label="$EMB_URL (모델: $EMB_MODEL)"
+EMB_URL_PUBLIC=""
+public_http_url "$EMB_URL" && EMB_URL_PUBLIC=1
+if [ -z "$EMB_URL_PUBLIC" ]; then
+  route_label="안전하지 않은 endpoint 설정 (모델: $EMB_MODEL)"
+elif [ "${LOCALMIND_REDACT_EMBEDDINGS_URL:-}" = "1" ]; then
+  route_label="설정된 엔드포인트 (모델: $EMB_MODEL)"
+else
+  route_label="$EMB_URL (모델: $EMB_MODEL)"
+fi
 
 # 실효 백엔드(지금 임베딩이 실제로 도는 형태) 판정
-case "$EMB_URL" in
+case "$EMB_URL_PUBLIC:$EMB_URL" in
+  :*)      effective="endpoint 공개 URL 계약 위반 — 네트워크 확인 안 함";;
   *11434*) if [ "$accel" = "metal" ]; then effective="Ollama 직결 → Metal GPU (빠름)"
            elif [ "$accel" = "cuda" ]; then effective="Ollama 직결 → NVIDIA GPU (빠름)"
            else effective="Ollama 직결 → CPU"; fi;;
@@ -78,8 +99,15 @@ case "$EMB_URL" in
 esac
 
 # 임베딩 엔드포인트 살아있나
-emb_up="✗ 응답 없음 ($EMB_URL) — 임베딩 엔진(예: ollama serve)이 켜져 있나요?"
-if http "$EMB_URL/models" || http "${EMB_URL%/v1}/api/tags"; then emb_up="✓ 응답 ($EMB_URL)"; fi
+if [ -z "$EMB_URL_PUBLIC" ]; then
+  emb_up="✗ 안전하지 않은 endpoint 설정 — 자격증명은 EMBEDDINGS_KEY에 넣어 주세요."
+elif [ "${LOCALMIND_REDACT_EMBEDDINGS_URL:-}" = "1" ]; then
+  emb_up="✗ 응답 없음 — 임베딩 엔진(예: ollama serve)이 켜져 있나요?"
+  if http "$EMB_URL/models" || http "${EMB_URL%/v1}/api/tags"; then emb_up="✓ 응답"; fi
+else
+  emb_up="✗ 응답 없음 ($EMB_URL) — 임베딩 엔진(예: ollama serve)이 켜져 있나요?"
+  if http "$EMB_URL/models" || http "${EMB_URL%/v1}/api/tags"; then emb_up="✓ 응답 ($EMB_URL)"; fi
+fi
 
 # ── 출력 ───────────────────────────────────────────────────────
 say ""

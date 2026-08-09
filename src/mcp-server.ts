@@ -170,15 +170,21 @@ export function buildServer(): McpServer {
           decision = { choice: choice!, why: why!, assumptions: assumptions as DecisionInput["assumptions"] };
         }
         const { path: file, validationStatus, retried, tags } = await capture(text, title, folder, noteTags, decision);
-        const statusLine =
+        const indexingLine =
           validationStatus === "confirmed"
-            ? "✅ 인덱싱 확인됨"
+            ? "indexing: confirmed"
             : validationStatus === "unconfirmed"
-              ? `⚠️ 인덱싱 미확인 — 수동 \`make reindex\` 권장${retried ? " (재시도 후에도 미확인)" : ""}`
-              : "";
+              ? `indexing: unconfirmed (degraded)${retried ? " — 재시도 후에도 미확인" : ""}`
+              : "indexing: completed";
+        const validationLine = validationStatus === "skipped" ? "validation: skipped" : "";
+        const recoveryLine = validationStatus === "unconfirmed"
+          ? "⚠️ Markdown 정본은 저장됐습니다. 중복 capture하지 말고 필요하면 `make reindex`를 실행하세요."
+          : "";
         // specs/017 FR-9 — 데이터를 변형한 개입(태그)은 표시한다(무엇이 기록됐는지 통지).
         const tagLine = tags?.length ? `🏷 태그: ${tags.join(", ")} (바꾸려면 노트 파일에서 직접 수정 — 보존됩니다)` : "";
-        const msg = [`노트 저장: ${file}`, statusLine, tagLine].filter(Boolean).join("\n");
+        const msg = ["status: durable", `source: ${file}`, indexingLine, validationLine, recoveryLine, tagLine]
+          .filter(Boolean)
+          .join("\n");
         return textResult(msg, false, "📝");
       } catch (e) {
         return textResult(`capture_note 실패: ${(e as Error).message}`, true, "📝");

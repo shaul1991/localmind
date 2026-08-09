@@ -106,14 +106,15 @@ describe("buildNoteFrontmatter", () => {
 });
 
 // ── 무키 임베딩 에러 메시지 (great-reduction r1 B4 — 게이트웨이 제거 후 안내가
-//    EMBEDDINGS_KEY 기준이어야 한다. fetch 전에 throw하므로 임베딩 서버 불필요) ──
+//    EMBEDDINGS_KEY 기준이어야 한다. capture는 Phase 1 C의 durable success이므로,
+//    정본 파일 생성 전인 search 경계에서 검증한다. fetch 전에 throw해 서버는 불필요.) ──
 describe("임베딩 키 미설정 에러 안내", () => {
-  it("B4: 키가 없으면 EMBEDDINGS_KEY 기준의 평이한 안내로 실패한다", () => {
+  it("B4: 검색에서 키가 없으면 EMBEDDINGS_KEY 기준의 평이한 안내로 실패한다", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-nokey-"));
     try {
       const script = [
         `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
-        `  await m.capture("무키 테스트", undefined);`,
+        `  await m.searchNotes("무키 테스트");`,
         `  process.exit(0);`,
         `}).catch((e) => { process.stderr.write(String(e.message)); process.exit(1); });`,
       ].join("\n");
@@ -130,7 +131,7 @@ describe("임베딩 키 미설정 에러 안내", () => {
             LITELLM_MASTER_KEY: "",
           },
         });
-        assert.fail("키 없이 capture가 성공하면 안 된다");
+        assert.fail("키 없이 search가 성공하면 안 된다");
       } catch (e: any) {
         stderr = String(e.stderr ?? "");
       }
@@ -227,6 +228,389 @@ function runCaptureProbe(notesDir: string, text: string, title?: string): any {
   });
   return JSON.parse(out);
 }
+
+function runCaptureFolderBoundaryProbe(root: string, folder?: string): any {
+  const first = path.join(root, "first");
+  const second = path.join(root, "second");
+  fs.mkdirSync(first, { recursive: true });
+  fs.mkdirSync(second, { recursive: true });
+  const script = [
+    `import fs from "node:fs";`,
+    `import path from "node:path";`,
+    `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+    `  let result = null, error = null;`,
+    `  try { result = await m.capture("폴더 경계를 검증하기에 충분히 긴 합성 노트 본문", "폴더경계", ${folder === undefined ? "undefined" : JSON.stringify(folder)}); }`,
+    `  catch (e) { error = String(e?.message ?? e); }`,
+    `  const markdown = (dir) => fs.readdirSync(dir).filter((name) => name.endsWith(".md"));`,
+    `  process.stdout.write(JSON.stringify({ result, error, first: markdown(${JSON.stringify(first)}), second: markdown(${JSON.stringify(second)}) }));`,
+    `}).catch((e) => { console.error(e); process.exit(1); });`,
+  ].join("\n");
+  const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      HOME: path.join(root, "home"),
+      NOTES_DIR: `alpha=${first},beta=${second}`,
+      BRAIN_INDEX: path.join(root, "state", "index.json"),
+      QUERY_LOG: path.join(root, "state", "query-log.jsonl"),
+      EMBEDDINGS_KEY: "",
+      LITELLM_MASTER_KEY: "",
+      EMBED_RETRIES: "1",
+      CAPTURE_VALIDATE_TIMEOUT_MS: "20",
+    },
+  });
+  return JSON.parse(out);
+}
+
+describe("capture folder 경계 (Phase 1 B)", () => {
+  it("folder를 생략했을 때만 첫 폴더를 기본 대상으로 쓴다", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-capture-default-folder-"));
+    try {
+      const r = runCaptureFolderBoundaryProbe(root);
+      assert.equal(r.first.length, 1, "첫 폴더에만 Markdown 생성");
+      assert.equal(r.second.length, 0, "두 번째 폴더는 불변");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("명시한 unknown label은 파일 생성 전에 available labels와 whoami 안내로 fail closed한다", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-capture-unknown-folder-"));
+    try {
+      const privateLookingUnknown = "/Users/private/secret-notes";
+      const r = runCaptureFolderBoundaryProbe(root, privateLookingUnknown);
+      assert.equal(r.first.length + r.second.length, 0, "어느 노트 폴더에도 파일을 만들면 안 된다");
+      assert.match(r.error ?? "", /사용 가능한.*라벨.*alpha.*beta/);
+      assert.match(r.error ?? "", /whoami/);
+      assert.doesNotMatch(r.error ?? "", /Users|private|secret-notes/, "요청값·절대경로를 공개 오류에 반사하지 않음");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+function runMalformedEmbeddingProbe(mode: string): any {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), `localmind-embedding-boundary-${mode}-`));
+  const notes = path.join(root, "notes");
+  const state = path.join(root, "state");
+  fs.mkdirSync(notes, { recursive: true });
+  fs.mkdirSync(state, { recursive: true });
+  fs.writeFileSync(path.join(notes, "one.md"), "첫 번째 합성 문서의 충분히 긴 본문입니다.");
+  fs.writeFileSync(path.join(notes, "two.md"), "두 번째 합성 문서의 충분히 긴 본문입니다.");
+  const script = [
+    `globalThis.fetch = async (_url, init) => {`,
+    `  const input = JSON.parse(String(init?.body ?? "{}")).input ?? [];`,
+    `  let data = input.map((_, index) => ({ index, embedding: [1, 0] }));`,
+    `  switch (${JSON.stringify(mode)}) {`,
+    `    case "row-count": data = data.slice(0, 1); break;`,
+    `    case "duplicate-index": data = [{ index: 0, embedding: [1, 0] }, { index: 0, embedding: [0, 1] }]; break;`,
+    `    case "out-of-range-index": data = [{ index: 0, embedding: [1, 0] }, { index: 2, embedding: [0, 1] }]; break;`,
+    `    case "empty-vector": data[1].embedding = []; break;`,
+    `    case "non-finite": data[1].embedding = [Number.NaN, 1]; break;`,
+    `    case "float32-overflow": data[1].embedding = [1e308, 1]; break;`,
+    `    case "mixed-dimensions": data[1].embedding = [0, 1, 2]; break;`,
+    `  }`,
+    `  return { ok: true, status: 200, json: async () => ({ data }) };`,
+    `};`,
+    `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+    `  let ok = false, error = "", resultKeys = [];`,
+    `  try { const result = await m.reindex(); ok = true; resultKeys = Object.keys(m.loadIndex().files); }`,
+    `  catch (e) { error = String(e?.message ?? e); }`,
+    `  let persistedKeys = [];`,
+    `  try { persistedKeys = Object.keys(m.loadIndex().files); } catch {}`,
+    `  const indexArtifacts = fs.readdirSync(${JSON.stringify(state)}).filter((name) => name.startsWith("index.json"));`,
+    `  process.stdout.write(JSON.stringify({ ok, error, resultKeys, persistedKeys, indexExists: fs.existsSync(process.env.BRAIN_INDEX), indexArtifacts }));`,
+    `}).catch((e) => { console.error(e); process.exit(1); });`,
+  ].join("\n");
+  try {
+    const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HOME: path.join(root, "home"),
+        NOTES_DIR: `notes=${notes}`,
+        BRAIN_INDEX: path.join(state, "index.json"),
+        QUERY_LOG: path.join(state, "query-log.jsonl"),
+        EMBEDDINGS_URL: "http://embedding.invalid/v1",
+        EMBEDDINGS_MODEL: "fixture-model",
+        EMBEDDINGS_KEY: "fixture-key",
+        EMBED_RETRIES: "1",
+        BRAIN_CONCURRENCY: "1",
+        BRAIN_BATCH: "8",
+      },
+    });
+    return JSON.parse(out);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+function assertMalformedEmbeddingRejected(mode: string, message: RegExp): void {
+  const r = runMalformedEmbeddingProbe(mode);
+  assert.equal(r.ok, false, `${mode}: malformed 응답을 성공 처리하면 안 됨`);
+  assert.match(r.error, message, `${mode}: 경계 실패 이유가 명확해야 함`);
+  assert.deepEqual(r.persistedKeys, [], `${mode}: malformed vector로 색인 항목을 만들면 안 됨`);
+  assert.equal(r.indexExists, false, `${mode}: malformed 첫 batch로 빈 색인 파일도 만들면 안 됨`);
+  assert.deepEqual(r.indexArtifacts, [], `${mode}: JSON·sidecar·temp를 만들면 안 됨`);
+  assert.doesNotMatch(r.error, /embedding\.invalid|fixture-key/, "endpoint·secret 비노출");
+}
+
+describe("embedding 응답 boundary (Phase 1 D)", () => {
+  it("입력 수와 row 수가 다르면 실패한다", () => {
+    assertMalformedEmbeddingRejected("row-count", /임베딩 응답.*행 수/);
+  });
+
+  it("index 중복을 거부한다", () => {
+    assertMalformedEmbeddingRejected("duplicate-index", /임베딩 응답.*index.*중복/);
+  });
+
+  it("index 누락·범위 초과를 거부한다", () => {
+    assertMalformedEmbeddingRejected("out-of-range-index", /임베딩 응답.*index.*범위|임베딩 응답.*index.*누락/);
+  });
+
+  it("빈 embedding을 거부한다", () => {
+    assertMalformedEmbeddingRejected("empty-vector", /임베딩 응답.*embedding.*비어/);
+  });
+
+  it("finite number가 아닌 embedding 값을 거부한다", () => {
+    assertMalformedEmbeddingRejected("non-finite", /임베딩 응답.*유한.*숫자/);
+  });
+
+  it("Float32로 표현하면 overflow하는 1e308 embedding payload를 거부한다", () => {
+    assertMalformedEmbeddingRejected("float32-overflow", /임베딩 응답.*Float32|임베딩 응답.*표현/);
+  });
+
+  it("row 간 embedding 차원이 다르면 실패한다", () => {
+    assertMalformedEmbeddingRejected("mixed-dimensions", /임베딩 응답.*차원/);
+  });
+
+  it("query 차원 불일치로 재색인한 뒤에도 다르면 결과를 반환하지 않는다", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-query-dimension-recheck-"));
+    const notes = path.join(root, "notes");
+    const state = path.join(root, "state");
+    fs.mkdirSync(notes, { recursive: true });
+    fs.mkdirSync(state, { recursive: true });
+    fs.writeFileSync(path.join(notes, "doc.md"), "재색인 뒤 query 차원을 다시 확인하는 합성 문서입니다.");
+    const script = [
+      `globalThis.fetch = async (_url, init) => {`,
+      `  const input = JSON.parse(String(init?.body ?? "{}")).input ?? [];`,
+      `  const query = input.length === 1 && input[0] === "차원 불일치 질의";`,
+      `  const embedding = query ? [1, 0, 0] : [1, 0];`,
+      `  return { ok: true, status: 200, json: async () => ({ data: input.map((_, index) => ({ index, embedding })) }) };`,
+      `};`,
+      `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+      `  await m.reindex();`,
+      `  let rejected = false, error = "", hits = [];`,
+      `  try { hits = await m.searchNotes("차원 불일치 질의"); }`,
+      `  catch (e) { rejected = true; error = String(e?.message ?? e); }`,
+      `  process.stdout.write(JSON.stringify({ rejected, error, hitCount: hits.length }));`,
+      `}).catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: path.join(root, "home"),
+          NOTES_DIR: `notes=${notes}`,
+          BRAIN_INDEX: path.join(state, "index.json"),
+          QUERY_LOG: path.join(state, "query-log.jsonl"),
+          EMBEDDINGS_URL: "http://embedding.invalid/v1",
+          EMBEDDINGS_MODEL: "fixture-model",
+          EMBEDDINGS_KEY: "fixture-key",
+          EMBED_RETRIES: "1",
+          BRAIN_CONCURRENCY: "1",
+        },
+      });
+      const r = JSON.parse(out);
+      assert.equal(r.rejected, true, "계속 다른 차원의 query로 결과를 내면 안 됨");
+      assert.equal(r.hitCount, 0);
+      assert.match(r.error, /query.*차원|질의.*차원/);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("Float32로 표현하면 overflow하는 1e308 query는 결과를 반환하거나 index를 바꾸지 않는다", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-query-float32-overflow-"));
+    const notes = path.join(root, "notes");
+    const state = path.join(root, "state");
+    const indexPath = path.join(state, "index.json");
+    fs.mkdirSync(notes, { recursive: true });
+    fs.mkdirSync(state, { recursive: true });
+    fs.writeFileSync(path.join(notes, "doc.md"), "정상 색인을 먼저 만드는 충분히 긴 합성 문서입니다.");
+    const script = [
+      `globalThis.fetch = async (_url, init) => {`,
+      `  const input = JSON.parse(String(init?.body ?? "{}")).input ?? [];`,
+      `  const embedding = input.length === 1 && input[0] === "overflow query" ? [1e308, 0] : [1, 0];`,
+      `  return { ok: true, status: 200, json: async () => ({ data: input.map((_, index) => ({ index, embedding })) }) };`,
+      `};`,
+      `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+      `  await m.reindex();`,
+      `  const beforeJson = fs.readFileSync(process.env.BRAIN_INDEX);`,
+      `  const beforeArtifacts = fs.readdirSync(${JSON.stringify(state)}).filter((name) => name.startsWith("index.json")).sort();`,
+      `  let rejected = false, error = "", hits = [];`,
+      `  try { hits = await m.searchNotes("overflow query"); }`,
+      `  catch (e) { rejected = true; error = String(e?.message ?? e); }`,
+      `  const afterJson = fs.readFileSync(process.env.BRAIN_INDEX);`,
+      `  const afterArtifacts = fs.readdirSync(${JSON.stringify(state)}).filter((name) => name.startsWith("index.json")).sort();`,
+      `  process.stdout.write(JSON.stringify({ rejected, error, hitCount: hits.length, jsonUnchanged: beforeJson.equals(afterJson), beforeArtifacts, afterArtifacts }));`,
+      `}).catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: path.join(root, "home"),
+          NOTES_DIR: `notes=${notes}`,
+          BRAIN_INDEX: indexPath,
+          QUERY_LOG: path.join(state, "query-log.jsonl"),
+          EMBEDDINGS_URL: "http://embedding.invalid/v1",
+          EMBEDDINGS_MODEL: "fixture-model",
+          EMBEDDINGS_KEY: "fixture-key",
+          EMBED_RETRIES: "1",
+          BRAIN_CONCURRENCY: "1",
+        },
+      });
+      const r = JSON.parse(out);
+      assert.equal(r.rejected, true);
+      assert.equal(r.hitCount, 0);
+      assert.match(r.error, /임베딩 응답.*Float32|임베딩 응답.*표현/);
+      assert.equal(r.jsonUnchanged, true, "query overflow가 durable JSON을 바꾸면 안 됨");
+      assert.deepEqual(r.afterArtifacts, r.beforeArtifacts, "query overflow가 sidecar·temp를 더 만들면 안 됨");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+function runCrossBatchDimensionProbe(mode: "fresh" | "existing" | "concurrent"): any {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), `localmind-cross-batch-dims-${mode}-`));
+  const notes = path.join(root, "notes");
+  const state = path.join(root, "state");
+  const indexPath = path.join(state, "index.json");
+  fs.mkdirSync(notes, { recursive: true });
+  fs.mkdirSync(state, { recursive: true });
+  if (mode !== "existing") {
+    fs.writeFileSync(path.join(notes, "a.md"), "첫 번째 batch의 차원을 고정하는 충분히 긴 합성 문서입니다.");
+    fs.writeFileSync(path.join(notes, "b.md"), "두 번째 batch의 차원 불일치를 만드는 충분히 긴 합성 문서입니다.");
+  }
+  const script = [
+    `const crypto = require("node:crypto");`,
+    `let calls = 0;`,
+    `globalThis.fetch = async (_url, init) => {`,
+    `  const call = ++calls;`,
+    mode === "concurrent" ? `  if (call === 1) await new Promise((resolve) => setTimeout(resolve, 30));` : "",
+    `  const input = JSON.parse(String(init?.body ?? "{}")).input ?? [];`,
+    mode === "existing"
+      ? `  const embedding = [1, 0, 0];`
+      : mode === "concurrent"
+        ? `  const embedding = call === 1 ? [1, 0] : [1, 0, 0];`
+        : `  const embedding = call === 1 ? [1, 0] : [1, 0, 0];`,
+    `  return { ok: true, status: 200, json: async () => ({ data: input.map((_, index) => ({ index, embedding })) }) };`,
+    `};`,
+    `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+    `  let originalHash = null;`,
+    mode === "existing"
+      ? [
+          `  const source = ${JSON.stringify(path.join(notes, "existing.md"))};`,
+          `  const original = "기존 2차원 색인의 정본 revision입니다.";`,
+          `  fs.writeFileSync(source, original);`,
+          `  originalHash = crypto.createHash("sha256").update(original).digest("hex");`,
+          `  m.saveIndex({ version: m.loadIndex().version, embeddingModel: "fixture-model", dims: 2, files: {`,
+          `    "notes/existing.md": { hash: originalHash, folder: "notes", chunks: [{ path: "notes/existing.md", text: original, vector: [1, 0] }], linksOut: [] },`,
+          `  } });`,
+          `  fs.writeFileSync(source, "기존 색인과 다른 차원 응답을 요구하는 변경된 정본입니다.");`,
+        ].join("\n")
+      : "",
+    `  let rejected = false, error = "";`,
+    `  try { await m.reindex(); } catch (e) { rejected = true; error = String(e?.message ?? e); }`,
+    `  m._resetIndexCacheForTest();`,
+    `  const idx = m.loadIndex();`,
+    `  const vectors = Object.values(idx.files).flatMap((fe) => fe.chunks.map((c) => c.vector));`,
+    `  process.stdout.write(JSON.stringify({ rejected, error, dims: idx.dims ?? null, keys: Object.keys(idx.files).sort(), hashes: Object.values(idx.files).map((fe) => fe.hash), originalHash, vectors }));`,
+    `}).catch((e) => { console.error(e); process.exit(1); });`,
+  ].filter(Boolean).join("\n");
+  try {
+    const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HOME: path.join(root, "home"),
+        NOTES_DIR: `notes=${notes}`,
+        BRAIN_INDEX: indexPath,
+        QUERY_LOG: path.join(state, "query-log.jsonl"),
+        EMBEDDINGS_URL: "http://embedding.invalid/v1",
+        EMBEDDINGS_MODEL: "fixture-model",
+        EMBEDDINGS_KEY: "fixture-key",
+        EMBED_RETRIES: "1",
+        BRAIN_BATCH: "1",
+        BRAIN_CONCURRENCY: mode === "concurrent" ? "2" : "1",
+      },
+    });
+    return JSON.parse(out);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+function runSaveVectorInvariantProbe(vectorSource: string): any {
+  return runBrainProbe([
+    `let rejected = false, error = "";`,
+    `try { m.saveIndex({ version: m.loadIndex().version, embeddingModel: "text-embedding-3-small", dims: 2, files: {`,
+    `  "notes/bad.md": { hash: "bad", folder: "notes", chunks: [{ path: "notes/bad.md", text: "합성", vector: ${vectorSource} }], linksOut: [] },`,
+    `} }); } catch (e) { rejected = true; error = String(e?.message ?? e); }`,
+    `process.stdout.write(JSON.stringify({ rejected, error, indexExists: fs.existsSync(idxPath) }));`,
+  ].join("\n"));
+}
+
+describe("색인 차원 불변식 (Phase 1 B2/I3)", () => {
+  it("fresh 색인의 batch별 2/3차원 응답을 거부하고 혼합 저장하지 않는다", () => {
+    const r = runCrossBatchDimensionProbe("fresh");
+    assert.equal(r.rejected, true);
+    assert.match(r.error, /임베딩.*차원/);
+    assert.ok(r.vectors.every((v: number[]) => v.length === r.dims && v.every(Number.isFinite)));
+  });
+
+  it("기존 2차원 색인에 신규 3차원 batch를 반영하지 않는다", () => {
+    const r = runCrossBatchDimensionProbe("existing");
+    assert.equal(r.rejected, true);
+    assert.match(r.error, /임베딩.*차원/);
+    assert.deepEqual(r.hashes, [r.originalHash], "기존 durable revision을 보존해야 함");
+    assert.deepEqual(r.vectors, [[1, 0]]);
+  });
+
+  it("BRAIN_BATCH=1/BRAIN_CONCURRENCY=2 경쟁에서도 2/3차원 혼합을 거부한다", () => {
+    const r = runCrossBatchDimensionProbe("concurrent");
+    assert.equal(r.rejected, true);
+    assert.match(r.error, /임베딩.*차원/);
+    assert.ok(r.vectors.every((v: number[]) => v.length === r.dims && v.every(Number.isFinite)));
+  });
+
+  it("saveIndex가 dims보다 짧은 vector의 truncation/padding 직렬화를 거부한다", () => {
+    const r = runSaveVectorInvariantProbe("[1]");
+    assert.deepEqual(r, { rejected: true, error: r.error, indexExists: false });
+    assert.match(r.error, /색인.*차원/);
+  });
+
+  it("saveIndex가 NaN vector 직렬화를 거부한다", () => {
+    const r = runSaveVectorInvariantProbe("[1, Number.NaN]");
+    assert.deepEqual(r, { rejected: true, error: r.error, indexExists: false });
+    assert.match(r.error, /색인.*유한.*숫자/);
+  });
+
+  it("saveIndex가 Float32로 표현하면 overflow하는 1e308 vector를 JSON·sidecar 없이 거부한다", () => {
+    const r = runSaveVectorInvariantProbe("[1e308, 0]");
+    assert.deepEqual(r, { rejected: true, error: r.error, indexExists: false });
+    assert.match(r.error, /색인.*Float32|색인.*표현/);
+  });
+});
 
 describe("capture() 검증 루프 (통합 — 임베딩 서버 필요)", { skip: !INTEGRATION }, () => {
   it("AC-1: 정상 캡처 시 validationStatus가 confirmed이다", () => {
@@ -423,6 +807,79 @@ describe("인덱스 캐시·원자성·동시성 (009)", () => {
       assert.ok(result.message.includes("색인 저장 폴더를 준비할 수 없어요"), result.message);
       assert.ok(!result.message.includes(tmp), "오류에 절대경로를 노출하면 안 된다");
       assert.ok(!result.message.includes("private-index-name"), "오류에 색인 이름을 노출하면 안 된다");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("source 첫 hash 확인 직후 외부 수정이면 commit 직전 재확인이 stale save를 거부한다", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-index-source-commit-race-"));
+    const notesDir = path.join(tmp, "notes");
+    const stateDir = path.join(tmp, "state");
+    const idxPath = path.join(stateDir, "index.json");
+    const source = path.join(notesDir, "victim.md");
+    fs.mkdirSync(notesDir, { recursive: true });
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(source, "기존 durable revision");
+    const script = [
+      `(async () => {`,
+      `const fs = require("node:fs");`,
+      `const path = require("node:path");`,
+      `const crypto = require("node:crypto");`,
+      `const sha = (text) => crypto.createHash("sha256").update(text).digest("hex");`,
+      `const brain = await import(${JSON.stringify(BRAIN_JS)});`,
+      `const durableHash = sha("기존 durable revision");`,
+      `brain.saveIndex({ version: brain.loadIndex().version, embeddingModel: "text-embedding-3-small", dims: 2, files: {`,
+      `  "notes/victim.md": { hash: durableHash, folder: "notes", chunks: [{ path: "notes/victim.md", text: "durable", vector: [1, 0] }], linksOut: [] },`,
+      `} });`,
+      `const durableJson = fs.readFileSync(process.env.BRAIN_INDEX);`,
+      `const durableArtifacts = fs.readdirSync(process.env.STATE_DIR).filter((name) => name.startsWith("index.json")).sort();`,
+      `const pending = "직렬화 대상 pending revision";`,
+      `fs.writeFileSync(process.env.SOURCE_PATH, pending);`,
+      `const stale = brain.loadIndex();`,
+      `stale.files["notes/victim.md"] = { hash: sha(pending), folder: "notes", chunks: [{ path: "notes/victim.md", text: pending, vector: [0, 1] }], linksOut: [] };`,
+      `const originalRead = fs.readFileSync;`,
+      `let sourceReads = 0;`,
+      `fs.readFileSync = function(file, ...args) {`,
+      `  const value = originalRead.call(this, file, ...args);`,
+      `  if (path.resolve(String(file)) === path.resolve(process.env.SOURCE_PATH) && ++sourceReads === 1) {`,
+      `    fs.writeFileSync(process.env.SOURCE_PATH, "첫 확인 직후의 external revision");`,
+      `  }`,
+      `  return value;`,
+      `};`,
+      `let rejected = false, error = "";`,
+      `try { brain.saveIndex(stale, [{ key: "notes/victim.md", fullPath: process.env.SOURCE_PATH, rootDir: process.env.NOTES_ROOT, hash: sha(pending) }]); }`,
+      `catch (e) { rejected = true; error = String(e?.message ?? e); }`,
+      `fs.readFileSync = originalRead;`,
+      `const afterJson = fs.readFileSync(process.env.BRAIN_INDEX);`,
+      `const afterArtifacts = fs.readdirSync(process.env.STATE_DIR).filter((name) => name.startsWith("index.json")).sort();`,
+      `const tempCount = fs.readdirSync(process.env.STATE_DIR).filter((name) => name.includes(".tmp-")).length;`,
+      `const loadedHash = brain.loadIndex().files["notes/victim.md"]?.hash ?? null;`,
+      `process.stdout.write(JSON.stringify({ rejected, error, sourceReads, durableBytesPreserved: durableJson.equals(afterJson), durableArtifacts, afterArtifacts, tempCount, loadedHash, durableHash }));`,
+      `})().catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        timeout: 5_000,
+        env: {
+          ...process.env,
+          NOTES_DIR: `notes=${notesDir}`,
+          NOTES_ROOT: notesDir,
+          SOURCE_PATH: source,
+          STATE_DIR: stateDir,
+          BRAIN_INDEX: idxPath,
+        },
+      });
+      const r = JSON.parse(out);
+      assert.equal(r.rejected, true, "commit 직전 source mismatch를 명시 실패해야 함");
+      assert.match(r.error, /노트.*변경|source.*변경|revision.*변경/i);
+      assert.ok(r.sourceReads >= 2, "직렬화 전과 commit 직전에 source를 각각 확인해야 함");
+      assert.equal(r.durableBytesPreserved, true, "기존 durable index JSON byte를 보존해야 함");
+      assert.deepEqual(r.afterArtifacts, r.durableArtifacts, "실패한 새 sidecar도 정리해야 함");
+      assert.equal(r.tempCount, 0, "JSON·sidecar temp 잔여가 없어야 함");
+      assert.equal(r.loadedHash, r.durableHash, "후속 조회도 실패한 in-memory candidate가 아닌 durable index를 읽어야 함");
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
