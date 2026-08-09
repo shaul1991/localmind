@@ -1,7 +1,7 @@
 # Tasks — LocalMind 코어 중장기 개선 Phase 0~6
 
 - [x] Phase 0 — 기준선·로드맵 정본 고정 및 커밋
-- [ ] Phase 1 — setup·capture·embedding 무결성 TDD 및 커밋
+- [x] Phase 1 — setup·capture·embedding 무결성 TDD 및 커밋
 - [ ] Phase 2 — 색인·백업·canonical brain 내구성 TDD 및 커밋
 - [ ] Phase 3 — 검색 품질 회귀 게이트 TDD 및 커밋
 - [ ] Phase 4 — brief·decision lifecycle TDD 및 커밋

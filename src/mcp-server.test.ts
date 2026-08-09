@@ -59,6 +59,135 @@ describe("MCP tool surface (great-reduction AC-1)", () => {
   });
 });
 
+function runDurableCaptureBoundaryProbe(
+  root: string,
+  folder?: string,
+  staleSameKey = false,
+  captureText = "색인 실패 뒤에도 정본 저장을 구분하기에 충분히 긴 합성 본문",
+  embeddingSuccess = false,
+  editAfterIndexCommit = false,
+): any {
+  const notes = path.join(root, "notes");
+  const state = path.join(root, "state");
+  fs.mkdirSync(notes, { recursive: true });
+  fs.mkdirSync(state, { recursive: true });
+  const script = [
+    `(async () => {`,
+    `  const fs = (await import("node:fs")).default;`,
+    embeddingSuccess
+      ? `  globalThis.fetch = async (_url, init) => { const input = JSON.parse(String(init?.body ?? "{}")).input ?? []; return { ok: true, status: 200, json: async () => ({ data: input.map((_, index) => ({ index, embedding: [1, 0] })) }) }; };`
+      : "",
+    editAfterIndexCommit
+      ? `  const originalRenameSync = fs.renameSync.bind(fs); let externallyEdited = false; fs.renameSync = (from, to) => { originalRenameSync(from, to); if (!externallyEdited && String(to) === process.env.BRAIN_INDEX) { const note = fs.readdirSync(${JSON.stringify(notes)}).find((name) => name.endsWith(".md")); if (note) { fs.appendFileSync(${JSON.stringify(notes)} + "/" + note, ${JSON.stringify("\nexternal edit\n")}); externallyEdited = true; } } };`
+      : "",
+    staleSameKey
+      ? `  const RealDate = Date; globalThis.Date = class extends RealDate { constructor(...args) { super(...(args.length ? args : ["2026-08-09T00:00:00.000Z"])); } static now() { return new RealDate("2026-08-09T00:00:00.000Z").getTime(); } };`
+      : "",
+    staleSameKey
+      ? `  const brain = await import(${JSON.stringify(path.join(REPO, "src/brain.ts"))}); brain.saveIndex({ version: brain.loadIndex().version, embeddingModel: "fixture-model", files: { "alpha/2026-08-09T00-00-00-durable-경계.md": { hash: "stale-hash", folder: "alpha", chunks: [], linksOut: [] } } });`
+      : "",
+    `  const { buildServer } = await import(${JSON.stringify(path.join(REPO, "src/mcp-server.ts"))});`,
+    `  const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");`,
+    `  const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");`,
+    `  const [ct, st] = InMemoryTransport.createLinkedPair();`,
+    `  const client = new Client({ name: "durable-capture-probe", version: "0.0.0" });`,
+    `  await Promise.all([client.connect(ct), buildServer().connect(st)]);`,
+    `  const args = { text: ${JSON.stringify(captureText)}, title: "durable 경계" };`,
+    folder === undefined ? "" : `  args.folder = ${JSON.stringify(folder)};`,
+    `  const result = await client.callTool({ name: "capture_note", arguments: args });`,
+    `  const text = result.content.map((c) => c.text ?? "").join("\\n");`,
+    `  const files = fs.readdirSync(${JSON.stringify(notes)}).filter((name) => name.endsWith(".md"));`,
+    `  process.stdout.write(JSON.stringify({ isError: result.isError ?? false, text, files }));`,
+    `  await client.close();`,
+    `})().catch((e) => { console.error(e); process.exit(1); });`,
+  ].filter(Boolean).join("\n");
+  const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+    cwd: REPO,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      HOME: path.join(root, "home"),
+      NOTES_DIR: `alpha=${notes}`,
+      BRAIN_INDEX: path.join(state, "index.json"),
+      QUERY_LOG: path.join(state, "query-log.jsonl"),
+      EMBEDDINGS_KEY: embeddingSuccess ? "fixture-key" : "",
+      EMBEDDINGS_MODEL: "fixture-model",
+      LITELLM_MASTER_KEY: "",
+      EMBED_RETRIES: "1",
+      CAPTURE_VALIDATE_TIMEOUT_MS: "20",
+    },
+  });
+  return JSON.parse(out);
+}
+
+describe("durable capture 경계 (Phase 1 C)", () => {
+  it("파일 생성 뒤 첫 색인 실패는 durable success + degraded indexing + stable source를 반환한다", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-durable-capture-"));
+    try {
+      const r = runDurableCaptureBoundaryProbe(root);
+      assert.equal(r.files.length, 1, "Markdown 정본은 한 번만 생성됨");
+      assert.equal(r.isError, false, "정본 저장 뒤 색인 실패를 전체 저장 실패로 보이면 안 됨");
+      assert.match(r.text, /status: durable/);
+      assert.match(r.text, /source: alpha\/[^\s]+\.md/);
+      assert.match(r.text, /indexing: unconfirmed \(degraded\)/);
+      assert.doesNotMatch(r.text, new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), "source는 절대경로가 아님");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("파일 생성 전 folder 경계 실패는 계속 전체 실패로 반환한다", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-prefile-capture-failure-"));
+    try {
+      const r = runDurableCaptureBoundaryProbe(root, "missing");
+      assert.equal(r.files.length, 0);
+      assert.equal(r.isError, true);
+      assert.match(r.text, /capture_note 실패/);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("같은 key의 stale hash가 있어도 신규 revision 색인 실패를 confirmed로 오판하지 않는다", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-stale-same-key-capture-"));
+    try {
+      const r = runDurableCaptureBoundaryProbe(root, undefined, true);
+      assert.equal(r.files.length, 1, "신규 Markdown 정본은 저장됨");
+      assert.equal(r.isError, false, "정본 저장은 durable success");
+      assert.match(r.text, /indexing: unconfirmed \(degraded\)/);
+      assert.doesNotMatch(r.text, /indexing: confirmed/);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("색인 commit 직후 Markdown이 external edit되면 confirmed를 0건으로 유지한다", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-capture-external-edit-"));
+    try {
+      const r = runDurableCaptureBoundaryProbe(root, undefined, false, undefined, true, true);
+      assert.equal(r.files.length, 1);
+      assert.equal(r.isError, false, "Markdown 저장 자체는 durable success");
+      assert.match(r.text, /indexing: unconfirmed \(degraded\)/);
+      assert.doesNotMatch(r.text, /indexing: confirmed/, "external edit를 confirmed로 오판하면 안 됨");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("validation skipped는 indexing skipped로 오표기하지 않고 의미를 분리한다", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-skipped-validation-status-"));
+    try {
+      const r = runDurableCaptureBoundaryProbe(root, undefined, false, "짧음", true);
+      assert.equal(r.isError, false);
+      assert.match(r.text, /indexing: completed/);
+      assert.match(r.text, /validation: skipped/);
+      assert.doesNotMatch(r.text, /indexing: skipped/);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
 // ── living-memory (specs/202607211621) — 통합 probe ─────────────────────────
 // capture/search/brief는 모듈 초기화 시 env(NOTES_DIR 등)를 읽으므로, brain.test.ts의
 // probe 패턴을 따라 자식 프로세스에서 임베딩 스텁과 함께 실행한다(외부 서버 불필요).

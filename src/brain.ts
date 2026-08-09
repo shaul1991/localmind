@@ -644,6 +644,9 @@ type SourceGuard = { key: string; fullPath: string; rootDir: string; hash: strin
 type DeletionIntent = { key: string; expectedHash: string } &
   ({ fullPath: string; rootDir: string } | { force: true });
 
+class IndexVectorIntegrityError extends Error {}
+class IndexSourceRevisionError extends Error {}
+
 /** 내부·테스트용: 인덱스 파일을 원자적으로 저장한다(락 + reload-merge + 캐시 갱신).
  * sourceGuards는 비동기 임베딩이 읽은 revision을 durable commit 직전에 다시 확인하고,
  * deletions는 reload-merge 뒤에도 삭제 의도를 유지한다. */
@@ -654,6 +657,10 @@ export function saveIndex(
 ): void {
   saveRunCount++;
   acquireLock();
+  let pendingJsonTemp = "";
+  let pendingSidecarTemp = "";
+  let uncommittedSidecar = "";
+  let jsonCommitted = false;
   try {
     let diskAtSave: BrainIndex | null = null;
     // reload-merge: 이 객체의 로드 시점 이후 다른 프로세스가 저장했으면 병합(FR-6).
@@ -758,12 +765,29 @@ export function saveIndex(
     }
     let vectorFile: string | undefined;
     if (vectors.length > 0) {
-      idx.dims ??= vectors[0].length; // 사이드카 헤더와 JSON dims 스탬프 일치(리뷰 경미-1)
+      const dims = idx.dims ?? vectors[0].length;
+      if (!Number.isInteger(dims) || dims <= 0) {
+        throw new IndexVectorIntegrityError("색인 벡터 차원이 올바른 양의 정수가 아니어서 저장하지 않았어요.");
+      }
+      for (const vector of vectors) {
+        if (!Array.isArray(vector) || vector.length !== dims) {
+          throw new IndexVectorIntegrityError(`색인 vector 차원이 dims(${dims})와 달라 저장하지 않았어요.`);
+        }
+        if (!vector.every(isFloat32Finite)) {
+          throw new IndexVectorIntegrityError(
+            "색인 vector에 Float32로 표현 가능한 유한한 숫자가 아닌 값이 있어 저장하지 않았어요.",
+          );
+        }
+      }
+      idx.dims = dims; // 사이드카 헤더와 JSON dims 스탬프 일치(리뷰 경미-1)
       const gen = `${Date.now().toString(36)}-${process.pid}-${sidecarGenCounter++}`;
       vectorFile = `${path.basename(INDEX_PATH)}.vec-${gen}`;
       const scTmp = `${sidecarAbs(vectorFile)}.tmp-${process.pid}`;
+      pendingSidecarTemp = scTmp;
       fs.writeFileSync(scTmp, buildSidecar(vectors, idx.dims));
       fs.renameSync(scTmp, sidecarAbs(vectorFile));
+      pendingSidecarTemp = "";
+      uncommittedSidecar = sidecarAbs(vectorFile);
     }
     // temp 이름에 pid를 붙여, 락 경합의 극단(동시 stale 강제 해제)에서도 서로의 temp를
     // 밟지 않는다(021 self-review 결함 5 관례).
@@ -771,8 +795,28 @@ export function saveIndex(
     // 필드(예: 024 bindings)가 저장에서 조용히 탈락한다(리뷰 경미-2). LOAD_STAT은
     // Symbol 키라 JSON.stringify가 자동 제외.
     const tmp = `${INDEX_PATH}.tmp-${process.pid}`;
+    pendingJsonTemp = tmp;
     fs.writeFileSync(tmp, JSON.stringify({ ...idx, vectorFile, files: filesOut }));
+
+    // 직렬화가 오래 걸리는 동안 source가 바뀔 수 있으므로 JSON temp까지 준비한 뒤 같은 lock
+    // 안에서 guarded entry를 다시 확인한다. 이 확인과 바로 다음 rename 사이의 외부 writer
+    // race까지 없앨 수는 없지만, lock 안 commit 경계를 이 두 동작으로 최소화한다.
+    for (const guard of sourceGuards) {
+      if (idx.files[guard.key]?.hash !== guard.hash) continue;
+      let currentHash: string;
+      try {
+        currentHash = sha(fs.readFileSync(guard.fullPath, "utf8"));
+      } catch {
+        throw new IndexSourceRevisionError("색인 저장 직전에 노트 revision을 다시 확인할 수 없어 저장하지 않았어요.");
+      }
+      if (currentHash !== guard.hash) {
+        throw new IndexSourceRevisionError("색인 저장 중 노트 revision이 변경되어 stale 색인을 저장하지 않았어요.");
+      }
+    }
     fs.renameSync(tmp, INDEX_PATH); // 단일 커밋점
+    pendingJsonTemp = "";
+    jsonCommitted = true;
+    uncommittedSidecar = "";
     idx.vectorFile = vectorFile; // 인메모리 객체도 최신 참조 유지(캐시 정합)
     gcSidecars(vectorFile ?? null);
     migrationPending = false; // v4→v5 전환분이 영속됨(specs/023 FR-4)
@@ -786,7 +830,18 @@ export function saveIndex(
       cachedIndex = null;
       cachedStat = null;
     }
-  } catch {
+  } catch (error) {
+    if (!jsonCommitted) {
+      for (const artifact of [pendingJsonTemp, pendingSidecarTemp, uncommittedSidecar]) {
+        if (!artifact) continue;
+        try { fs.rmSync(artifact, { force: true }); } catch { /* 원래 실패를 보존 */ }
+      }
+      // 호출자가 cached object 자체를 수정해 넘겼을 수 있다. 실패한 candidate가 후속 조회에
+      // 보이지 않도록 durable JSON에서 다시 읽게 한다.
+      cachedIndex = null;
+      cachedStat = null;
+    }
+    if (error instanceof IndexVectorIntegrityError || error instanceof IndexSourceRevisionError) throw error;
     throw indexStorageError();
   } finally {
     releaseLock();
@@ -913,6 +968,50 @@ function sha(s: string): string {
   return crypto.createHash("sha256").update(s).digest("hex");
 }
 
+function isFloat32Finite(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && Number.isFinite(Math.fround(value));
+}
+
+function validateEmbeddingResponse(payload: unknown, expectedRows: number): number[][] {
+  const data = (payload as { data?: unknown } | null)?.data;
+  if (!Array.isArray(data) || data.length !== expectedRows) {
+    throw new Error(`임베딩 응답의 행 수가 입력 수(${expectedRows})와 같지 않아요.`);
+  }
+
+  const ordered = new Array<number[]>(expectedRows);
+  const seen = new Set<number>();
+  let dimensions: number | undefined;
+  for (const rawRow of data) {
+    const row = rawRow as { index?: unknown; embedding?: unknown } | null;
+    const index = row?.index;
+    if (!Number.isInteger(index) || (index as number) < 0 || (index as number) >= expectedRows) {
+      throw new Error(`임베딩 응답의 index가 0..${expectedRows - 1} 범위를 벗어났어요.`);
+    }
+    if (seen.has(index as number)) {
+      throw new Error("임베딩 응답의 index가 중복됐어요.");
+    }
+    seen.add(index as number);
+
+    const vector = row?.embedding;
+    if (!Array.isArray(vector) || vector.length === 0) {
+      throw new Error("임베딩 응답의 embedding이 비어 있어요.");
+    }
+    if (!vector.every(isFloat32Finite)) {
+      throw new Error("임베딩 응답의 embedding은 모두 Float32로 표현 가능한 유한한 숫자여야 해요.");
+    }
+    if (dimensions === undefined) dimensions = vector.length;
+    else if (vector.length !== dimensions) {
+      throw new Error("임베딩 응답의 행마다 embedding 차원이 달라요.");
+    }
+    ordered[index as number] = vector as number[];
+  }
+
+  for (let index = 0; index < expectedRows; index++) {
+    if (!seen.has(index)) throw new Error(`임베딩 응답의 index ${index}가 누락됐어요.`);
+  }
+  return ordered;
+}
+
 async function embed(texts: string[]): Promise<number[][]> {
   if (!texts.length) return [];
   if (!EMB_KEY) {
@@ -933,8 +1032,8 @@ async function embed(texts: string[]): Promise<number[][]> {
         signal: AbortSignal.timeout(timeoutMs), // 행 방지: 요청 타임아웃 후 재시도
       });
       if (!res.ok) throw new Error(`embeddings HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
-      const j: any = await res.json();
-      return (j.data as any[]).sort((a, b) => a.index - b.index).map((d) => d.embedding as number[]); // index 순서 보존
+      const payload: unknown = await res.json();
+      return validateEmbeddingResponse(payload, texts.length); // provider 행 순서와 무관하게 index 순서로 반환
     } catch (e) {
       lastErr = e;
       if (i < attempts - 1) await new Promise((r) => setTimeout(r, 1500 * (i + 1))); // 백오프
@@ -1062,6 +1161,7 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
   }));
 
   if (pending.length) {
+    let progressDirty = false;
     const sourceStillMatches = (p: (typeof pending)[number]): boolean => {
       try {
         return sha(fs.readFileSync(p.fullPath, "utf8")) === p.hash;
@@ -1076,8 +1176,10 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
       vecs.set(p.key, new Array(p.chunks.length));
       remaining.set(p.key, p.chunks.length);
       // 빈 파일 즉시 커밋(청크 없어도 링크는 추출·저장)
-      if (p.chunks.length === 0 && sourceStillMatches(p))
+      if (p.chunks.length === 0 && sourceStillMatches(p)) {
         idx.files[p.key] = { hash: p.hash, folder: p.folder, chunks: [], linksOut: p.linksOut };
+        progressDirty = true;
+      }
     }
 
     type Ref = { key: string; ci: number; text: string };
@@ -1100,7 +1202,15 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
       while (cursor < batches.length) {
         const batch = batches[cursor++];
         const out = await embed(batch.map((r) => r.text));
-        if (idx.dims === undefined && out.length) idx.dims = out[0].length; // 차원 기록(013 FR-5)
+        if (out.length) {
+          const batchDims = out[0].length;
+          if (idx.dims !== undefined && batchDims !== idx.dims) {
+            throw new Error(`임베딩 batch 차원(${batchDims})이 색인 차원(${idx.dims})과 달라 반영하지 않았어요.`);
+          }
+          // await 뒤 첫 continuation이 동기적으로 차원을 고정한다. 다른 worker는 vecs나
+          // idx.files를 바꾸기 전에 이 값을 비교하므로 concurrent batch도 혼합되지 않는다.
+          idx.dims ??= batchDims;
+        }
         for (let j = 0; j < batch.length; j++) {
           const r = batch[j];
           vecs.get(r.key)![r.ci] = out[j];
@@ -1115,6 +1225,7 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
               chunks: p.chunks.map((c, k) => ({ path: r.key, text: c, vector: vecs.get(r.key)![k]! })),
               linksOut: p.linksOut,
             };
+            progressDirty = true;
           }
         }
         // specs/021 FR-1 — 진행 저장 시간 스로틀: 저장은 색인 전량 직렬화라 비용이 색인
@@ -1139,7 +1250,7 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
       // 파일 전량을 저장한다(유실 상한이 스로틀로 나빠지지 않게). 성공 경로에서는
       // 저장하지 않는다 — 말미(프루닝 후) 저장이 전량 기록하므로 여기서도 저장하면
       // 성공할 때마다 색인 전량 쓰기가 1회 낭비된다.
-      if (!completed) saveIndex(idx, sourceGuards);
+      if (!completed && progressDirty) saveIndex(idx, sourceGuards);
     }
   }
 
@@ -1385,6 +1496,12 @@ async function searchNotesInternal(query: string, limit: number, folder?: string
     );
     resetIndex();
     idx = await ensureIndexed();
+    if (idx.dims !== undefined && qv.length !== idx.dims) {
+      throw new Error(
+        `query 임베딩 차원이 재색인 후에도 색인 차원과 달라 결과를 반환하지 않아요 ` +
+          `(query ${qv.length}, index ${idx.dims}).`,
+      );
+    }
   }
   const hits: NoteHit[] = [];
   for (const fe of Object.values(idx.files)) {
@@ -1435,7 +1552,13 @@ async function prepareDeterministicIndex(orderedFixturePaths: readonly string[])
     const key = `${f.label}/${path.relative(f.dir, full)}`;
     const chunks = chunkText(text);
     const vectors = chunks.length ? await embed(chunks) : [];
-    if (idx.dims === undefined && vectors.length) idx.dims = vectors[0].length;
+    if (vectors.length) {
+      const batchDims = vectors[0].length;
+      if (idx.dims !== undefined && batchDims !== idx.dims) {
+        throw new Error(`임베딩 batch 차원(${batchDims})이 색인 차원(${idx.dims})과 달라 반영하지 않았어요.`);
+      }
+      idx.dims ??= batchDims;
+    }
     idx.files[key] = {
       hash: sha(text),
       folder: f.label,
@@ -1538,8 +1661,18 @@ export async function capture(
   noteTags?: string[],
   decision?: DecisionInput,
 ): Promise<CaptureResult> {
+  const target = folder === undefined ? FOLDERS[0] : FOLDER_BY_LABEL.get(folder);
+  if (!target) {
+    const available = [...new Set(FOLDERS.map((f) => {
+      const label = f.label.trim();
+      return /^[\p{L}\p{N}][\p{L}\p{N}._-]{0,63}$/u.test(label) ? label : "unknown";
+    }))].join(", ");
+    throw new Error(
+      `요청한 노트 폴더 라벨을 사용할 수 없어요. 사용 가능한 폴더 라벨: ${available || "없음"}. ` +
+        "먼저 whoami로 이 두뇌의 폴더 라벨을 확인해 주세요.",
+    );
+  }
   ensureDirs();
-  const target = (folder && FOLDER_BY_LABEL.get(folder)) || FOLDERS[0];
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const slug =
     (title ?? text)
@@ -1552,8 +1685,10 @@ export async function capture(
   const decisionLines = decision ? buildDecisionFrontmatterLines(decision, isoDate) : undefined;
   const frontmatter = buildNoteFrontmatter(title ?? slug, isoDate, noteTags, decisionLines);
   const body = title ? `${frontmatter}# ${title}\n\n${text}\n` : `${frontmatter}${text}\n`;
+  const bodyHash = sha(body);
   // 배타적 생성 — 같은 초에 같은 제목으로 캡처해도 먼저 저장된 노트를 덮어쓰지 않는다(013 FR-8).
   const fname = createNoteFile(target.dir, `${ts}-${slug}`.slice(0, 80) + ".md", body);
+  const sourcePath = path.join(target.dir, fname);
 
   const key = `${target.label}/${fname}`;
 
@@ -1562,10 +1697,18 @@ export async function capture(
 
   // 텍스트가 너무 짧으면 검증 생략
   if (!extractSearchQuery(text)) {
-    await ensureIndexed();
-    const skipped: CaptureResult = { path: key, validationStatus: "skipped", retried: false, ...(tags && { tags }) };
-    logCapture(skipped, title ?? text.slice(0, 50), target.label);
-    return skipped;
+    try {
+      await ensureIndexed();
+      const skipped: CaptureResult = { path: key, validationStatus: "skipped", retried: false, ...(tags && { tags }) };
+      logCapture(skipped, title ?? text.slice(0, 50), target.label);
+      return skipped;
+    } catch {
+      // Markdown 정본은 이미 배타 생성됐다. 파생 색인 실패를 전체 저장 실패로 승격하면
+      // 호출 AI가 같은 내용을 다시 capture해 중복 정본을 만든다.
+      const degraded: CaptureResult = { path: key, validationStatus: "unconfirmed", retried: false, ...(tags && { tags }) };
+      logCapture(degraded, title ?? text.slice(0, 50), target.label);
+      return degraded;
+    }
   }
 
   const VALIDATE_TIMEOUT_MS = Number(process.env.CAPTURE_VALIDATE_TIMEOUT_MS ?? 3000);
@@ -1573,13 +1716,17 @@ export async function capture(
   // 직접 인덱스 확인 (similarity search보다 정확하고 추가 임베딩 API 호출 없음)
   const checkIndexed = (): boolean => {
     try {
-      return !!loadIndex().files[key];
+      return loadIndex().files[key]?.hash === bodyHash && sha(fs.readFileSync(sourcePath, "utf8")) === bodyHash;
     } catch {
       return false;
     }
   };
 
-  await ensureIndexed();
+  try {
+    await ensureIndexed();
+  } catch {
+    // 아래의 stable-source 직접 확인과 1회 재시도로 이어진다. 파일 저장은 이미 durable하다.
+  }
 
   let found = checkIndexed();
   let retried = false;

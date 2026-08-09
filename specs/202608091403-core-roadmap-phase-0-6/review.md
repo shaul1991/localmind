@@ -2,14 +2,14 @@
 
 ## 현재 판정
 
-**진행 중** — Phase 0 기준선이 검증됐고 Phase 1 구현을 시작한다.
+**진행 중** — Phase 1 첫 유용 결과 신뢰성이 blocker 0으로 검증됐고 Phase 2 복구 내구성을 시작한다.
 
 ## Phase 커밋
 
 | Phase | Commit | 검증 | 판정 |
 |---|---|---|---|
 | 0 | 현재 커밋 | `npm test` 215 pass, shell fixture 전체 통과, typecheck·build 성공 | 통과 |
-| 1 | 대기 | setup/capture/embedding | 대기 |
+| 1 | 이 커밋 | setup 54 fixture, MCP smoke 9, 전체 247 test, shell/typecheck/build | 통과 |
 | 2 | 대기 | recovery/concurrency | 대기 |
 | 3 | 대기 | retrieval-quality | 대기 |
 | 4 | 대기 | brief/lifecycle/scope | 대기 |
