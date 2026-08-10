@@ -9,9 +9,11 @@
 5. **Phase 4:** brief precision → supersession → stale-on-contact와 scope isolation을 수직 TDD로 구현한다.
 6. **Phase 5:** 지원 행렬·self-host 보안 문서와 운영 fault fixture를 구현한다.
 7. **Phase 6:** append-only lifecycle과 privacy-preserving evidence/cadence 계약을 구현한다.
-8. 전체 diff를 독립 spec/품질/보안/동시성 관점에서 검토하고 blocker를 해당 Phase 커밋에 squash한다.
-9. 정확히 7개 Phase 커밋을 push하고 한국어 Draft PR 하나를 만든다.
-10. full SHA의 CI와 GitHub 모든 리뷰 표면을 확인하며 merge하지 않는다.
+8. 각 Phase diff를 독립 spec/품질/보안/동시성 관점에서 검토하고 blocker를 해당 Phase
+   `[verified]` 커밋 전에 닫는다.
+9. Phase 0·1은 선행 PR로 병합하고, Phase 2~6의 정확히 5개 `[verified]` 커밋은 후속
+   feature branch에 누적해 한국어 Draft PR로 제출한다.
+10. 각 PR full SHA의 CI와 GitHub 모든 리뷰 표면을 확인하고 사람의 명시적 승인으로만 merge한다.
 
 ## 공통 TDD
 

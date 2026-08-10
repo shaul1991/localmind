@@ -138,6 +138,130 @@ run_backup "$TMP/bin-ok" "$D8"
 assert "050 I-1: _bindings/ gitignore 시드" 'grep -qxF "_bindings/" "$D8/.gitignore"'
 assert "050 I-1: _bindings/가 백업 커밋에 포함되지 않는다" '! git -C "$D8" ls-files | grep -q "^_bindings/"'
 
+# ── Phase 2 review: custom derived paths도 backup generation에서 제거 ────────
+D9="$TMP/notes9"; new_repo "$D9" ""
+echo "정본" > "$D9/note.md"
+for p in custom-index.data custom-index.data.vec-old custom-index.data.tmp-old custom-index.data.lock custom-index.data.lock.guard private-searches.jsonl; do
+  echo "derived" > "$D9/$p"
+done
+git -C "$D9" add -A; git -C "$D9" commit -qm "fixture: pretracked custom derived files"
+ENV9="$TMP/custom-derived.env"
+printf 'BRAIN_INDEX=%s\nQUERY_LOG=%s\n' "$D9/custom-index.data" "$D9/private-searches.jsonl" > "$ENV9"
+run_backup "$TMP/bin-ok" "$D9" LOCALMIND_ENV_FILE="$ENV9"
+assert "custom BRAIN_INDEX/.env의 index·vector·temp·lock·guard를 commit에서 제거" \
+  'for p in custom-index.data custom-index.data.vec-old custom-index.data.tmp-old custom-index.data.lock custom-index.data.lock.guard; do ! git -C "$D9" cat-file -e "HEAD:$p" 2>/dev/null || exit 1; done'
+assert "custom QUERY_LOG/.env opt-out 경로를 commit에서 제거" \
+  '! git -C "$D9" cat-file -e HEAD:private-searches.jsonl 2>/dev/null'
+run_backup "$TMP/bin-host" "$D9" LOCALMIND_ENV_FILE="$ENV9" BACKUP_QUERY_LOG=1
+assert ".env-only custom QUERY_LOG opt-in은 effective 경로의 실제 로그를 백업" \
+  'grep -q "derived" "$D9"/query-log.*.jsonl 2>/dev/null'
+
+D10="$TMP/notes10"; new_repo "$D10" ""
+echo "정본" > "$D10/note.md"
+echo "derived" > "$D10/env-index.bin"
+echo "private" > "$D10/env-query.jsonl"
+git -C "$D10" add -A; git -C "$D10" commit -qm "fixture: env pretracked derived files"
+run_backup "$TMP/bin-ok" "$D10" BRAIN_INDEX="$D10/env-index.bin" QUERY_LOG="$D10/env-query.jsonl"
+assert "직접 env custom index/query 경로도 commit에서 제거" \
+  '! git -C "$D10" cat-file -e HEAD:env-index.bin 2>/dev/null && ! git -C "$D10" cat-file -e HEAD:env-query.jsonl 2>/dev/null'
+
+TILDE_HOME="$TMP/tilde-home"; D12="$TILDE_HOME/vault"; mkdir -p "$TILDE_HOME"; new_repo "$D12" ""
+printf 'idx\n' > "$D12/tilde-index.bin"
+printf 'query\n' > "$D12/tilde-query.jsonl"
+git -C "$D12" add -A; git -C "$D12" commit -qm tilde-derived-fixture
+TILDE_ENV="$TMP/tilde.env"
+printf 'BRAIN_INDEX=~/vault/tilde-index.bin\nQUERY_LOG=~/vault/tilde-query.jsonl\n' > "$TILDE_ENV"
+set +e
+run_backup "$TMP/bin" "$D12" LOCALMIND_ENV_FILE="$TILDE_ENV" HOME="$TILDE_HOME"
+TILDE_OUT="$OUT"; TILDE_RC="$RC"
+set -e
+assert "tilde custom path backup도 성공" '[ "$TILDE_RC" -eq 0 ]'
+assert "Bash 3.2 literal ~/ custom index/query를 HOME 기준으로 제거" \
+  '! git -C "$D12" cat-file -e HEAD:tilde-index.bin 2>/dev/null && ! git -C "$D12" cat-file -e HEAD:tilde-query.jsonl 2>/dev/null'
+run_backup "$TMP/bin-host" "$D12" LOCALMIND_ENV_FILE="$TILDE_ENV" HOME="$TILDE_HOME" BACKUP_QUERY_LOG=1
+assert ".env literal ~/ QUERY_LOG opt-in은 HOME 확장 경로의 실제 로그를 백업" \
+  'grep -q "query" "$D12"/query-log.*.jsonl 2>/dev/null'
+
+D11="$TMP/notes11"; new_repo "$D11" ""
+echo "정본" > "$D11/note.md"; echo "derived" > "$D11/custom-index.data"
+git -C "$D11" add -A; git -C "$D11" commit -qm "fixture: resolver failure"
+BEFORE11="$(git -C "$D11" rev-parse HEAD)"
+mkdir -p "$TMP/bin-resolver-fail"; cp "$TMP/bin-ok/npm" "$TMP/bin-resolver-fail/npm"
+printf '#!/bin/sh\nexit 1\n' > "$TMP/bin-resolver-fail/node"; chmod +x "$TMP/bin-resolver-fail/node"
+set +e
+run_backup "$TMP/bin-resolver-fail" "$D11" BRAIN_INDEX="$D11/custom-index.data"
+set -e
+assert "custom derived path resolver 실패는 publish 전 core exit 2" '[ "$RC" -eq 2 ]'
+assert "resolver 실패는 새 backup commit·완료 메시지를 만들지 않음" \
+  '[ "$(git -C "$D11" rev-parse HEAD)" = "$BEFORE11" ] && ! printf %s "$OUT" | grep -q "백업 완료"'
+
+# ── Phase 2 second review: nested host identity와 .gitignore publish 경계 ──────
+D13="$TMP/notes13"; new_repo "$D13" ""
+mkdir -p "$D13/nested/deeper"
+echo "정본" > "$D13/note.md"
+echo "host-a" > "$D13/nested/.localmind-brain-id"
+echo "temp-host" > "$D13/nested/deeper/.localmind-brain-id.tmp-old"
+git -C "$D13" add -A; git -C "$D13" commit -qm "fixture: pretracked nested host markers"
+run_backup "$TMP/bin-ok" "$D13"
+assert "nested canonical root의 tracked marker/temp marker를 다음 backup commit에서 재귀 제거" \
+  '[ "$RC" -eq 0 ] && ! git -C "$D13" ls-tree -r --name-only HEAD | grep -qE "(^|/)\\.localmind-brain-id(\\.tmp-.*)?$"'
+
+D14="$TMP/notes14"; new_repo "$D14" ""
+echo "정본" > "$D14/note.md"
+echo "derived" > "$D14/.brain-index.json"
+git -C "$D14" add -A; git -C "$D14" commit -qm "fixture: pretracked derived with bad gitignore boundary"
+BEFORE14="$(git -C "$D14" rev-parse HEAD)"
+mkdir "$D14/.gitignore"
+set +e
+run_backup "$TMP/bin-ok" "$D14"
+set -e
+assert ".gitignore가 regular non-symlink file이 아니면 publish 전 core exit 2" '[ "$RC" -eq 2 ]'
+assert ".gitignore 기록 실패는 새 commit·완료 메시지·derived 재봉인을 만들지 않음" \
+  '[ "$(git -C "$D14" rev-parse HEAD)" = "$BEFORE14" ] && ! printf %s "$OUT" | grep -q "백업 완료"'
+
+D15="$TMP/notes15"; new_repo "$D15" ""
+echo "정본" > "$D15/note.md"
+echo "derived" > "$D15/.brain-index.json"
+git -C "$D15" add -A; git -C "$D15" commit -qm "fixture: symlink gitignore boundary"
+BEFORE15="$(git -C "$D15" rev-parse HEAD)"
+OUTSIDE15="$TMP/outside-gitignore-target"; printf 'outside-canary\n' > "$OUTSIDE15"
+ln -s "$OUTSIDE15" "$D15/.gitignore"
+set +e
+run_backup "$TMP/bin-ok" "$D15"
+set -e
+assert ".gitignore symlink는 target을 열기 전에 core exit 2" '[ "$RC" -eq 2 ]'
+assert ".gitignore symlink target bytes와 repo HEAD를 보존하고 완료를 억제" \
+  '[ "$(<"$OUTSIDE15")" = "outside-canary" ] && [ "$(git -C "$D15" rev-parse HEAD)" = "$BEFORE15" ] && ! printf %s "$OUT" | grep -q "백업 완료"'
+
+# ── Phase 2 latest review: custom path metachar는 canonical 이웃을 건드리지 않는다 ─
+D16="$TMP/notes16"; new_repo "$D16" ""
+printf 'canonical-star\n' > "$D16/canonical-note.md"
+printf 'derived-index\n' > "$D16/canonical*.md"
+printf 'derived-temp\n' > "$D16/canonical*.md.tmp-old"
+printf 'canonical-query\n' > "$D16/privateA.jsonl"
+printf 'derived-query\n' > "$D16/private?.jsonl"
+git -C "$D16" add -A; git -C "$D16" commit -qm "fixture: metachar derived paths"
+run_backup "$TMP/bin-ok" "$D16" BRAIN_INDEX="$D16/canonical*.md" QUERY_LOG="$D16/private?.jsonl"
+assert "custom metachar index/query는 exact derived bytes와 suffix만 제거" \
+  '[ "$RC" -eq 0 ] && ! git -C "$D16" cat-file -e "HEAD:canonical*.md" 2>/dev/null && ! git -C "$D16" cat-file -e "HEAD:canonical*.md.tmp-old" 2>/dev/null && ! git -C "$D16" cat-file -e "HEAD:private?.jsonl" 2>/dev/null'
+assert "custom metachar path가 canonical 이웃의 HEAD·worktree bytes를 보존" \
+  '[ "$(git -C "$D16" show HEAD:canonical-note.md)" = "canonical-star" ] && [ "$(<"$D16/canonical-note.md")" = "canonical-star" ] && [ "$(git -C "$D16" show HEAD:privateA.jsonl)" = "canonical-query" ]'
+assert ".gitignore literal rule은 metachar derived만 ignore하고 canonical 이웃은 ignore하지 않음" \
+  'git -C "$D16" check-ignore -q --no-index -- "canonical*.md" && git -C "$D16" check-ignore -q --no-index -- "private?.jsonl" && ! git -C "$D16" check-ignore -q --no-index -- canonical-note.md && ! git -C "$D16" check-ignore -q --no-index -- privateA.jsonl'
+
+D17="$TMP/notes17"; new_repo "$D17" ""
+printf 'canonical-control\n' > "$D17/canonical.md"
+git -C "$D17" add -A; git -C "$D17" commit -qm "fixture: control path rejection"
+BEFORE17="$(git -C "$D17" rev-parse HEAD)"
+CONTROL_INDEX="$D17/bad
+index.bin"
+set +e
+run_backup "$TMP/bin-ok" "$D17" BRAIN_INDEX="$CONTROL_INDEX"
+set -e
+assert "control-character custom path는 publish 전 core exit 2" '[ "$RC" -eq 2 ]'
+assert "control-character rejection은 canonical HEAD·bytes 보존과 완료 억제" \
+  '[ "$(git -C "$D17" rev-parse HEAD)" = "$BEFORE17" ] && [ "$(<"$D17/canonical.md")" = "canonical-control" ] && ! printf %s "$OUT" | grep -q "백업 완료"'
+
 echo ""
 echo "015 backup 결과: $pass 통과, $fail 실패"
 [ "$fail" -eq 0 ]

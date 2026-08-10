@@ -15,8 +15,8 @@ RAG 합성·검증, 질의 이벤트 싱크로 분리한다. 기존 `src/brain.t
 
 - 현재 모듈은 약 1,800줄이며 설정 해석부터 파일 시스템 감시, 색인 저장, 검색, 캡처,
   답변 생성·검증, 질의 로그까지 담당한다.
-- 색인 v5는 JSON과 바이너리 vector sidecar를 함께 사용한다. v4는 벡터를 재생성하지 않고
-  v5 인메모리 표현으로 읽은 뒤 다음 저장에서 영속화한다.
+- 색인 v5는 JSON과 바이너리 vector sidecar를 함께 사용한다. digest 없는 v4/v5는 파생
+  payload를 신뢰하지 않고 canonical Markdown에서 clean rebuild한 뒤에만 영속화한다.
 - 프로세스 내 캐시·single-flight와 프로세스 간 파일 락·병합이 함께 데이터 일관성을 지킨다.
 - 안전한 색인 정리는 스캔 성공 라벨, fallback 모드, 명시적 orphan prune, 폴더 rebind
   보존·수락 규칙에 의존한다.
@@ -36,13 +36,15 @@ RAG 합성·검증, 질의 이벤트 싱크로 분리한다. 기존 `src/brain.t
   유지하고 FolderConfig로 복제하지 않는다. 추출한 다른 Brain 경계는 `process.env`를 직접 읽거나 같은
   기본값을 다시 해석하지 않는다.
   → goal: Objective / Constraints
-- [ ] **FR-3 (IndexStore 상태 소유)**: 색인 JSON 읽기·쓰기, v4→v5 무재임베딩 hydration,
-  v5 sidecar 읽기·세대 생성·자가치유·정리, 원자적 교체, 파일 락, 저장 시 최신 디스크 병합,
-  캐시·stat snapshot·migration flag를 IndexStore가 단독 소유한다.
+- [ ] **FR-3 (IndexStore 상태 소유)**: 색인 JSON 읽기·쓰기, v4/무-digest v5 clean-rebuild 상태,
+  v5 sidecar 읽기·세대 생성·자가치유·정리, 원자적 교체와 post-commit canonical rollback, 파일 락,
+  load-baseline three-way binding merge를 포함한 최신 디스크 병합, 캐시·stat snapshot·migration flag를
+  IndexStore가 단독 소유한다.
   → goal: Objective / Success metrics 2·3·5
 - [ ] **FR-4 (Indexer 실행 소유)**: 프로세스 내 single-flight, 폴더 scan, 변경·삭제 판정,
   임베딩 배치, fallback prune guard, orphan prune, rebind preserve/adopt, reindex summary,
-  watcher가 촉발하는 재색인을 Indexer가 단독 소유한다. Indexer는 저장 세부를 IndexStore의
+  watcher-triggered indexing과 awaitable ready/close state를 Indexer가 단독 소유한다. close는 active
+  callback을 drain하고 pre-closed watcher를 다시 기다리지 않는다. Indexer는 저장 세부를 IndexStore의
   인터페이스로만 사용한다.
   → goal: Objective / Success metrics 2·3
 - [ ] **FR-5 (Retriever 경계)**: 질의 embedding, 현재 cosine 점수·folder filter·정렬·limit,
@@ -73,8 +75,8 @@ RAG 합성·검증, 질의 이벤트 싱크로 분리한다. 기존 `src/brain.t
   같은 포트를 사용한다. chunk 분할, 링크 추출·해결, frontmatter 생성·파싱 같은 순수 로직은 별도
   유틸리티로 재사용하되 기존 export와 결과를 그대로 유지한다.
   → goal: Objective / Non-goals
-- [ ] **FR-11 (무마이그레이션 배포)**: 기존 v4/v5 fixture와 실제 v5 색인은 별도 변환 명령,
-  전량 재색인 또는 임베딩 재생성 없이 새 구조에서 사용 가능해야 한다.
+- [ ] **FR-11 (별도 migration command 없는 배포)**: digest가 있는 기존 v5는 재생성 없이
+  사용하고, v4/무-digest v5는 현재 자동 clean-rebuild 경로를 그대로 사용해야 한다.
   → goal: Success metrics 4·5 / Constraints
 - [ ] **FR-12 (구조적 테스트 가능성)**: 각 경계는 실제 파일 시스템·embedding·gateway·시계·
   이벤트 싱크를 기존 방식과 호환되는 좁은 포트로 주입할 수 있어야 하며, 프로덕션 기본 배선은
@@ -128,15 +130,17 @@ additive export가 생겼다면 그것도 동일하게 facade에 유지하며 �
   curator tagging과 scanner 제외 판정을 비교하면, Then direct-Brain module-load 값은 import 당시 값, direct call-time
   getter와 기존 agent registry/runtime resolver는 다음 호출의 변경값을 반영해 바이트/구조 차이가 없다.
   → FR-1·2·11
-- [ ] **AC-3 (v4→v5 무재임베딩)**: Given 정상 v4 inline-vector fixture와 손상 벡터 edge
-  fixture, When load 후 기존 저장 흐름을 실행하면, Then 정상 벡터는 재임베딩 호출 없이 v5
-  JSON+sidecar로 보존되고 손상 항목의 현재 자가치유 동작도 동일하다. → FR-3·11
+- [ ] **AC-3 (v4→v5 authenticated clean rebuild)**: Given hash는 맞지만 chunk/vector/`folder` 의미가
+  손상된 v4/v5 fixture, When load 후 기존 저장 흐름을 실행하면, Then canonical Markdown 재임베딩으로
+  digest가 있는 v5가 된다. root unavailable, progress batch root-loss, actual JSON rename root/source
+  identity drift 대조군은 non-zero이고 이전 generation bytes가 불변이다. → FR-3·11
 - [ ] **AC-4 (v5 sidecar 경합·자가치유)**: Given 정상·누락·header 불일치 sidecar와 JSON
   parse 직후 다른 세대가 commit되는 fixture, When IndexStore가 load/save하면, Then 현재 재파싱,
   세대 채택, 자가치유, 이전 세대 정리 불변식이 동일하다. → FR-3
 - [ ] **AC-5 (다중 프로세스 병합)**: Given 두 격리 프로세스가 같은 색인을 읽고 서로 다른
   노트를 갱신하며 저장 순서를 경합시키면, When 둘 다 종료한 뒤 새 프로세스가 색인을 읽으면,
-  Then 양쪽 항목과 벡터가 남고 lock·stale-lock 처리 및 sidecar 참조가 유효하다. → FR-3·11
+  Then 양쪽 항목과 벡터가 남고 lock·stale-lock 처리 및 sidecar 참조가 유효하다. same-label binding은
+  ours unchanged/disk changed면 disk를 보존하고 양쪽이 다르게 changed면 명시적 conflict다. → FR-3·11
 - [ ] **AC-6 (single-flight)**: Given watcher와 둘 이상의 호출자가 동시에 색인을 요청하면,
   When 첫 실행이 완료될 때까지 겹쳐 호출하면, Then 실제 scan/embedding 실행은 1회이고 모두 같은
   완료 결과를 받는다. → FR-4·9
@@ -149,9 +153,10 @@ additive export가 생겼다면 그것도 동일하게 facade에 유지하며 �
 - [ ] **AC-9 (캡처 충돌·검증)**: Given 같은 시각·제목으로 반복되는 캡처와 태그·검증 성공/실패
   fixture, When capture를 연속 실행하면, Then 파일을 덮어쓰지 않고 현재 이름 충돌 회피,
   frontmatter, validation status, 태그 vocabulary cache, 색인 갱신 결과를 보존한다. → FR-6
-- [ ] **AC-10 (watcher·삭제)**: Given 생성·수정·삭제 watcher 이벤트와 명시적 delete 요청,
-  When debounce 이후 처리하면, Then 파일 존재 시 재색인, 부재 시 색인 제거, 명시적 삭제 시
-  상대경로를 보존한 휴지통 이동과 공개 result union이 현재와 동일하다. → FR-4·6
+- [ ] **AC-10 (watcher·삭제)**: Given 생성·수정·삭제 watcher 이벤트, 이미 `close` event가 발생한
+  watcher, active reindex callback과 명시적 delete 요청, When debounce/close/delete를 처리하면,
+  Then 파일 존재 시 재색인, 부재 시 색인 제거, close는 유한 시간에 callback을 drain하고, 명시적
+  삭제는 상대경로를 보존한 휴지통 이동과 공개 result union이 현재와 동일하다. → FR-4·6
 - [ ] **AC-11 (검색·RAG 호환)**: Given 고정 embedding·gateway·verification adapter와 동일
   색인, When search와 ask를 실행하면, Then hit 순서·score·source, 합성 프롬프트, 검증
   pass/warn/skipped, 사용자 응답 및 오류 동작이 기준값과 동일하다. → FR-5·7

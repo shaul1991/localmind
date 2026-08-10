@@ -37,9 +37,11 @@ async function main() {
 
   const watcher = watchNotes();
 
+  let shuttingDown = false;
   const shutdown = () => {
-    watcher.close();
-    process.exit(0);
+    if (shuttingDown) return;
+    shuttingDown = true;
+    void watcher.close().finally(() => process.exit(0));
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);

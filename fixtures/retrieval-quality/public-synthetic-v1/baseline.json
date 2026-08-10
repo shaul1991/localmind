@@ -1,0 +1,15 @@
+{
+  "schema": "localmind.retrieval-baseline.v1",
+  "corpusId": "public-synthetic-v1",
+  "k": 5,
+  "minimum": {
+    "hitAtK": 1,
+    "mrrAtK": 1,
+    "relevantRecallAtK": 1,
+    "expectedDocumentCoverage": 1
+  },
+  "maximum": {
+    "noMatchFalsePositiveRate": 1
+  },
+  "note": "Phase 3 최초 baseline. no-match threshold는 아직 production 검색 계약이 아니므로 관측값 1을 허용한다."
+}

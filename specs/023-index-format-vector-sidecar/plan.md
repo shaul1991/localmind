@@ -28,14 +28,19 @@ goal: [goal.md](goal.md) · spec: [spec.md](spec.md)
     유예(keep=2)** — 락 없는 reader가 옛 gen 참조를 쥔 채 GC당하는 경합 흡수(FR-2).
   - `loadIndex`: v5 분기(JSON 파싱 → 사이드카 읽어 slot→vector 부착 → 헤더·범위 검증).
     **사이드카 부재 시 JSON 1회 재파싱** — `vectorFile`이 새 gen이면 양성 경합으로 그것을
-    읽고, 재시도 후에도 실패면 FR-3 자가치유(영향 파일 제거). v4 분기(FR-4 무재임베딩
-    마이그레이션), 그 외 버전/손상 = 기존 재빌드. `notifyReindexOnce`로 안내.
-  - `saveIndex`: FR-2 순서(reload-merge → 사이드카 temp+rename → JSON temp+rename 커밋 →
+    읽고, 재시도 후에도 실패면 FR-3 자가치유(영향 파일 제거). v4/무-digest v5 분기(FR-4)는
+    파생 payload를 재사용하지 않고 canonical Markdown clean reindex로 보낸다. 그 외 버전/손상도
+    기존 재빌드 경로로 수렴하며 `notifyReindexOnce`로 안내한다.
+  - `saveIndex`: FR-2 순서(reload-merge → 사이드카 temp+rename → JSON temp+rename →
+    post-commit canonical guard → drift 시 이전 JSON atomic rollback/신규 sidecar cleanup 또는 성공 commit →
     keep=2 초과분 GC → 캐시 갱신). JSON 직렬화 시 벡터를 slot으로 치환하는 인코더, 사이드카
     Float32 버퍼 빌더 추가.
   - `mergeIndexFromDisk`: 디스크 항목을 채택할 때 그 벡터를 디스크 사이드카에서 읽어
     인메모리에 실어야 함 → reload-merge에서 "디스크 JSON+사이드카 → 인메모리(벡터 부착)"
-    로더를 거친 뒤 병합. `dims` 병합 관례 계승.
+    로더를 거친 뒤 병합. 현재 등록된 folder의 새 disk-only 항목 또는 disk winner는 canonical
+    source status가 정확히 `match`(label/key·revision·chunk/link)일 때만 채택한다. 미등록 durable
+    orphan은 자기 folder prefix가 맞을 때 보존하고 검색에서 제외한다. digest-valid forged 동시
+    generation은 저장을 중단해 laundering을 막는다. `dims` 병합 관례 계승.
   - `resetIndex`: 빈 v5 기록 시 사이드카도 정리(GC).
 - `scripts/reindex.ts` — 요약 출력에 마이그레이션·자가치유 안내 추가(평이한 한국어).
 - `src/brain.test.ts` — 신규 AC 하니스. 유틸 추가: `readSidecarHeader(path)`,
@@ -59,11 +64,13 @@ goal: [goal.md](goal.md) · spec: [spec.md](spec.md)
 
 ## 원자성 논증 (FR-2) — writer 간과 reader-writer 간을 분리해서 보장
 
-**Writer 간(락)**: JSON이 사이드카를 **단방향 참조**하고 JSON rename만이 커밋점이므로:
+**Writer 간(락)**: JSON이 사이드카를 **단방향 참조**하고 JSON rename을 tentative publication으로 취급하며 post-commit canonical guard 성공만 commit success로 인정하므로:
 
 - 사이드카 rename 후 JSON rename 전에 중단 → 디스크 JSON은 여전히 **이전** `vectorFile`을
   가리킴 → 정합(신규 사이드카는 미참조 고아, 다음 저장 GC).
-- JSON rename 후 이전 gen GC 전에 중단 → 신규 커밋 완료, 이전 gen은 keep=2 유예 범위 →
+- JSON rename 직후 canonical root/source/deletion guard 실패 → lock을 유지한 채 이전 JSON bytes를
+  temp+rename으로 복원하고 신규 sidecar를 제거 → 호출은 실패하고 durable generation은 불변.
+- post-commit guard 성공 뒤 이전 gen GC 전에 중단 → 신규 커밋 완료, 이전 gen은 keep=2 유예 범위 →
   다음 저장 GC.
 - 락(`acquireLock`, stale 타임아웃)으로 쓰기 직렬화 + reload-merge로 다중 프로세스 유실
   방어 — 013/021 기제 그대로, 사이드카 로드만 추가.
@@ -84,7 +91,9 @@ ENOENT — 이를 (a) GC keep=2 유예(직전 세대 보존)로 창을 줄이고
 2. **원자성·GC·자가치유** — generation·커밋 순서·keep=2 GC·헤더/범위 검증·재시도 규정·
    손상 자가치유, reload-merge에 사이드카 로드 통합, 교차버전 병합 가드 유지.
    → AC-3·AC-3b·AC-5·AC-6·AC-7.
-3. **마이그레이션** — `loadIndex` v4 분기(무재임베딩 변환), 손상 폴백. → AC-8·AC-9.
+3. **마이그레이션** — `loadIndex` v4/무-digest v5 폐기, canonical clean rebuild를 memory-only로
+   구성하고 progress/failure save를 억제한다. root/source identity를 commit 전후 검증하며
+   unavailable/drift 시 이전 generation을 rollback·보존한다. → AC-8·AC-9.
 4. **배선·위생·문서** — gitignore/백업 시드 사이드카 제외, docs 업그레이드/롤백 안내.
 5. **self-review** — AGENTS.md 규약대로 분리 컨텍스트 서브에이전트 독립 리뷰(결함 캐기).
    범위: FR·AC 1:1 추적, 엣지(부분 손상·reader 경합·다중 프로세스·마이그레이션), 경계/
@@ -103,10 +112,11 @@ ENOENT — 이를 (a) GC keep=2 유예(직전 세대 보존)로 창을 줄이고
   `*.vec-*` 개수 → GC 검증).
 - **결정성**: dims=4 스텁으로 사이드카 바이트가 결정적. 마이그레이션·자가치유는
   `calls()` 증감으로 "재임베딩 유무"를 결정적으로 판정(020 AC-2·021 AC-3 패턴).
-- **원자성**: 크래시 주입은 불가 → **불변식으로 근사**: (a) `vectorFile`이 가리키는 파일이
-  항상 존재, (b) 저장 2회 이상 후 `*.vec-*` **2개 이하**(keep=2 — 현재+직전 세대만, AC-3와
-  동일 기준), (c) 별도 프로세스 로드가 디스크만으로 전 벡터 복원(AC-4). 이 세 불변식으로
-  커밋점 단일성을 간접 검증.
+- **원자성**: JSON commit 대상 `renameSync(temp, index)`를 격리 자식 프로세스에서 deterministic하게
+  가로채 canonical root 이동, deletion source same-byte 재생성, guarded source identity 교체를 실제
+  rename 순간 주입한다. 각 경우 호출 non-zero, 이전 JSON bytes 불변, 신규 sidecar/temp cleanup을
+  확인한다. 기본 불변식으로도 (a) `vectorFile`이 가리키는 파일 존재, (b) 저장 2회 이상 후
+  `*.vec-*` **2개 이하**, (c) 별도 프로세스의 디스크-only 전 벡터 복원을 유지한다.
 - **AC-3b의 결정적 재현 seam**: "JSON 파싱 후 ↔ 사이드카 읽기 전" 사이에 옛 gen 삭제 +
   새 gen/새 JSON 배치를 끼워 넣으려면 loadIndex의 그 경계에 테스트 훅이 필요하다 —
   신규 유틸에 `_afterJsonParseHookForTest`(테스트 전용, 프로덕션 no-op) 추가. 훅 없이

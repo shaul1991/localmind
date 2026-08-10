@@ -10,13 +10,18 @@ on:
 # - 통합 테스트(LOCALMIND_INTEGRATION=1)와 스모크 테스트(npm run smoke*)는 인증된 claude/codex
 #   CLI·임베딩 서버가 필요하므로 CI에서는 실행하지 않는다(로컬 전용).
 
+permissions:
+  contents: read
+
 jobs:
   build:
-    name: typecheck, test & build (node ${{ matrix.node }})
-    runs-on: ubuntu-latest
+    name: typecheck, test & build (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, macos-latest]
         node: [20, 22, 24]
     steps:
       - uses: actions/checkout@v4
@@ -31,6 +36,7 @@ jobs:
       # 전제한다(specs/015). 로컬은 항상 빌드돼 있어 이 순서 문제가 CI에서만 드러났다.
       - run: npm run build
       - name: shell tests
+        shell: bash
         run: |
           shopt -s nullglob   # 매치되는 *.test.sh가 없으면 리터럴 glob이 아니라 빈 목록으로 (거짓 실패 방지)
           for t in scripts/*.test.sh; do

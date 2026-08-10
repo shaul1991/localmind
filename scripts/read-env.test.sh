@@ -43,6 +43,30 @@ m="$(mask_url "a https://u:TOK@h/x 그리고 ssh://v:TOK2@h2/y")"
 assert "AC-23: 여러 URL 모두 마스킹" '! printf "%s" "$m" | grep -qE "TOK|TOK2"'
 m="$(mask_url "git@github.com:u/r.git")"
 assert "AC-23: scp형(토큰 없음)은 그대로" '[ "$m" = "git@github.com:u/r.git" ]'
+multi_at_canary="SYNTHETIC_MULTI_AT_USERINFO_CANARY"
+m="$(mask_url "https://user:SECRET@${multi_at_canary}@example.invalid/path")"
+assert "AC-23: 다중 @ userinfo 전체를 마지막 authority delimiter까지 마스킹" \
+  '[ "$m" = "https://***@example.invalid/path" ] && ! printf "%s" "$m" | grep -qE "SECRET|SYNTHETIC_MULTI_AT_USERINFO_CANARY"'
+m="$(mask_url "https://host.example/path?token=QUERYSECRET#access_token=FRAGMENTSECRET")"
+assert "AC-23: query/fragment credential 전체 제거" '! printf "%s" "$m" | grep -qE "QUERYSECRET|FRAGMENTSECRET|token=" && [ "$m" = "https://host.example/path" ]'
+m="$(mask_url "prefix https://host.example/a?x=SECRET1 suffix https://other.example/b#SECRET2")"
+assert "AC-23: 여러 URL의 query/fragment 모두 제거" '! printf "%s" "$m" | grep -qE "SECRET1|SECRET2"'
+
+# 제어문자는 sed의 line/whitespace 경계를 분할해 userinfo canary를 마스킹 밖으로 밀어낼 수 있다.
+# 로그 경계에 도달하기 전에 전체 값을 단일 안전 sentinel로 축약한다.
+control_canary="SYNTHETIC_CONTROL_USERINFO_CANARY"
+for control_name in newline tab carriage_return escape delete; do
+  case "$control_name" in
+    newline) control=$'\n' ;;
+    tab) control=$'\t' ;;
+    carriage_return) control=$'\r' ;;
+    escape) control=$'\033' ;;
+    delete) control=$'\177' ;;
+  esac
+  m="$(mask_url "https://user:${control}${control_canary}@example.invalid/repo.git")"
+  assert "AC-23: $control_name 제어문자 userinfo는 전체 redact" \
+    '[ "$m" = "[REDACTED]" ] && ! printf "%s" "$m" | grep -qF "$control_canary"'
+done
 
 rm -rf "$TMP"
 echo ""

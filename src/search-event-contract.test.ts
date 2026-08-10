@@ -122,12 +122,21 @@ test("logger append 실패: 성공 응답 불변 + drain {1,0,1}", async () => {
   // QUERY_LOG를 디렉터리로 바꿔 appendFile을 실패시킨다(queryLogDirReady=true라 mkdir 재생성 안 함).
   fs.rmSync(env.queryLog, { force: true });
   fs.mkdirSync(env.queryLog);
+  const originalStderrWrite = process.stderr.write;
+  let stderr = "";
+  process.stderr.write = ((chunk: string | Uint8Array) => {
+    stderr += String(chunk);
+    return true;
+  }) as typeof process.stderr.write;
   try {
     const hits = await brain.retrievalEvaluationPort.searchNotes("동기화", 5);
     assert.ok(hits.length > 0); // 로그 실패에도 성공 응답은 동일
     const drain = await brain.retrievalEvaluationPort.drainQueryEvents();
     assert.deepEqual(drain, { attempted: 1, succeeded: 0, failed: 1 });
+    assert.match(stderr, /쿼리 로그 기록 실패\(무시\)/);
+    assert.doesNotMatch(stderr, new RegExp(env.queryLog.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   } finally {
+    process.stderr.write = originalStderrWrite;
     fs.rmdirSync(env.queryLog);
     fs.writeFileSync(env.queryLog, "");
   }
@@ -141,7 +150,11 @@ test("검색·로그 동시 실패: 원래 검색 예외가 유지된다", async
   try {
     await assert.rejects(
       () => brain.retrievalEvaluationPort.searchNotes("동시 실패", 5),
-      (e: Error) => /embeddings HTTP 503|503/.test(e.message), // 로그 오류가 아니라 검색(embed) 오류
+      (e: Error) => {
+        assert.match(e.message, /임베딩 서비스 요청에 실패/); // 로그 오류가 아니라 sanitizer된 검색(embed) 오류
+        assert.doesNotMatch(e.message, /쿼리 로그|503|https?:\/\//);
+        return true;
+      },
     );
   } finally {
     server.failWith(null);

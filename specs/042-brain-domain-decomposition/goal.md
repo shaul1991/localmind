@@ -4,7 +4,7 @@
 
 localmind의 핵심 second-brain 기능은 폴더 설정, 색인 영속화, 증분 색인, 검색, 캡처,
 답변 합성·검증, 질의 이벤트 기록까지 하나의 큰 모듈에 모여 있다. 이 모듈은 오랜 기간
-v4→v5 무재임베딩 이행, 다중 프로세스 병합, 안전한 프루닝·재바인딩, 소프트 삭제 같은
+v4→v5 authenticated clean rebuild, 다중 프로세스 병합, 안전한 프루닝·재바인딩, 소프트 삭제 같은
 중요한 데이터 보호 규칙을 축적했다.
 
 각 규칙은 현재 동작하지만 상태와 정책의 소유자가 코드 구조상 분명하지 않다. 한 영역을
@@ -32,7 +32,8 @@ Brain 기능을 명확한 책임과 단방향 의존성을 가진 도메인 경�
 
 - 색인 저장 상태와 색인 실행 정책의 소유자가 분명해진다.
 - 검색, 캡처, RAG, 질의 기록을 각각 독립적으로 테스트할 수 있다.
-- 공개 API와 색인 포맷은 유지되며 기존 노트나 벡터를 다시 만들 필요가 없다.
+- 공개 API와 색인 포맷은 유지된다. digest-valid v5는 벡터를 다시 만들지 않고, legacy 색인은
+  현재의 canonical clean-rebuild 계약을 그대로 따른다.
 - 후속 기능 변경은 관련 경계 안에서 검토할 수 있고, 데이터 보호 회귀는 특성 테스트에서 즉시
   드러난다.
 
@@ -45,7 +46,8 @@ Brain 기능을 명확한 책임과 단방향 의존성을 가진 도메인 경�
   의존성이 0개다.
 - [ ] 분해 전후 동일 fixture에서 색인 JSON·sidecar 의미, 검색 결과, 캡처 결과, RAG 결과,
   MCP에 전달되는 출력이 동일하다.
-- [ ] 분해 과정에서 전체 재색인 또는 임베딩 재생성 호출이 0회임을 테스트로 확인한다.
+- [ ] digest-valid v5 기준 분해 과정의 전체 재색인 또는 임베딩 재생성 호출이 0회이며,
+  legacy fixture는 분해 전후 동일한 clean-rebuild 호출을 수행함을 테스트로 확인한다.
 - [ ] AGENTS.md의 적대적 self-review에서 치명·중대 결함 0, 전체 테스트 green을 확인한다.
 
 ## Non-goals - 비목표
@@ -61,7 +63,10 @@ Brain 기능을 명확한 책임과 단방향 의존성을 가진 도메인 경�
 
 - `specs/041-retrieval-quality-contract` 구현과 self-review가 clean으로 닫힌 뒤 착수한다.
 - 동작 보존 리팩터다. 분해 전후의 관찰 가능한 차이는 결함으로 취급한다.
-- 기존 색인과 sidecar를 그대로 읽고 써야 하며 재임베딩을 요구해서는 안 된다.
+- digest-valid v5 색인과 sidecar를 canonical `folder`·chunk·link 의미 검증과 함께 읽고 써야 하며
+  정상 generation을 불필요하게 재임베딩해서는 안 된다. v4/무-digest/model·dimension rebuild는 기존
+  durable generation을 유지한 memory-only build, progress/failure save 억제, pre/post-commit
+  root/source/deletion guard와 rollback, same-label binding three-way merge를 보존한다.
 - 공개 facade를 우회하도록 기존 호출자를 일괄 수정하지 않는다.
 - 테스트를 먼저 보강하고 작은 책임 단위로 이동하며, 각 단계에서 전체 회귀를 green으로 유지한다.
 - 사용자 노트와 질의 원문을 fixture나 저장소에 복사하지 않는다.
@@ -76,7 +81,8 @@ Brain 기능을 명확한 책임과 단방향 의존성을 가진 도메인 경�
 
 - 모듈 이동 중 초기화 순서가 바뀌어 환경변수 또는 singleton 상태의 의미가 달라질 수 있다.
 - 캐시와 디스크 스냅샷의 소유권을 잘못 나누면 다중 프로세스 업데이트를 덮어쓸 수 있다.
-- sidecar·마이그레이션 플래그를 분리하면서 무의도 재임베딩이나 데이터 손실이 발생할 수 있다.
+- sidecar·full-rebuild 상태를 분리하면서 legacy 재생성을 건너뛰거나 digest-valid v5를 불필요하게
+  재임베딩해 데이터 손실·비용 회귀가 발생할 수 있다.
 - watcher와 명시적 재색인이 서로 다른 인스턴스를 사용하면 single-flight가 깨질 수 있다.
 - facade가 내부 구현을 중복 보유하면 분해 후에도 두 개의 상태 정본이 생길 수 있다.
 - 구조 테스트만 통과하고 사용자 시나리오 회귀를 놓칠 수 있으므로 기존 특성 테스트와 통합

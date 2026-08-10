@@ -12,6 +12,7 @@ import {
   staleAssumptions,
   staleSignalLine,
   staleThresholdDays,
+  resolveDecisionSupersession,
 } from "./decision.js";
 
 const NOW = new Date("2026-07-21T12:00:00Z");
@@ -254,5 +255,61 @@ describe("parseLegacyDecisionNote — 구형식 관대한 폴백 (specs/20260723
     const r = parseLegacyDecisionNote(note);
     assert.ok(r);
     assert.ok(r!.excerpt.length <= 160, `발췌 길이 ${r!.excerpt.length} — 160 이하여야`);
+  });
+});
+
+
+describe("Phase 4 decision supersession", () => {
+  it("supersedes canonical path를 검증하고 frontmatter roundtrip한다", () => {
+    assert.equal(
+      validateDecisionInput({ choice: "새 선택", why: "새 근거", supersedes: ["notes/old.md"] }),
+      null,
+    );
+    for (const bad of [
+      "/tmp/old.md", "notes/../old.md", "notes\\old.md", "notes/old.txt", "notes/old\n.md",
+      "notes/old\u0085.md", "notes/old\u202e.md", "notes/old\ufeff.md",
+    ]) {
+      assert.match(
+        validateDecisionInput({ choice: "새 선택", why: "새 근거", supersedes: [bad] }) ?? "",
+        /supersedes/,
+      );
+    }
+    assert.match(
+      validateDecisionInput({ choice: "새 선택", why: "새 근거", supersedes: ["notes/a.md", "notes/a.md"] }) ?? "",
+      /중복/,
+    );
+
+    const lines = buildDecisionFrontmatterLines(
+      { choice: "새 선택", why: "새 근거", supersedes: ["notes/old.md"] },
+      "2026-08-10T21:00:00",
+    );
+    const parsed = parseNoteDecision(["---", ...lines, "---", "본문"].join("\n"));
+    assert.deepEqual(parsed?.supersedes, ["notes/old.md"]);
+  });
+
+  it("chain은 최신 결정만 남기고 cross-folder와 cycle은 결정을 숨기지 않는다", () => {
+    const decision = (choice: string, capturedAt: string, supersedes?: string[]) => ({
+      choice, why: "근거", assumptions: [], capturedAt, supersedes,
+    });
+    const resolved = resolveDecisionSupersession([
+      { path: "alpha/a.md", decision: decision("A", "2026-08-10T09:00:00Z") },
+      { path: "alpha/b.md", decision: decision("B", "2026-08-10T10:00:00Z", ["alpha/a.md"]) },
+      { path: "alpha/c.md", decision: decision("C", "2026-08-10T11:00:00Z", ["alpha/b.md"]) },
+      { path: "alpha/x.md", decision: decision("X", "2026-08-10T11:00:00Z", ["beta/y.md"]) },
+      { path: "beta/y.md", decision: decision("Y", "2026-08-10T09:00:00Z") },
+      { path: "alpha/d.md", decision: decision("D", "2026-08-10T12:00:00Z", ["alpha/e.md", "alpha/z.md"]) },
+      { path: "alpha/e.md", decision: decision("E", "2026-08-10T12:00:00Z", ["alpha/d.md"]) },
+      { path: "alpha/z.md", decision: decision("Z", "2026-08-10T11:00:00Z") },
+      { path: "alpha/early.md", decision: decision("EARLY", "2026-08-10T08:00:00Z", ["alpha/late.md"]) },
+      { path: "alpha/late.md", decision: decision("LATE", "2026-08-10T13:00:00Z") },
+    ]);
+    assert.deepEqual(resolved.active.map((row) => row.path).sort(), [
+      "alpha/c.md", "alpha/d.md", "alpha/e.md", "alpha/early.md", "alpha/late.md",
+      "alpha/x.md", "alpha/z.md", "beta/y.md",
+    ]);
+    assert.deepEqual(resolved.supersededPaths.sort(), ["alpha/a.md", "alpha/b.md"]);
+    assert.equal(resolved.ignoredCrossScopeReferences, 1);
+    assert.equal(resolved.ignoredNonCausalReferences, 1);
+    assert.deepEqual(resolved.cyclePaths.sort(), ["alpha/d.md", "alpha/e.md"]);
   });
 });

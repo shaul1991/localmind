@@ -60,6 +60,7 @@ readiness_fail() { READINESS_FAILURES+=("$1"); }
 readiness_skip() { READINESS_SKIPPED+=("$1"); }
 public_http_url() {
   [ -n "${1:-}" ] && have node || return 1
+  has_control_chars "$1" && return 1
   printf '%s' "$1" | node -e '
     const fs = require("fs");
     const raw = fs.readFileSync(0, "utf8");
@@ -465,18 +466,27 @@ if have node; then
   SMOKE_EXPECTED_LABELS="$(NOTES_DIR="$READINESS_NOTES" node -e '
     const path=require("path");
     const raw=(process.env.NOTES_DIR||path.join(process.env.HOME||".",".localmind")).trim();
-    const used=new Set(), labels=[];
-    for(const spec of raw.split(",").map((s)=>s.trim()).filter(Boolean)){
+    const specs=raw.split(",").map((s)=>s.trim()).filter(Boolean).map((spec,order)=>{
       const eq=spec.indexOf("=");
-      let label=eq>0?spec.slice(0,eq).trim():"";
+      let baseLabel=eq>0?spec.slice(0,eq).trim():"";
       const rawPath=eq>0?spec.slice(eq+1).trim():spec;
       const expanded=rawPath.startsWith("~")?path.join(process.env.HOME||".",rawPath.slice(1)):rawPath;
-      if(!label) label=path.basename(path.resolve(expanded)).replace(/^\.+/,"")||"notes";
-      let unique=label;
-      for(let n=2;used.has(unique);n++) unique=`${label}-${n}`;
-      used.add(unique);
-      labels.push(/^[\p{L}\p{N}][\p{L}\p{N}._-]{0,63}$/u.test(unique)?unique:"unknown");
+      const dir=path.resolve(expanded);
+      if(!baseLabel) baseLabel=path.basename(dir).replace(/^\.+/,"")||"notes";
+      return {baseLabel,dir,order};
+    });
+    const reservations=new Set(specs.map(({baseLabel})=>baseLabel));
+    const used=new Set(), assigned=new Map();
+    const canonical=[...specs].sort((a,b)=>a.baseLabel.localeCompare(b.baseLabel)||a.dir.localeCompare(b.dir)||a.order-b.order);
+    for(const candidate of canonical){
+      let label=candidate.baseLabel;
+      for(let n=2;used.has(label)||(label!==candidate.baseLabel&&reservations.has(label));n++){
+        label=`${candidate.baseLabel}-${n}`;
+      }
+      used.add(label);
+      assigned.set(candidate.order,label);
     }
+    const labels=specs.map(({order})=>assigned.get(order)).map((label)=>/^[\p{L}\p{N}][\p{L}\p{N}._-]{0,63}$/u.test(label)?label:"unknown");
     process.stdout.write([...new Set(labels.length?labels:["notes"])].join(","));
   ' 2>/dev/null || true)"
 fi

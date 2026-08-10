@@ -36,9 +36,14 @@ export type EmbeddingServer = {
   failWith: (status: number | null) => void;
 };
 
+export type FixtureEmbedding = (text: string, dims: number) => number[];
+
 /** production embed()가 POST하는 `${EMBEDDINGS_URL}/embeddings`를 흉내 내는 로컬 서버.
  *  요청 body의 각 input text에 deterministicEmbedding을 돌려준다(index 순서 보존). */
-export async function startEmbeddingServer(dims = 16): Promise<EmbeddingServer> {
+export async function startEmbeddingServer(
+  dims = 16,
+  embedding: FixtureEmbedding = deterministicEmbedding,
+): Promise<EmbeddingServer> {
   let failStatus: number | null = null;
   const state = { requests: 0 };
   const server = http.createServer((req, res) => {
@@ -61,7 +66,7 @@ export async function startEmbeddingServer(dims = 16): Promise<EmbeddingServer> 
       } catch {
         /* 빈 입력 */
       }
-      const data = input.map((t, index) => ({ index, embedding: deterministicEmbedding(String(t), dims) }));
+      const data = input.map((t, index) => ({ index, embedding: embedding(String(t), dims) }));
       res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ data }));
     });
   });

@@ -33,7 +33,8 @@ status: active — 2026-08-09 사용자 승인
 ## Phase 0 — 정본 정합과 기준선
 
 - 북극성 여정, Phase 범위, 종료 게이트를 저장소 정본으로 고정한다.
-- 일곱 Phase는 일곱 커밋, 하나의 feature branch, 하나의 Draft PR로 제출한다.
+- 각 Phase는 독립 `[verified]` 커밋으로 유지한다. Phase 0·1은 선행 PR로 병합했고,
+  Phase 2~6은 후속 feature branch와 Draft PR에서 순서대로 제출한다.
 - **종료:** 범위·커밋 구조·공통 검증이 재현 가능하게 문서화된다.
 
 ## Phase 1 — 첫 유용 결과의 신뢰성
@@ -55,6 +56,7 @@ status: active — 2026-08-09 사용자 승인
 
 - 기존 공개 합성 corpus와 production retrieval 경로를 일급 회귀 명령으로 연결한다.
 - 품질, no-match, 출처, 지연, 재현 manifest를 함께 보고한다.
+- v1은 positive relevance 회귀를 차단하고 latency는 비차단 관측으로 남긴다. relevance threshold가 없는 no-match 오탐은 수치로 드러내고 후속 개선한다.
 - 개선 순서는 chunk/metadata → hybrid → 제한적 rerank → 마지막에 저장 엔진 검토다.
 - **종료:** 같은 버전·fixture의 결과가 결정적으로 재현되고 CI가 기준선 회귀를 차단한다.
 
@@ -68,16 +70,19 @@ status: active — 2026-08-09 사용자 승인
 ## Phase 5 — 이식성·운영·보안
 
 - macOS/Linux, Node 20·22·24, local stdio/remote HTTP 계약을 고정한다.
+- Ubuntu·macOS × Node 20·22·24의 6-cell CI에서 같은 전체 Node/shell gate를 실행한다.
 - self-host 문서는 Tailscale을 쉬운 기본 예시로 추천하되 WireGuard·ZeroTier도 허용한다.
 - CI-green merged SHA, 비권한 실행, protocol health, rollback을 검증한다.
 - **종료:** clean host install/recover와 운영 negative suite가 지원 행렬에서 성공한다.
 
 ## Phase 6 — evidence-gated 자율 개선
 
-- 결정 대체·유지·전제 재검증을 append-only 이력으로 남긴다.
-- 민감 원문 대신 최소 집계 신호와 재현 가능한 결함으로 다음 후보를 제안한다.
-- 4시간 무한 루프 대신 목표당 최대 5회, 구현 WIP 1개, 명시적 trigger를 유지한다.
-- **종료:** speculative/meta 후보가 자동 구현으로 넘어가지 않고 사람의 merge gate가 유지된다.
+- 결정 대체·유지·전제 재검증을 no-clobber sequence segment와 SHA-256 chain의 append-only 이력으로 남긴다.
+- 민감 원문·경로 대신 opaque ID, 최소 집계 metric, 재현·가설·fixture·검증 artifact hash만 허용한다.
+- `bootstrap → iterate → maintain`, 목표당 최대 5회, 전역 구현 WIP 1개와 명시적 trigger를 강제한다.
+- 구현 시작에는 별도 사람 승인 hash, terminal 결론에는 lesson·residual-risk hash가 필요하다.
+- ledger는 scheduler·critic·구현기·자동 merge가 아니며 사람이 승인하고 merge하는 기존 경계를 유지한다.
+- **종료:** speculative/meta 후보가 자동 구현으로 넘어가지 않고, concurrent append·tamper·alias·원문 projection 회귀가 fail-closed한다.
 
 ## 공통 완료 조건
 

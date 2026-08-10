@@ -9,12 +9,15 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { capture, listFolders, searchNotes } from "./brain.js";
 import {
+  decisionReferenceFolder,
   parseLegacyDecisionNote,
   parseNoteDecision,
+  resolveDecisionSupersession,
   staleAssumptions,
   staleSignalLine,
   staleThresholdDays,
@@ -30,9 +33,113 @@ export function safePublicLabel(value: string | undefined): string {
   return /^[\p{L}\p{N}][\p{L}\p{N}._-]{0,63}$/u.test(trimmed) ? trimmed : "unknown";
 }
 
+function briefInline(value: string, maxLength: number): string {
+  return value.replace(/[\s\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]+/gu, " ").trim().slice(0, maxLength);
+}
+
 export const BRAIN_ID = safePublicLabel(process.env.LOCALMIND_DEPLOYMENT_ID) === "unknown"
   ? "localmind"
   : safePublicLabel(process.env.LOCALMIND_DEPLOYMENT_ID);
+
+/** canonical deployment marker. backup에서 제외돼 복제 host는 새 identity를 받는다. */
+const BRAIN_ID_MARKER = ".localmind-brain-id";
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+function fsyncDirectory(dir: string): void {
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(dir, "r");
+    fs.fsyncSync(fd);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (!["EINVAL", "ENOTSUP", "ENOSYS", "EBADF", "EISDIR"].includes(code ?? "")) throw error;
+  } finally {
+    if (fd !== null) fs.closeSync(fd);
+  }
+}
+
+function readBrainRootId(rootDir: string): string | null {
+  let root: string;
+  try {
+    root = fs.realpathSync(rootDir);
+    if (!fs.statSync(root).isDirectory()) return null;
+  } catch {
+    return null;
+  }
+  const marker = path.join(root, BRAIN_ID_MARKER);
+  const readMarker = (): string | null => {
+    try {
+      const stat = fs.lstatSync(marker);
+      if (!stat.isFile() || stat.isSymbolicLink()) return null;
+      const value = fs.readFileSync(marker, "utf8").trim();
+      return UUID_RE.test(value) ? value : null;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    }
+  };
+
+  const existing = readMarker();
+  if (existing) {
+    // link publish를 관측한 별도 프로세스도 winner의 directory durability를 대신 닫는다.
+    // 이미 오래된 marker여도 fsync는 안전하며, 오류는 identity success로 삼키지 않는다.
+    fsyncDirectory(root);
+    return existing;
+  }
+  if (fs.existsSync(marker)) {
+    const raced = readMarker(); // race 승자는 수용, malformed marker는 fail closed
+    if (raced) fsyncDirectory(root);
+    return raced;
+  }
+
+  const id = crypto.randomUUID();
+  const tmp = path.join(root, `${BRAIN_ID_MARKER}.tmp-${process.pid}-${crypto.randomUUID()}`);
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(tmp, "wx", 0o600);
+    fs.writeFileSync(fd, `${id}\n`, "utf8");
+    fs.fsyncSync(fd);
+    fs.closeSync(fd);
+    fd = null;
+    try {
+      fs.linkSync(tmp, marker); // no-replace atomic publish; EEXIST면 다른 프로세스 승자 사용
+      fsyncDirectory(root);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      // 다른 writer의 hard-link publish를 관측한 loser도 같은 parent directory를 fsync한다.
+      // winner가 link 직후 중단돼도 durability 경계가 닫힌 뒤에만 identity를 반환한다.
+      fsyncDirectory(root);
+    }
+  } finally {
+    if (fd !== null) try { fs.closeSync(fd); } catch { /* 원래 오류 보존 */ }
+    try { fs.rmSync(tmp, { force: true }); } catch { /* 읽기에서 fail closed */ }
+  }
+  return readMarker();
+}
+
+/** 테스트 전용: canonical root marker의 원자 publish·durability 경계를 검증한다. */
+export function _readBrainRootIdForTest(rootDir: string): string | null {
+  return readBrainRootId(rootDir);
+}
+
+/**
+ * 각 canonical notes root에 원자적으로 저장된 random deployment ID를 label과 결합한다.
+ * 경로·inode는 hash 입력으로 쓰지 않아 동일 경로/동일 dev·ino의 다른 host가 충돌하지 않는다.
+ */
+export function brainRootFingerprint(): string | null {
+  const identities: string[] = [];
+  try {
+    for (const folder of listFolders()) {
+      const id = readBrainRootId(folder.dir);
+      if (!id) return null;
+      identities.push(`${folder.label.length}:${folder.label}:${id}`);
+    }
+  } catch {
+    return null;
+  }
+  identities.sort(); // NOTES_DIR 나열 순서는 배포 identity의 일부가 아니다.
+  return crypto.createHash("sha256").update(identities.join("\n")).digest("hex");
+}
 
 // 서버 버전은 package.json이 정본 — 릴리스 bump가 그대로 반영되게 동적으로 읽는다(실패 시 폴백).
 const PKG_VERSION: string = (() => {
@@ -124,9 +231,17 @@ export function buildServer(): McpServer {
       inputSchema: {},
     },
     async () => {
+      const fingerprint = brainRootFingerprint();
+      if (!fingerprint) {
+        return textResult(
+          "canonical notes folder identity를 확인할 수 없어 이 두뇌를 안전하게 식별하지 않았어요.",
+          true,
+          "🧠",
+        );
+      }
       const folders = listFolders().map((f) => `  - ${safePublicLabel(f.label)}`).join("\n");
       return textResult(
-        `deployment: ${BRAIN_ID}\n` + `notes folder labels:\n${folders}`,
+        `deployment: ${BRAIN_ID}\n` + `brain fingerprint: ${fingerprint}\n` + `notes folder labels:\n${folders}`,
         false, "🧠",
       );
     },
@@ -158,16 +273,26 @@ export function buildServer(): McpServer {
           }))
           .optional()
           .describe("결정의 전제 목록 — 각 전제의 last_verified는 캡처 시각으로 자동 기록"),
+        supersedes: z.array(z.string()).optional().describe("같은 notes folder 안에서 이 결정이 대체하는 canonical note path 목록"),
       },
     },
-    async ({ text, title, folder, tags: noteTags, choice, why, assumptions }) => {
+    async ({ text, title, folder, tags: noteTags, choice, why, assumptions, supersedes }) => {
       try {
         // 결정 파라미터가 하나라도 오면 결정 캡처로 취급 — 검증 실패 시 파일을 만들지 않는다(AC-3).
         let decision: DecisionInput | undefined;
-        if (choice !== undefined || why !== undefined || assumptions !== undefined) {
-          const err = validateDecisionInput({ choice, why, assumptions });
+        if (choice !== undefined || why !== undefined || assumptions !== undefined || supersedes !== undefined) {
+          const err = validateDecisionInput({ choice, why, assumptions, supersedes });
           if (err) return textResult(err, true, "📝");
-          decision = { choice: choice!, why: why!, assumptions: assumptions as DecisionInput["assumptions"] };
+          const targetLabel = folder ?? listFolders()[0]?.label;
+          if (!targetLabel || supersedes?.some((reference) => decisionReferenceFolder(reference) !== targetLabel)) {
+            return textResult("supersedes는 새 결정과 같은 folder의 canonical note만 가리킬 수 있어요.", true, "📝");
+          }
+          decision = {
+            choice: choice!,
+            why: why!,
+            assumptions: assumptions as DecisionInput["assumptions"],
+            ...(supersedes?.length ? { supersedes } : {}),
+          };
         }
         const { path: file, validationStatus, retried, tags } = await capture(text, title, folder, noteTags, decision);
         const indexingLine =
@@ -211,7 +336,8 @@ export function buildServer(): McpServer {
         if (!hits.length) return textResult("관련 노트 없음", false, "🔍");
         const body = hits.map((h) => `(${h.score.toFixed(3)}) [${h.path}]\n${h.text.slice(0, 280)}`).join("\n\n");
         // living-memory FR-4 — 낡음 신호는 본문 뒤 부가만(비차단·본문 무변, AC-7). 실패는 조용히 생략(AC-9).
-        const signals = staleSignals(collectDecisions(hits.map((h) => h.path)));
+        const resolution = resolveDecisionSupersession(collectDecisions(hits.map((h) => h.path)));
+        const signals = staleSignals(resolution.active);
         return textResult(signals.length ? `${body}\n\n${signals.join("\n")}` : body, false, "🔍");
       } catch (e) {
         return textResult(`search_notes 실패: ${(e as Error).message}`, true, "🔍");
@@ -230,17 +356,26 @@ export function buildServer(): McpServer {
         "CLAUDE.md류 지침에 '세션 시작 시 brief 호출' 한 줄을 넣어 연결한다(런타임 중립).",
       inputSchema: {
         hint: z.string().describe("프로젝트나 주제 힌트 (예: 저장소 이름, 작업 주제)"),
-        folder: z.string().optional().describe("Limit to one notes folder label (default: all)"),
+        folder: z.string().optional().describe("Limit to one notes folder label (required when multiple folders are configured)"),
       },
     },
     async ({ hint, folder }) => {
       try {
+        const folders = listFolders();
+        if (folders.length > 1 && !folder) {
+          return textResult("여러 notes folder가 연결되어 있어요. brief에는 folder label을 명시해 주세요.", true, "🧭");
+        }
+        if (folder && !folders.some((candidate) => candidate.label === folder)) {
+          return textResult("알 수 없는 folder label이에요. whoami에 표시된 label 중 하나를 지정해 주세요.", true, "🧭");
+        }
         const hits = await searchNotes(hint, 8, folder, "brief");
-        const decisions = collectDecisions(hits.map((h) => h.path));
+        const collected = collectDecisions(hits.map((h) => h.path));
+        const resolution = resolveDecisionSupersession(collected);
+        const decisions = resolution.active;
         // 구형식 폴백(specs/202607231759) — living-memory 이전 결정도 제목+발췌로 보이게 한다.
         const legacy = collectLegacyDecisions(
           hits.map((h) => h.path),
-          new Set(decisions.map((d) => d.path)),
+          new Set(collected.map((d) => d.path)),
         );
         if (!decisions.length && !legacy.length) {
           return textResult(
@@ -255,16 +390,23 @@ export function buildServer(): McpServer {
           const staleFacts = new Set(staleAssumptions(decision, now, threshold).map((s) => s.fact));
           const assumptionLine = decision.assumptions.length
             ? decision.assumptions
-                .map((a) => `${a.fact}(${a.volatility}${staleFacts.has(a.fact) ? " · 재검증 필요" : ""})`)
+                .map((a) => {
+                  const fact = briefInline(a.fact, 120) || "기록 없음";
+                  const verified = briefInline(a.last_verified, 40) || "기록 없음";
+                  return `${fact}(${a.volatility}; 마지막 검증: ${verified}${staleFacts.has(a.fact) ? " · 재검증 필요" : ""})`;
+                })
                 .join(" · ")
             : "없음";
-          const why = decision.why.replace(/\s+/g, " ").slice(0, 160);
-          return `■ ${decision.choice} [${p}]\n  이유: ${why}\n  전제: ${assumptionLine}`;
+          const choice = briefInline(decision.choice, 160) || "기록 없음";
+          const why = briefInline(decision.why, 160) || "기록 없음";
+          return `■ ${choice} [${p}]\n  이유: ${why}\n  전제: ${assumptionLine}`;
         });
         // 구형식 블록은 신형식 뒤에 부가(AC-6) — 전제가 없어 낡음 신호 대상이 아님을 밝힌다(AC-3).
-        const legacyBlocks = legacy.map(
-          (l) => `□ (구형식) ${l.title || l.path} [${l.path}]` + (l.excerpt ? `\n  발췌: ${l.excerpt}` : ""),
-        );
+        const legacyBlocks = legacy.map((l) => {
+          const title = briefInline(l.title || l.path, 160) || l.path;
+          const excerpt = briefInline(l.excerpt, 160);
+          return `□ (구형식) ${title} [${l.path}]` + (excerpt ? `\n  발췌: ${excerpt}` : "");
+        });
         const head = legacy.length
           ? `브리핑 (hint: "${hint}") — 결정 ${decisions.length + legacy.length}건 (구형식 ${legacy.length}건 포함)`
           : `브리핑 (hint: "${hint}") — 결정 ${decisions.length}건`;
@@ -274,6 +416,12 @@ export function buildServer(): McpServer {
             `\n\n구형식 결정 ${legacy.length}건 — 전제(낡음 신호) 미기록. ` +
             "여전히 유효한 결정이면 capture_note(choice·why·assumptions)로 다시 기록해 두세요.";
         }
+        const lifecycleNotes: string[] = [];
+        if (resolution.supersededPaths.length) lifecycleNotes.push(`대체된 결정 ${resolution.supersededPaths.length}건 제외`);
+        if (resolution.cyclePaths.length) lifecycleNotes.push(`대체 cycle ${resolution.cyclePaths.length}건은 적용하지 않음`);
+        if (resolution.ignoredCrossScopeReferences) lifecycleNotes.push(`범위 밖 대체 참조 ${resolution.ignoredCrossScopeReferences}건 무시`);
+        if (resolution.ignoredNonCausalReferences) lifecycleNotes.push(`시간 순서가 불명확한 대체 참조 ${resolution.ignoredNonCausalReferences}건 무시`);
+        if (lifecycleNotes.length) body += `\n\n결정 lifecycle: ${lifecycleNotes.join(" · ")}`;
         const signals = staleSignals(decisions);
         return textResult(signals.length ? `${body}\n\n${signals.join("\n")}` : body, false, "🧭");
       } catch (e) {

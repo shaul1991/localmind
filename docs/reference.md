@@ -28,7 +28,7 @@ README를 가볍게 유지하기 위해 **상세한 동작·설정**을 여기�
 
 | 변수 | 기본값 | 설명 |
 |---|---|---|
-| `NOTES_DIR` | `~/.localmind` | second-brain 노트 폴더(정본). **쉼표로 여러 폴더**: `work=/notes/work,life=/notes/personal`(라벨 생략 시 폴더명). 검색은 기본 전체, 도구의 `folder`로 한정 |
+| `NOTES_DIR` | `~/.localmind` | second-brain 노트 폴더(정본). **쉼표로 여러 폴더**: `work=/notes/work,life=/notes/personal`(라벨 생략 시 폴더명). `search_notes`는 기본 전체이고 `folder`로 한정한다. 다중 폴더의 `brief`는 scope 누출 방지를 위해 `folder`가 필수다. |
 | `BRAIN_INDEX` | `<NOTES_DIR>/.brain-index.json` | 임베딩 인덱스 위치 |
 | `EMBEDDINGS_URL` | `http://localhost:11434/v1` | 노트 임베딩 엔드포인트(OpenAI 호환) — 기본이 Ollama 직결 |
 | `EMBEDDINGS_MODEL` | `text-embedding-3-small` | 임베딩 모델 — **권장: `bge-m3`**(한국어 품질) |

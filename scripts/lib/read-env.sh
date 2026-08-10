@@ -18,8 +18,40 @@ read_env_val() {
   printf '%s' "$val"
 }
 
-# URL의 자격증명(userinfo)을 마스킹한다: https://user:token@host → https://***@host.
+# C0/DEL control character가 하나라도 있는지 byte 기준으로 검사한다. Bash 변수는 NUL을
+# 보존할 수 없으므로 표현 가능한 0x01-0x1f·0x7f를 대상으로 하며, 정상 UTF-8 bytes는 유지한다.
+has_control_chars() {
+  local raw="${1:-}" printable
+  printable="$(printf '%s' "$raw" | LC_ALL=C command tr -d '\001-\037\177')"
+  [ "$printable" != "$raw" ]
+}
+
+# 공개 HTTP(S) endpoint인지 검증한다. raw 값은 argv가 아니라 stdin으로만 Node parser에
+# 전달하며, userinfo/query/fragment/C0/DEL은 network 경계 전에 거부한다.
+public_http_url() {
+  [ -n "${1:-}" ] && command -v node >/dev/null 2>&1 || return 1
+  has_control_chars "$1" && return 1
+  printf '%s' "$1" | node -e '
+    const fs = require("fs");
+    const raw = fs.readFileSync(0, "utf8");
+    try {
+      const u = new URL(raw);
+      if (raw !== raw.trim() || !["http:", "https:"].includes(u.protocol) ||
+          u.username || u.password || u.search || u.hash) process.exit(1);
+    } catch { process.exit(1); }
+  ' >/dev/null 2>&1
+}
+
+# URL의 자격증명(userinfo)과 query/fragment를 마스킹한다.
+# query key 이름은 provider마다 달라 allowlist할 수 없으므로 ?/# 이후 비공백 전체를 제거한다.
 # 요약·에러 출력에 토큰이 평문으로 새지 않게(FR-12). 여러 URL이 섞인 문자열도 처리.
+# C0/DEL 제어문자는 line/whitespace 경계를 분할해 sed 마스킹을 우회할 수 있으므로, 원문을
+# 부분 처리하지 않고 로그 경계 전에 값 전체를 안전 sentinel로 축약한다.
 mask_url() {
-  printf '%s' "$1" | sed -E 's#(://)[^/@[:space:]]*@#\1***@#g'
+  local raw="$1"
+  if has_control_chars "$raw"; then
+    printf '%s' '[REDACTED]'
+    return 0
+  fi
+  printf '%s' "$raw" | sed -E 's|(://)[^/?#[:space:]]*@|\1***@|g; s|[?#][^[:space:]]*||g'
 }

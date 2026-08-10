@@ -173,7 +173,7 @@ assert "022 AC-7: litellm.config.yaml 죽은 가지 제거(배선)" '! grep -q "
 
 IDX22="$TMP/labels-idx.json"; OK22="$TMP/ok22"; GONE22="$TMP/gone22"   # GONE22는 생성하지 않음
 mkdir -p "$OK22"
-printf '{"version":4,"files":{"old/a.md":{"hash":"h","folder":"old","chunks":[],"linksOut":[]},"gone22/b.md":{"hash":"h","folder":"gone22","chunks":[],"linksOut":[]},"ok22/c.md":{"hash":"h","folder":"ok22","chunks":[],"linksOut":[]}}}' > "$IDX22"
+IDX22="$IDX22" node -e 'const fs=require("fs"),crypto=require("crypto"); const idx={version:5,files:{"old/a.md":{hash:"h",folder:"old",chunks:[],linksOut:[]},"gone22/b.md":{hash:"h",folder:"gone22",chunks:[],linksOut:[]},"ok22/c.md":{hash:"h",folder:"ok22",chunks:[],linksOut:[]}}}; idx.indexDigest=crypto.createHash("sha256").update(JSON.stringify(idx)).digest("hex"); fs.writeFileSync(process.env.IDX22,JSON.stringify(idx));'
 printf 'NOTES_DIR="ok22=%s,gone22=%s"\n' "$OK22" "$GONE22" > "$ENV"
 printf '{"mcpServers":{"localmind":{"env":{"NOTES_DIR":"ok22=%s,gone22=%s"}}}}' "$OK22" "$GONE22" > "$CFG"
 run_doctor "$ENV" "$CFG" BRAIN_INDEX="$IDX22"
