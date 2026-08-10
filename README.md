@@ -92,11 +92,13 @@ NOTES_DIR=~/my-notes                        # 내 .md 노트 폴더(쉼표로 �
 - 💾 [백업 · 복구](docs/backup.md) — 내 노트를 git repo로, 새 기기 한 줄 복구
 - 🏠 [홈서버(옵션)](docs/home-server.md) — 원격 MCP로 여러 기기에서 한 두뇌 쓰기
 - ✅ [지원 행렬](docs/support-matrix.md) — macOS·Linux × Node 20·22·24 및 운영 gate
+- 🔐 [개선 evidence ledger](docs/evidence-cadence.md) — 코어 개선의 bounded trigger·WIP·append-only 결론
 - 📐 [Product Vision](docs/product-vision.md) — 이 프로젝트가 지향하는 것("살아있는 why 저장소")
 - 🩺 [문제 해결](docs/troubleshooting.md) — 잘 안 될 때 증상별 해결
 
 > 🧰 SDD 워크플로 등 **AI 작업 방법론**은 이 저장소에 없습니다 — localmind는 기억 계층(코어)만
-> 담당합니다(2026-07 great-reduction — [rebuild-plan](docs/rebuild-plan.md) 참고).
+> 담당합니다(2026-07 great-reduction — [rebuild-plan](docs/rebuild-plan.md) 참고). 위 evidence ledger도
+> agent·critic·scheduler가 아니라 코어 자체 변경이 근거 없이 자동 구현되지 않게 하는 안전 경계입니다.
 > 방법론은 애드온으로 갈라져 나가, AI 런타임(Claude Code 등)에 **필요한 것만 골라 설치**하는
 > 형태가 됐습니다 — `localmind-core`(세션 시작 브리핑·결정 3층 캡처), `sdd-5docs`(goal→spec→
 > plan→tasks→review 문서 체계), `goal-impl`(문서에서 구현으로). 모든 애드온의 기준은 두 가지 —

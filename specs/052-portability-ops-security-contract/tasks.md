@@ -5,4 +5,4 @@
 - [x] transport parity·safe deploy·clean recover targeted GREEN
 - [x] loaded macOS의 real `fs.watch` integration timeout을 bounded 8초 budget으로 안정화
 - [x] docs/support matrix 및 상위 roadmap 정합
-- [ ] frozen gate·독립 검토·no-drift·`[verified]` commit
+- [x] frozen gate·독립 검토·no-drift·`[verified]` commit `fd07251`

@@ -77,10 +77,12 @@ status: active — 2026-08-09 사용자 승인
 
 ## Phase 6 — evidence-gated 자율 개선
 
-- 결정 대체·유지·전제 재검증을 append-only 이력으로 남긴다.
-- 민감 원문 대신 최소 집계 신호와 재현 가능한 결함으로 다음 후보를 제안한다.
-- 4시간 무한 루프 대신 목표당 최대 5회, 구현 WIP 1개, 명시적 trigger를 유지한다.
-- **종료:** speculative/meta 후보가 자동 구현으로 넘어가지 않고 사람의 merge gate가 유지된다.
+- 결정 대체·유지·전제 재검증을 no-clobber sequence segment와 SHA-256 chain의 append-only 이력으로 남긴다.
+- 민감 원문·경로 대신 opaque ID, 최소 집계 metric, 재현·가설·fixture·검증 artifact hash만 허용한다.
+- `bootstrap → iterate → maintain`, 목표당 최대 5회, 전역 구현 WIP 1개와 명시적 trigger를 강제한다.
+- 구현 시작에는 별도 사람 승인 hash, terminal 결론에는 lesson·residual-risk hash가 필요하다.
+- ledger는 scheduler·critic·구현기·자동 merge가 아니며 사람이 승인하고 merge하는 기존 경계를 유지한다.
+- **종료:** speculative/meta 후보가 자동 구현으로 넘어가지 않고, concurrent append·tamper·alias·원문 projection 회귀가 fail-closed한다.
 
 ## 공통 완료 조건
 
