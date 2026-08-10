@@ -156,6 +156,74 @@ assert "AC-20: 타임스탬프 파싱 불가 라인은 유지(유실 방지)" 'g
 QUERY_LOG="$LOCAL_LOG" npm run --silent query-report >/dev/null 2>&1
 assert "AC-21: query-report가 병합본으로 에러 없이 집계" '[ "$?" -eq 0 ]'
 
+# ── Phase 2 review: query-log merge destination symlink는 외부 파일을 읽거나 교체하지 않음 ──
+setup querysymlink
+NOW="$(date -u +%Y-%m-%dT%H:%M:%S).000Z"
+line "$NOW" from-backup > "$BK/query-log.mac-a.jsonl"
+QUERY_SYMLINK="$TEST_HOME/.localmind/query-log.jsonl"
+QUERY_EXTERNAL="$TMP/query-symlink-external.txt"
+QUERY_CANARY="SYNTHETIC_QUERY_SYMLINK_CANARY"
+mkdir -p "$(dirname "$QUERY_SYMLINK")"
+printf '%s\n' "$QUERY_CANARY" > "$QUERY_EXTERNAL"
+cp "$QUERY_EXTERNAL" "$TMP/query-symlink-before.txt"
+ln -s "$QUERY_EXTERNAL" "$QUERY_SYMLINK"
+run_restore QUERY_LOG="$QUERY_SYMLINK"
+assert "query-log symlink destination은 비0으로 거부" '[ "$RC" -ne 0 ]'
+assert "query-log symlink와 외부 target bytes를 그대로 보존" \
+  '[ -L "$QUERY_SYMLINK" ] && cmp -s "$TMP/query-symlink-before.txt" "$QUERY_EXTERNAL"'
+assert "query-log symlink target canary를 출력하지 않음" '! printf %s "$OUT" | grep -qF "$QUERY_CANARY"'
+
+setup queryparentsymlink
+NOW="$(date -u +%Y-%m-%dT%H:%M:%S).000Z"
+line "$NOW" from-backup > "$BK/query-log.mac-a.jsonl"
+QUERY_PARENT_EXTERNAL="$TMP/query-parent-external"
+QUERY_PARENT_LINK="$TEST_HOME/query-parent-link"
+mkdir -p "$QUERY_PARENT_EXTERNAL"
+ln -s "$QUERY_PARENT_EXTERNAL" "$QUERY_PARENT_LINK"
+run_restore QUERY_LOG="$QUERY_PARENT_LINK/query-log.jsonl"
+assert "query-log symlink parent는 비0으로 거부" '[ "$RC" -ne 0 ]'
+assert "query-log symlink parent 밖에 파일을 만들지 않음" \
+  '[ -L "$QUERY_PARENT_LINK" ] && [ ! -e "$QUERY_PARENT_EXTERNAL/query-log.jsonl" ]'
+
+# ── Phase 2 review: query-log merge write 실패는 비0 + 성공 메시지 억제 ──
+setup queryfail
+NOW="$(date -u +%Y-%m-%dT%H:%M:%S).000Z"
+line "$NOW" blocked > "$BK/query-log.mac-a.jsonl"
+BLOCKED_QUERY_LOG="$TMP/query-log-is-directory"; mkdir -p "$BLOCKED_QUERY_LOG"
+run_restore QUERY_LOG="$BLOCKED_QUERY_LOG"
+assert "query-log final write 실패는 restore-assets 비0" '[ "$RC" -ne 0 ]'
+assert "query-log final write 실패 뒤 병합 완료를 출력하지 않음" '! printf %s "$OUT" | grep -q "쿼리 로그 병합 완료"'
+
+setup queryfinalfail
+NOW="$(date -u +%Y-%m-%dT%H:%M:%S).000Z"
+line "$NOW" from-backup > "$BK/query-log.mac-a.jsonl"
+FINAL_QUERY_LOG="$TEST_HOME/.localmind/query-log.jsonl"; mkdir -p "$(dirname "$FINAL_QUERY_LOG")"
+line "$NOW" keep-local > "$FINAL_QUERY_LOG"
+cp "$FINAL_QUERY_LOG" "$TMP/queryfinal-before.jsonl"
+MV_FAIL_HIT="$TMP/queryfinal-mv-hit"
+cat > "$TMP/bin/mv" <<'S'
+#!/bin/sh
+src=""; dst=""
+for arg do
+  [ "$arg" = "-f" ] && continue
+  src="$dst"; dst="$arg"
+done
+case "$src" in
+  */.query-log-merge.*)
+    if [ "$dst" = "$FAIL_QUERY_DEST" ]; then : > "$MV_FAIL_HIT"; exit 1; fi
+    ;;
+esac
+exec /bin/mv "$@"
+S
+chmod +x "$TMP/bin/mv"
+run_restore QUERY_LOG="$FINAL_QUERY_LOG" FAIL_QUERY_DEST="$FINAL_QUERY_LOG" MV_FAIL_HIT="$MV_FAIL_HIT"
+rm -f "$TMP/bin/mv"
+assert "query-log final mv failure witness가 실제 temp→destination branch에 도달" '[ -f "$MV_FAIL_HIT" ]'
+assert "query-log final mv 실패는 비0이고 기존 bytes를 보존" \
+  '[ "$RC" -ne 0 ] && cmp -s "$TMP/queryfinal-before.jsonl" "$FINAL_QUERY_LOG"'
+assert "query-log final mv 실패는 temp를 정리하고 성공 메시지를 억제" \
+  '! ls "$(dirname "$FINAL_QUERY_LOG")"/.query-log-merge.* >/dev/null 2>&1 && ! printf %s "$OUT" | grep -q "쿼리 로그 병합 완료"'
+
 # ── 리뷰 결함 1(치명): 판정 조회 실패 시 파괴 금지 + 정직한 비0 ──
 setup guard1
 mkdir -p "$BK/agents"; echo "p" > "$BK/agents/p.md"
@@ -201,23 +269,43 @@ assert "AC-27: 백업 이후 데이터는 오지 않음 고지" 'printf %s "$OUT
 assert "AC-27: 비대화 환경에서 자동 진행(안내 후 다음 단계 도달)" 'printf %s "$OUT" | grep -q "자동 진행"'
 
 # ── AC-14(recover 실행): 전 단계 스텁으로 recover를 끝까지 실행 — 배포 실패에도
-#    중간 abort 없이 "복구 완료" 도달 + 실패 요약 + 비0(리뷰 결함 4) ──
+#    중간 abort 없이 최종 실패 판정 도달 + 거짓 완료 금지 + 비0(리뷰 결함 4) ──
 printf '#!/bin/sh\nexit 0\n' > "$TMP/bin/docker"; chmod +x "$TMP/bin/docker"   # info·compose 모두 성공
 printf '#!/bin/sh\nprintf 200\n' > "$TMP/bin/curl"; chmod +x "$TMP/bin/curl"   # 헬스 대기 즉시 통과
 printf '{"scripts":{"agents:deploy":"x","skills:deploy":"x"}}\n' > "$TMP/recover-pkg.json"  # 배포 있는 구성으로 고정
+cat > "$TMP/recover-fetch-stub.mjs" <<'JS'
+globalThis.fetch = async (_url, init = {}) => {
+  const input = JSON.parse(String(init.body || "{}")).input || [];
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({ data: input.map((_, index) => ({ index, embedding: [1, 0, 0, 0] })) }),
+  };
+};
+JS
+RECOVER_RUN=0
 run_recover() { # run_recover <BACKUP_DIR> [추가 env...]
   local bk="$1"; shift
+  RECOVER_RUN=$((RECOVER_RUN+1))
+  cat > "$TMP/recover.env" <<EOF
+EMBEDDINGS_URL=http://embedding.fixture.invalid/v1
+EMBEDDINGS_MODEL=fixture-model
+EMBEDDINGS_KEY=fixture-key
+NOTES_DIR=main=$bk
+BRAIN_INDEX=$TMP/recover-index-$RECOVER_RUN.json
+EOF
   : > "$TMP/recover-npm.log"
   OUT="$(PATH="$TMP/bin:$PATH" HOME="$TEST_HOME" BACKUP_DIR="$bk" LOCALMIND_ENV_FILE="$TMP/recover.env" \
         LOCALMIND_PKG_FILE="$TMP/recover-pkg.json" \
-        NPM_LOG="$TMP/recover-npm.log" env -u NOTES_DIR -u QUERY_LOG "$@" bash "$ROOT/scripts/recover.sh" </dev/null 2>&1)"
+        NPM_LOG="$TMP/recover-npm.log" NODE_OPTIONS="--import=$TMP/recover-fetch-stub.mjs" \
+        EMBED_RETRIES=1 env -u NOTES_DIR -u QUERY_LOG "$@" bash "$ROOT/scripts/recover.sh" </dev/null 2>&1)"
   RC=$?
 }
 BKR="$TMP/recover-bk"; mkdir -p "$BKR/agents"
 git -C "$BKR" init -q 2>/dev/null; echo "노트" > "$BKR/note.md"; echo "m" > "$BKR/memory.md"
 echo "p" > "$BKR/agents/p.md"    # 마커 없음(기본 구성 백업) → recover가 배포 시도
 run_recover "$BKR" DEPLOY_FAIL=1
-assert "AC-14(recover 실행): 중간 abort 없이 복구 완료 도달" 'printf %s "$OUT" | grep -q "복구 완료"'
+assert "AC-14(recover 실행): 자산 실패를 복구 완료로 오보하지 않음" '! printf %s "$OUT" | grep -q "복구 완료"'
 assert "AC-14(recover 실행): 노트 단계 완료(인질 아님 — 메모리 서비스는 great-reduction으로 소멸)" 'printf %s "$OUT" | grep -q "노트로 복원"'
 assert "AC-14(recover 실행): 실패 요약 + 비0" '[ "$RC" -ne 0 ] && printf %s "$OUT" | grep -q "완료되지 않았어요"'
 echo "m2" > "$BKR/agents/$MARKER"    # 마커 부여 → 보류 경로

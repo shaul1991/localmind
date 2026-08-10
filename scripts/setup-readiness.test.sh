@@ -269,6 +269,20 @@ FIXTURE_EXPECTED_SMOKE_LABELS="alpha,beta"
 run_setup ""
 assert ".env NOTES_DIR를 smoke child에 전달하고 기대 label 계약을 설정" '[ "$RC" -eq 0 ] && grep -qF "readiness: ready" "$OUT"'
 
+new_fixture duplicate_reserved_labels
+mkdir -p "$CASE/a" "$CASE/b" "$CASE/c"
+cat > "$FIXTURE_ROOT/.env" <<EOF_ENV
+EMBEDDINGS_URL=http://embedding.invalid/good/secret-url-marker/v1
+EMBEDDINGS_MODEL=fixture-model
+EMBEDDINGS_KEY=fixture-secret-key
+NOTES_DIR=dup=$CASE/b,dup=$CASE/a,dup-2=$CASE/c
+EOF_ENV
+FIXTURE_EXPECTED_SMOKE_NOTES="dup=$CASE/b,dup=$CASE/a,dup-2=$CASE/c"
+FIXTURE_EXPECTED_SMOKE_LABELS="dup-3,dup,dup-2"
+run_setup ""
+assert "setup smoke label 계산은 Brain의 중복·명시 예약 suffix와 동일" \
+  '[ "$RC" -eq 0 ] && grep -qF "readiness: ready" "$OUT"'
+
 printf '\n\033[1mB3b — 실제 BRAIN_INDEX와 두 smoke gate\033[0m\n'
 new_fixture invalid_index_parent
 write_env good
@@ -361,6 +375,22 @@ EOF_ENV
   assert "$unsafe_kind URL 원문은 curl argv/stdout/stderr 0건" '! grep -qF "url-secret-marker" "$HTTP_LOG" "$OUT"'
 done
 
+for control_kind in tab delete; do
+  new_fixture "unsafe_control_$control_kind"
+  case "$control_kind" in
+    tab) control_byte=$'\t' ;;
+    delete) control_byte=$'\177' ;;
+  esac
+  control_marker="SYNTHETIC_CONTROL_URL_CANARY"
+  {
+    printf 'EMBEDDINGS_URL=https://example.invalid/v1%s%s\n' "$control_byte" "$control_marker"
+    printf 'EMBEDDINGS_MODEL=fixture-model\nEMBEDDINGS_KEY=fixture-secret-key\n'
+  } > "$FIXTURE_ROOT/.env"
+  run_setup "$CASE/notes"
+  assert "$control_kind control URL은 failed" '[ "$RC" -ne 0 ] && grep -qF "readiness: failed" "$OUT"'
+  assert "$control_kind control URL은 curl argv/stdout/stderr 0건" '! grep -qF "$control_marker" "$HTTP_LOG" "$OUT"'
+done
+
 printf '\n\033[1mA3 — DRY_RUN은 검증 생략을 partial로 구분\033[0m\n'
 new_fixture partial
 write_env good
@@ -395,6 +425,20 @@ doctor_rc=$?
 set -e
 assert "doctor는 unsafe URL이어도 유한 진단" '[ "$doctor_rc" -eq 0 ]'
 assert "doctor는 unsafe configured URL로 curl하지 않고 원문도 숨김" '[ ! -s "$DOCTOR_CASE/curl.log" ] && ! grep -qF "doctor-url-secret-marker" "$DOCTOR_CASE/output.txt"'
+
+doctor_control_marker="SYNTHETIC_DOCTOR_CONTROL_CANARY"
+{
+  printf 'EMBEDDINGS_URL=https://example.invalid/v1\t%s\n' "$doctor_control_marker"
+  printf 'EMBEDDINGS_MODEL=fixture-model\n'
+} > "$DOCTOR_CASE/repo/.env"
+: > "$DOCTOR_CASE/curl.log"
+set +e
+HOME="$DOCTOR_CASE/home" PATH="$DOCTOR_CASE/bin:/usr/bin:/bin" DOCTOR_CURL_LOG="$DOCTOR_CASE/curl.log" \
+  bash "$DOCTOR_CASE/repo/scripts/doctor.sh" >"$DOCTOR_CASE/output.txt" 2>&1
+doctor_rc=$?
+set -e
+assert "doctor는 control URL이어도 유한 진단" '[ "$doctor_rc" -eq 0 ]'
+assert "doctor는 control URL을 curl·출력 전에 거부" '[ ! -s "$DOCTOR_CASE/curl.log" ] && ! grep -qF "$doctor_control_marker" "$DOCTOR_CASE/output.txt"'
 
 printf '\nsetup readiness 결과: %d 통과, %d 실패\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

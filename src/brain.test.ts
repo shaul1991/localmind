@@ -25,7 +25,6 @@ import crypto from "node:crypto";
 import {
   extractSearchQuery,
   removeFromIndex,
-  watchNotes,
   extractLinks,
   chunkText,
   createNoteFile,
@@ -141,6 +140,92 @@ describe("임베딩 키 미설정 에러 안내", () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("embedding URL userinfo는 fetch 실패 예외·stderr에 노출하지 않는다", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-embedding-userinfo-"));
+    const secret = `embedding-secret-${process.pid}`;
+    const user = "fixture-user";
+    const script = [
+      `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+      `  await m.searchNotes("credential leak probe");`,
+      `  process.exit(0);`,
+      `}).catch((e) => { process.stderr.write(String(e?.message ?? e)); process.exit(1); });`,
+    ].join("\n");
+    let stderr = "";
+    try {
+      try {
+        execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+          cwd: REPO_ROOT,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            HOME: dir,
+            NOTES_DIR: `notes=${dir}`,
+            BRAIN_INDEX: path.join(dir, ".brain-index.json"),
+            QUERY_LOG: "/dev/null",
+            EMBEDDINGS_URL: `http://${user}:${secret}@127.0.0.1:9/v1`,
+            EMBEDDINGS_KEY: "fixture-key",
+            LITELLM_MASTER_KEY: "",
+            EMBED_RETRIES: "1",
+          },
+        });
+        assert.fail("credential URL fetch가 성공하면 안 된다");
+      } catch (error: any) {
+        stderr = String(error.stderr ?? "");
+      }
+      assert.match(stderr, /임베딩.*(?:실패|확인|안전)/);
+      assert.doesNotMatch(stderr, new RegExp(secret));
+      assert.doesNotMatch(stderr, new RegExp(user));
+      assert.doesNotMatch(stderr, /127\.0\.0\.1:9/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("C0/DEL embedding URL은 direct env에서도 fetch 전에 거부하고 원문을 노출하지 않는다", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-embedding-control-"));
+    const marker = `SYNTHETIC_CONTROL_CANARY_${process.pid}`;
+    fs.writeFileSync(path.join(dir, "note.md"), "control ingress canonical note");
+    const script = [
+      `let fetchCalls = 0;`,
+      `globalThis.fetch = async (_url, init) => {`,
+      `  fetchCalls += 1;`,
+      `  const input = JSON.parse(String(init?.body ?? "{}")).input ?? [];`,
+      `  return { ok: true, json: async () => ({ data: input.map((_, index) => ({ index, embedding: [1, 0, 0, 0] })) }) };`,
+      `};`,
+      `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+      `  let rejected = false; let error = "";`,
+      `  try { await m.searchNotes("control ingress probe"); }`,
+      `  catch (e) { rejected = true; error = String(e?.message ?? e); }`,
+      `  process.stdout.write(JSON.stringify({ fetchCalls, rejected, error }));`,
+      `}).catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: dir,
+          NOTES_DIR: `notes=${dir}`,
+          BRAIN_INDEX: path.join(dir, ".brain-index.json"),
+          QUERY_LOG: "/dev/null",
+          EMBEDDINGS_URL: `http://127.0.0.1:9/v1\t${marker}`,
+          EMBEDDINGS_KEY: "fixture-key",
+          LITELLM_MASTER_KEY: "",
+          EMBED_RETRIES: "1",
+        },
+      });
+      const result = JSON.parse(out);
+      assert.equal(result.fetchCalls, 0, "control byte endpoint는 fetch에 도달하면 안 됨");
+      assert.equal(result.rejected, true);
+      assert.match(result.error, /임베딩.*설정|임베딩.*URL/);
+      assert.doesNotMatch(result.error, new RegExp(marker));
+      assert.doesNotMatch(result.error, /127\.0\.0\.1:9/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 // ── extractLinks 단위 테스트 ───────────────────────────────────────────────
@@ -178,26 +263,141 @@ describe("removeFromIndex", () => {
 // ── watchNotes 단위 테스트 ─────────────────────────────────────────────────
 
 describe("watchNotes", () => {
-  it("close()가 존재하고 에러 없이 호출된다 (AC-6 — 기동/종료)", () => {
-    // NOTES_DIR이 없는 경우에도 watchNotes()는 throw하지 않고 빈 watcher를 반환
-    const savedDir = process.env.NOTES_DIR;
-    process.env.NOTES_DIR = "/tmp/nonexistent-localmind-test-dir";
-    const watcher = watchNotes();
-    assert.ok(typeof watcher.close === "function");
-    assert.doesNotThrow(() => watcher.close());
-    process.env.NOTES_DIR = savedDir;
+  it("fresh child의 missing NOTES_DIR는 생성하지 않고 안전하게 닫힌다", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-watch-missing-"));
+    const missing = path.join(root, "does-not-exist");
+    const indexPath = path.join(root, "state", "index.json");
+    const script = [
+      `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+      `  const watcher = m.watchNotes();`,
+      `  const readyAwaitable = typeof watcher.ready?.then === "function";`,
+      `  if (readyAwaitable) await watcher.ready;`,
+      `  const closing = watcher.close();`,
+      `  const closeAwaitable = typeof closing?.then === "function";`,
+      `  if (closeAwaitable) await closing;`,
+      `  process.stdout.write(JSON.stringify({ readyAwaitable, closeAwaitable }));`,
+      `}).catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        timeout: 5_000,
+        env: { ...process.env, NOTES_DIR: `missing=${missing}`, BRAIN_INDEX: indexPath, QUERY_LOG: "/dev/null" },
+      });
+      assert.deepEqual(JSON.parse(out), { readyAwaitable: true, closeAwaitable: true });
+      assert.equal(fs.existsSync(missing), false, "watcher가 missing canonical root를 만들면 안 됨");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 
-  it("실제 폴더를 감시하고 close()로 정리된다 (AC-6 — 다중 폴더)", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-watch-test-"));
+  it("fresh child는 지정한 NOTES_DIR의 삭제 이벤트를 label key로 감시하고 close한다", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-watch-event-"));
+    const target = path.join(root, "observed.md");
+    const indexPath = path.join(root, "state", "index.json");
+    fs.writeFileSync(target, "# observed\n");
+    const script = [
+      `const logs = [];`,
+      `const exact = "[localmind-watcher] removing: watched/observed.md";`,
+      `const originalWrite = process.stderr.write.bind(process.stderr);`,
+      `let guard; let onObserved = () => {};`,
+      `const observed = new Promise((resolve, reject) => {`,
+      `  guard = setTimeout(() => reject(new Error("watch callback timeout")), 3000);`,
+      `  onObserved = () => { clearTimeout(guard); resolve(); };`,
+      `});`,
+      `process.stderr.write = (chunk) => { const text = String(chunk); logs.push(text); if (text.includes(exact)) onObserved(); return true; };`,
+      `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+      `  const watcher = m.watchNotes();`,
+      `  try {`,
+      `    await watcher.ready;`,
+      `    require("node:fs").unlinkSync(${JSON.stringify(target)});`,
+      `    await observed;`,
+      `  } finally {`,
+      `    clearTimeout(guard);`,
+      `    await watcher.close();`,
+      `    process.stderr.write = originalWrite;`,
+      `  }`,
+      `  process.stdout.write(JSON.stringify({ logs }));`,
+      `}).catch((e) => { clearTimeout(guard); process.stderr.write = originalWrite; originalWrite(String(e)); process.exit(1); });`,
+    ].join("\n");
     try {
-      process.env.NOTES_DIR = tmpDir;
-      const watcher = watchNotes();
-      assert.ok(typeof watcher.close === "function");
-      watcher.close(); // 정리 확인
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        timeout: 5000,
+        env: {
+          ...process.env,
+          NOTES_DIR: `watched=${root}`,
+          BRAIN_INDEX: indexPath,
+          QUERY_LOG: "/dev/null",
+          WATCH_DEBOUNCE_MS: "20",
+        },
+      });
+      const parsed = JSON.parse(out);
+      assert.match(parsed.logs.join(""), /\[localmind-watcher\] removing: watched\/observed\.md/);
     } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-      delete process.env.NOTES_DIR;
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("close는 이미 시작된 watcher reindex callback이 끝날 때까지 resolve하지 않는다", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-watch-active-"));
+    const target = path.join(root, "observed.md");
+    const indexPath = path.join(root, "state", "index.json");
+    fs.writeFileSync(target, "# active callback\n");
+    const script = [
+      `const fs = require("node:fs");`,
+      `const { EventEmitter } = require("node:events");`,
+      `const events = [];`,
+      `let watchCallback;`,
+      `const fakeWatcher = new EventEmitter();`,
+      `fakeWatcher.close = () => { events.push("fs-watcher-closed"); fakeWatcher.emit("close"); };`,
+      `fs.watch = (_dir, _options, callback) => { watchCallback = callback; return fakeWatcher; };`,
+      `let signalFetchStarted; let releaseFetch;`,
+      `const fetchStarted = new Promise((resolve) => { signalFetchStarted = resolve; });`,
+      `const fetchGate = new Promise((resolve) => { releaseFetch = resolve; });`,
+      `globalThis.fetch = async (_url, init = {}) => {`,
+      `  events.push("callback-started"); signalFetchStarted(); await fetchGate; events.push("callback-released");`,
+      `  const input = JSON.parse(String(init.body || "{}")).input || [];`,
+      `  return { ok: true, status: 200, json: async () => ({ data: input.map((_, index) => ({ index, embedding: [1, 0, 0, 0] })) }), text: async () => "" };`,
+      `};`,
+      `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+      `  const watcher = m.watchNotes();`,
+      `  await watcher.ready;`,
+      `  watchCallback("change", "observed.md");`,
+      `  await fetchStarted;`,
+      `  let closeResolved = false;`,
+      `  const closing = watcher.close().then(() => { closeResolved = true; events.push("close-resolved"); });`,
+      `  for (let i = 0; i < 6; i++) await Promise.resolve();`,
+      `  const closeResolvedBeforeCallback = closeResolved;`,
+      `  events.push("releasing-callback"); releaseFetch();`,
+      `  await closing;`,
+      `  process.stdout.write(JSON.stringify({ closeResolvedBeforeCallback, events }));`,
+      `}).catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        timeout: 5000,
+        env: {
+          ...process.env,
+          NOTES_DIR: `watched=${root}`,
+          BRAIN_INDEX: indexPath,
+          QUERY_LOG: "/dev/null",
+          WATCH_DEBOUNCE_MS: "0",
+          EMBEDDINGS_URL: "http://fixture.invalid/v1",
+          EMBEDDINGS_MODEL: "fixture-model",
+          EMBEDDINGS_KEY: "fixture-dummy",
+          EMBED_RETRIES: "1",
+        },
+      });
+      const parsed = JSON.parse(out);
+      assert.equal(parsed.closeResolvedBeforeCallback, false, JSON.stringify(parsed.events));
+      assert.ok(parsed.events.indexOf("callback-released") < parsed.events.indexOf("close-resolved"), JSON.stringify(parsed.events));
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
     }
   });
 });
@@ -648,6 +848,8 @@ function runBrainProbe(scriptBody: string, envOverrides: NodeJS.ProcessEnv = {})
     `import * as fs from "node:fs";`,
     `const idxPath = process.env.BRAIN_INDEX;`,
     `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+    `const sealIndex = async (idx) => { delete idx.indexDigest; const web = globalThis["cr" + "ypto"]; idx.indexDigest = Buffer.from(await web.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(idx)))).toString("hex"); return idx; };`,
+    `const sha256 = async (bytes) => { const web = globalThis["cr" + "ypto"]; const input = typeof bytes === "string" ? new TextEncoder().encode(bytes) : bytes; return Buffer.from(await web.subtle.digest("SHA-256", input)).toString("hex"); };`,
     scriptBody,
     `}).catch((e) => { console.error(e); process.exit(1); });`,
   ].join("\n");
@@ -658,6 +860,7 @@ function runBrainProbe(scriptBody: string, envOverrides: NodeJS.ProcessEnv = {})
       env: {
         ...process.env,
         NOTES_DIR: `notes=${tmp}`,
+        NOTES_ROOT: tmp,
         BRAIN_INDEX: idxPath,
         ...envOverrides,
       },
@@ -668,7 +871,138 @@ function runBrainProbe(scriptBody: string, envOverrides: NodeJS.ProcessEnv = {})
   }
 }
 
+const SEMANTIC_INVALID_V5_CASES = [
+  { name: "fractional slot", mutate: `disk.files["notes/a.md"].chunks[0].slot = 0.5;` },
+  { name: "negative slot", mutate: `disk.files["notes/a.md"].chunks[0].slot = -1;` },
+  { name: "out-of-range slot", mutate: `disk.files["notes/a.md"].chunks[0].slot = 2;` },
+  { name: "duplicate slot", mutate: `disk.files["notes/a.md"].chunks[1].slot = disk.files["notes/a.md"].chunks[0].slot;` },
+  {
+    name: "in-range gapped layout",
+    mutate: `
+      const sidecar = fs.readFileSync(sidecarPath);
+      const expanded = Buffer.alloc(sidecar.length + disk.dims * 4);
+      sidecar.copy(expanded);
+      expanded.writeUInt32LE(3, 8);
+      for (let j = 0; j < disk.dims; j++) expanded.writeFloatLE(j === 0 ? 0.5 : 0, sidecar.length + j * 4);
+      fs.writeFileSync(sidecarPath, expanded);
+      disk.vectorDigest = await sha256(expanded);
+      disk.files["notes/a.md"].chunks[1].slot = 2;
+    `,
+  },
+  { name: "JSON/header dims mismatch", mutate: `disk.dims = 3;` },
+] as const;
+
 describe("인덱스 캐시·원자성·동시성 (009)", () => {
+  for (const semanticCase of SEMANTIC_INVALID_V5_CASES) {
+    it(`digest-valid ${semanticCase.name} generation은 load에서 hydrate하지 않는다`, () => {
+      const r = runBrainProbe(`
+        const V = m.loadIndex().version;
+        m.saveIndex({ version: V, embeddingModel: "text-embedding-3-small", dims: 2, files: {
+          "notes/a.md": { hash: "h", folder: "notes", chunks: [
+            { path: "notes/a.md", text: "a", vector: [1, 0] },
+            { path: "notes/a.md", text: "b", vector: [0, 1] },
+          ], linksOut: [] },
+        } });
+        const disk = JSON.parse(fs.readFileSync(idxPath, "utf8"));
+        const pathMod = await import("node:path");
+        const sidecarPath = pathMod.join(pathMod.dirname(idxPath), disk.vectorFile);
+        ${semanticCase.mutate}
+        const sealed = await sealIndex(disk);
+        const corruptBytes = JSON.stringify(sealed);
+        fs.writeFileSync(idxPath, corruptBytes);
+        const payload = JSON.parse(corruptBytes);
+        const expectedIndexDigest = payload.indexDigest;
+        delete payload.indexDigest;
+        const indexSealValid = await sha256(JSON.stringify(payload)) === expectedIndexDigest;
+        const vectorSealValid = await sha256(fs.readFileSync(sidecarPath)) === sealed.vectorDigest;
+        m._resetIndexCacheForTest();
+        const loaded = m.loadIndex();
+        process.stdout.write(JSON.stringify({ indexSealValid, vectorSealValid, hasFile: Object.hasOwn(loaded.files, "notes/a.md") }));
+      `);
+      assert.deepEqual(r, { indexSealValid: true, vectorSealValid: true, hasFile: false });
+    });
+
+    it(`digest-valid ${semanticCase.name} generation은 reload-merge에서 재봉인하지 않는다`, () => {
+      const r = runBrainProbe(`
+        const V = m.loadIndex().version;
+        m.saveIndex({ version: V, embeddingModel: "text-embedding-3-small", dims: 2, files: {
+          "notes/a.md": { hash: "h", folder: "notes", chunks: [
+            { path: "notes/a.md", text: "a", vector: [1, 0] },
+            { path: "notes/a.md", text: "b", vector: [0, 1] },
+          ], linksOut: [] },
+        } });
+        const stale = m.loadIndex();
+        const disk = JSON.parse(fs.readFileSync(idxPath, "utf8"));
+        const pathMod = await import("node:path");
+        const sidecarPath = pathMod.join(pathMod.dirname(idxPath), disk.vectorFile);
+        ${semanticCase.mutate}
+        const sealed = await sealIndex(disk);
+        const corruptBytes = JSON.stringify(sealed);
+        fs.writeFileSync(idxPath, corruptBytes);
+        const corruptSidecar = fs.readFileSync(sidecarPath);
+        const payload = JSON.parse(corruptBytes);
+        const expectedIndexDigest = payload.indexDigest;
+        delete payload.indexDigest;
+        const indexSealValid = await sha256(JSON.stringify(payload)) === expectedIndexDigest;
+        const vectorSealValid = await sha256(corruptSidecar) === sealed.vectorDigest;
+        let rejected = false;
+        try { m.saveIndex(stale); } catch { rejected = true; }
+        process.stdout.write(JSON.stringify({
+          indexSealValid,
+          vectorSealValid,
+          rejected,
+          bytesUnchanged: fs.readFileSync(idxPath, "utf8") === corruptBytes,
+          sidecarUnchanged: fs.readFileSync(sidecarPath).equals(corruptSidecar),
+        }));
+      `);
+      assert.deepEqual(r, {
+        indexSealValid: true,
+        vectorSealValid: true,
+        rejected: true,
+        bytesUnchanged: true,
+        sidecarUnchanged: true,
+      });
+    });
+  }
+
+  it("public saveIndex caller는 임의 object로 clean-rebuild capability를 위조할 수 없다", () => {
+    const r = runBrainProbe(`
+      const V = m.loadIndex().version;
+      m.saveIndex({ version: V, embeddingModel: process.env.EMBEDDINGS_MODEL ?? "text-embedding-3-small", dims: 2, files: {
+        "notes/a.md": { hash: "h", folder: "notes", chunks: [{ path: "notes/a.md", text: "a", vector: [1, 0] }], linksOut: [] },
+      } });
+      const disk = JSON.parse(fs.readFileSync(process.env.BRAIN_INDEX, "utf8"));
+      disk.files["notes/a.md"].chunks[0].text = "forged";
+      fs.writeFileSync(process.env.BRAIN_INDEX, JSON.stringify(disk));
+      m._resetIndexCacheForTest();
+      const recovered = m.loadIndex();
+      const before = fs.readFileSync(process.env.BRAIN_INDEX, "utf8");
+      let rejected = false;
+      try { m.saveIndex(recovered, [], [], {}); } catch { rejected = true; }
+      const after = fs.readFileSync(process.env.BRAIN_INDEX, "utf8");
+      process.stdout.write(JSON.stringify({ rejected, unchanged: before === after }));
+    `);
+    assert.deepEqual(r, { rejected: true, unchanged: true });
+  });
+
+  it("digest-valid v5의 JSON dims가 없으면 sidecar header 차원을 명시적으로 보완한다", () => {
+    const r = runBrainProbe(`
+      const V = m.loadIndex().version;
+      m.saveIndex({ version: V, embeddingModel: "text-embedding-3-small", dims: 3, files: {
+        "notes/a.md": { hash: "h", folder: "notes", chunks: [
+          { path: "notes/a.md", text: "a", vector: [1, 2, 3] },
+        ], linksOut: [] },
+      } });
+      const disk = JSON.parse(fs.readFileSync(idxPath, "utf8"));
+      delete disk.dims;
+      fs.writeFileSync(idxPath, JSON.stringify(await sealIndex(disk)));
+      m._resetIndexCacheForTest();
+      const loaded = m.loadIndex();
+      process.stdout.write(JSON.stringify({ dims: loaded.dims ?? null, vectorLength: loaded.files["notes/a.md"]?.chunks[0]?.vector?.length ?? null }));
+    `);
+    assert.deepEqual(r, { dims: 3, vectorLength: 3 });
+  });
+
   it("사용자 지정 BRAIN_INDEX의 부모가 없어도 생성하고 유한 시간 안에 저장한다", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-index-parent-"));
     const notesDir = path.join(tmp, "notes");
@@ -693,6 +1027,46 @@ describe("인덱스 캐시·원자성·동시성 (009)", () => {
         },
       });
       assert.deepEqual(JSON.parse(out), { files: 0, saved: true });
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("최초 nested index 저장은 새 ancestor 이름과 leaf commit을 모두 directory fsync한다", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-index-ancestor-fsync-"));
+    const notesDir = path.join(tmp, "notes");
+    const stateDir = path.join(tmp, "state");
+    const aDir = path.join(stateDir, "a");
+    const bDir = path.join(aDir, "b");
+    const idxPath = path.join(bDir, "index.json");
+    fs.mkdirSync(notesDir);
+    fs.mkdirSync(stateDir);
+    const script = [
+      `import fs from "node:fs";`,
+      `import * as path from "node:path";`,
+      `const opened = new Map();`,
+      `const originalOpen = fs.openSync;`,
+      `const originalFsync = fs.fsyncSync;`,
+      `fs.openSync = function(p, ...args) { const fd = originalOpen.call(this, p, ...args); opened.set(fd, path.resolve(String(p))); return fd; };`,
+      `const fsyncedDirectories = [];`,
+      `fs.fsyncSync = function(fd) { if (fs.fstatSync(fd).isDirectory()) fsyncedDirectories.push(opened.get(fd)); return originalFsync.call(this, fd); };`,
+      `import(${JSON.stringify(BRAIN_JS)}).then((m) => {`,
+      `  m.saveIndex({ version: m.loadIndex().version, files: {} });`,
+      `  fs.openSync = originalOpen; fs.fsyncSync = originalFsync;`,
+      `  process.stdout.write(JSON.stringify({ fsyncedDirectories, saved: fs.existsSync(process.env.BRAIN_INDEX) }));`,
+      `}).catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const result = JSON.parse(execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        env: { ...process.env, NOTES_DIR: `notes=${notesDir}`, BRAIN_INDEX: idxPath, QUERY_LOG: "/dev/null" },
+      }));
+      assert.equal(result.saved, true);
+      const fsynced = new Set(result.fsyncedDirectories);
+      for (const expected of [stateDir, aDir, bDir]) {
+        assert.equal(fsynced.has(expected), true, `directory durability 경계 누락: ${path.basename(expected)}`);
+      }
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -885,6 +1259,280 @@ describe("인덱스 캐시·원자성·동시성 (009)", () => {
     }
   });
 
+  it("검색 직전 Markdown revision이 바뀌면 stale 색인 chunk를 반환하지 않는다", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-search-source-fidelity-race-"));
+    const notesDir = path.join(tmp, "notes");
+    const stateDir = path.join(tmp, "state");
+    const idxPath = path.join(stateDir, "index.json");
+    const source = path.join(notesDir, "victim.md");
+    fs.mkdirSync(notesDir, { recursive: true });
+    fs.mkdirSync(stateDir, { recursive: true });
+    const oldText = "검색 전까지 정본인 충분히 긴 이전 revision 본문";
+    const currentText = "query embedding 중 교체된 충분히 긴 최신 revision 본문";
+    fs.writeFileSync(source, oldText);
+    const script = [
+      `(async () => {`,
+      `const fs = require("node:fs");`,
+      `const crypto = require("node:crypto");`,
+      `const sha = (text) => crypto.createHash("sha256").update(text).digest("hex");`,
+      `const brain = await import(${JSON.stringify(BRAIN_JS)});`,
+      `brain.saveIndex({ version: brain.loadIndex().version, embeddingModel: "fixture-model", dims: 2, files: {`,
+      `  "notes/victim.md": { hash: sha(process.env.OLD_TEXT), folder: "notes", chunks: [{ path: "notes/victim.md", text: process.env.OLD_TEXT, vector: [1, 0] }], linksOut: [] },`,
+      `} });`,
+      `let changed = false;`,
+      `globalThis.fetch = async (_url, init) => {`,
+      `  const input = JSON.parse(String(init?.body ?? "{}")).input ?? [];`,
+      `  if (!changed && input.includes(process.env.QUERY)) { fs.writeFileSync(process.env.SOURCE_PATH, process.env.CURRENT_TEXT); changed = true; }`,
+      `  return { ok: true, status: 200, json: async () => ({ data: input.map((_, index) => ({ index, embedding: [1, 0] })) }) };`,
+      `};`,
+      `const hits = await brain.searchNotes(process.env.QUERY);`,
+      `process.stdout.write(JSON.stringify({ changed, hits, source: fs.readFileSync(process.env.SOURCE_PATH, "utf8") }));`,
+      `})().catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: path.join(tmp, "home"),
+          NOTES_DIR: `notes=${notesDir}`,
+          BRAIN_INDEX: idxPath,
+          QUERY_LOG: "/dev/null",
+          EMBEDDINGS_URL: "http://embedding.invalid/v1",
+          EMBEDDINGS_MODEL: "fixture-model",
+          EMBEDDINGS_KEY: "fixture-key",
+          EMBED_RETRIES: "1",
+          SOURCE_PATH: source,
+          OLD_TEXT: oldText,
+          CURRENT_TEXT: currentText,
+          QUERY: "source fidelity race query",
+        },
+      });
+      const r = JSON.parse(out);
+      assert.equal(r.changed, true, "query embedding 중 외부 교체 fixture가 실행돼야 함");
+      assert.equal(r.source, currentText);
+      assert.deepEqual(r.hits, [], "현재 Markdown hash와 다른 stale chunk는 fail closed로 제외해야 함");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("검색 source fidelity 확인의 I/O 실패는 빈 결과가 아니라 명시적 오류로 닫힌다", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-search-source-fidelity-io-"));
+    const notesDir = path.join(tmp, "notes");
+    const indexPath = path.join(tmp, "state", "index.json");
+    fs.mkdirSync(notesDir, { recursive: true });
+    fs.mkdirSync(path.dirname(indexPath), { recursive: true });
+    const source = path.join(notesDir, "io.md");
+    const sourceText = "source fidelity I/O fixture";
+    fs.writeFileSync(source, sourceText);
+    const script = [
+      `(async () => {`,
+      `const fs = require("node:fs");`,
+      `const crypto = require("node:crypto");`,
+      `const brain = await import(${JSON.stringify(BRAIN_JS)});`,
+      `const sha = (text) => crypto.createHash("sha256").update(text).digest("hex");`,
+      `brain.saveIndex({ version: brain.loadIndex().version, embeddingModel: "fixture-model", dims: 2, files: {`,
+      `  "canonical/io.md": { hash: sha(process.env.SOURCE_TEXT), folder: "canonical", chunks: [{ path: "canonical/io.md", text: process.env.SOURCE_TEXT, vector: [1, 0] }], linksOut: [] },`,
+      `} });`,
+      `let replacedSource = false;`,
+      `globalThis.fetch = async (_url, init) => {`,
+      `  const input = JSON.parse(String(init?.body ?? "{}")).input ?? [];`,
+      `  if (!replacedSource) { fs.rmSync(process.env.SOURCE_PATH); fs.mkdirSync(process.env.SOURCE_PATH); replacedSource = true; }`,
+      `  return { ok: true, status: 200, json: async () => ({ data: input.map((_, index) => ({ index, embedding: [1, 0] })) }) };`,
+      `};`,
+      `let rejected = false; let message = ""; let hitCount = -1;`,
+      `try { const hits = await brain.searchNotes("I/O fail closed query"); hitCount = hits.length; } catch (e) { rejected = true; message = String(e?.message ?? e); }`,
+      `process.stdout.write(JSON.stringify({ rejected, message, hitCount }));`,
+      `})().catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const r = JSON.parse(execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: path.join(tmp, "home"),
+          NOTES_DIR: `canonical=${notesDir}`,
+          BRAIN_INDEX: indexPath,
+          QUERY_LOG: "/dev/null",
+          EMBEDDINGS_MODEL: "fixture-model",
+          EMBEDDINGS_URL: "http://embedding.invalid/v1",
+          EMBEDDINGS_KEY: "fixture-key",
+          EMBED_RETRIES: "1",
+          SOURCE_PATH: source,
+          SOURCE_TEXT: sourceText,
+        },
+      }));
+      assert.equal(r.rejected, true, `I/O 실패가 hitCount=${r.hitCount} 빈 결과로 위장됨`);
+      assert.match(r.message, /정본.*확인|source.*fidelity/i);
+      assert.doesNotMatch(r.message, new RegExp(tmp.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), "오류에 절대경로를 노출하지 않음");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("query embedding 중 canonical root 전체가 사라지면 빈 결과가 아니라 명시적 오류로 닫힌다", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-search-root-unavailable-"));
+    const notesDir = path.join(tmp, "notes");
+    const indexPath = path.join(tmp, "state", "index.json");
+    const source = path.join(notesDir, "victim.md");
+    const sourceText = "canonical root unavailable fixture";
+    fs.mkdirSync(notesDir, { recursive: true });
+    fs.mkdirSync(path.dirname(indexPath), { recursive: true });
+    fs.writeFileSync(source, sourceText);
+    const script = [
+      `(async () => {`,
+      `const fs = require("node:fs"); const crypto = require("node:crypto");`,
+      `const brain = await import(${JSON.stringify(BRAIN_JS)});`,
+      `const sha = (text) => crypto.createHash("sha256").update(text).digest("hex");`,
+      `brain.saveIndex({ version: brain.loadIndex().version, embeddingModel: "fixture-model", dims: 2, files: {`,
+      `  "canonical/victim.md": { hash: sha(process.env.SOURCE_TEXT), folder: "canonical", chunks: [{ path: "canonical/victim.md", text: process.env.SOURCE_TEXT, vector: [1, 0] }], linksOut: [] },`,
+      `} });`,
+      `let removed = false;`,
+      `globalThis.fetch = async (_url, init) => { const input = JSON.parse(String(init?.body ?? "{}")).input ?? [];`,
+      `  if (!removed && input.includes(process.env.QUERY)) { fs.rmSync(process.env.NOTES_ROOT, { recursive: true }); removed = true; }`,
+      `  return { ok: true, status: 200, json: async () => ({ data: input.map((_, index) => ({ index, embedding: [1, 0] })) }) }; };`,
+      `let rejected = false, message = "", hitCount = -1;`,
+      `try { const hits = await brain.searchNotes(process.env.QUERY); hitCount = hits.length; } catch (e) { rejected = true; message = String(e?.message ?? e); }`,
+      `process.stdout.write(JSON.stringify({ removed, rejected, message, hitCount }));`,
+      `})().catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const r = JSON.parse(execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: path.join(tmp, "home"),
+          NOTES_DIR: `canonical=${notesDir}`,
+          NOTES_ROOT: notesDir,
+          BRAIN_INDEX: indexPath,
+          QUERY_LOG: "/dev/null",
+          EMBEDDINGS_MODEL: "fixture-model",
+          EMBEDDINGS_URL: "http://embedding.invalid/v1",
+          EMBEDDINGS_KEY: "fixture-key",
+          EMBED_RETRIES: "1",
+          SOURCE_TEXT: sourceText,
+          QUERY: "root unavailable query",
+        },
+      }));
+      assert.equal(r.removed, true);
+      assert.equal(r.rejected, true, `root 장애가 hitCount=${r.hitCount} 빈 결과로 위장됨`);
+      assert.match(r.message, /정본.*확인|노트 폴더.*사용|source.*fidelity/i);
+      assert.doesNotMatch(r.message, new RegExp(tmp.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("query embedding 중 source 파일만 삭제되고 root는 남으면 confirmed-missing으로 제외한다", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-search-source-missing-"));
+    const notesDir = path.join(tmp, "notes");
+    const indexPath = path.join(tmp, "state", "index.json");
+    const source = path.join(notesDir, "victim.md");
+    const sourceText = "confirmed source missing fixture";
+    fs.mkdirSync(notesDir, { recursive: true });
+    fs.mkdirSync(path.dirname(indexPath), { recursive: true });
+    fs.writeFileSync(source, sourceText);
+    const script = [
+      `(async () => {`,
+      `const fs = require("node:fs"); const crypto = require("node:crypto");`,
+      `const brain = await import(${JSON.stringify(BRAIN_JS)});`,
+      `const sha = (text) => crypto.createHash("sha256").update(text).digest("hex");`,
+      `brain.saveIndex({ version: brain.loadIndex().version, embeddingModel: "fixture-model", dims: 2, files: {`,
+      `  "canonical/victim.md": { hash: sha(process.env.SOURCE_TEXT), folder: "canonical", chunks: [{ path: "canonical/victim.md", text: process.env.SOURCE_TEXT, vector: [1, 0] }], linksOut: [] },`,
+      `} });`,
+      `let removed = false;`,
+      `globalThis.fetch = async (_url, init) => { const input = JSON.parse(String(init?.body ?? "{}")).input ?? [];`,
+      `  if (!removed && input.includes(process.env.QUERY)) { fs.rmSync(process.env.SOURCE_PATH); removed = true; }`,
+      `  return { ok: true, status: 200, json: async () => ({ data: input.map((_, index) => ({ index, embedding: [1, 0] })) }) }; };`,
+      `let rejected = false, message = "", hitCount = -1;`,
+      `try { const hits = await brain.searchNotes(process.env.QUERY); hitCount = hits.length; } catch (e) { rejected = true; message = String(e?.message ?? e); }`,
+      `process.stdout.write(JSON.stringify({ removed, rejected, message, hitCount, rootExists: fs.statSync(process.env.NOTES_ROOT).isDirectory() }));`,
+      `})().catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const r = JSON.parse(execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: path.join(tmp, "home"), NOTES_DIR: `canonical=${notesDir}`, NOTES_ROOT: notesDir,
+          SOURCE_PATH: source, SOURCE_TEXT: sourceText, BRAIN_INDEX: indexPath, QUERY_LOG: "/dev/null",
+          EMBEDDINGS_MODEL: "fixture-model", EMBEDDINGS_URL: "http://embedding.invalid/v1", EMBEDDINGS_KEY: "fixture-key",
+          EMBED_RETRIES: "1", QUERY: "confirmed missing query",
+        },
+      }));
+      assert.deepEqual(r, { removed: true, rejected: false, message: "", hitCount: 0, rootExists: true });
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("JSON rename 뒤 parent directory fsync EIO를 성공으로 삼키지 않고 generation을 보존한다", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-index-directory-fsync-eio-"));
+    const notesDir = path.join(tmp, "notes");
+    const stateDir = path.join(tmp, "state");
+    const idxPath = path.join(stateDir, "index.json");
+    fs.mkdirSync(notesDir, { recursive: true });
+    fs.mkdirSync(stateDir, { recursive: true });
+    const script = [
+      `(async () => {`,
+      `const fs = require("node:fs");`,
+      `const brain = await import(${JSON.stringify(BRAIN_JS)});`,
+      `brain.saveIndex({ version: brain.loadIndex().version, embeddingModel: "fixture-model", dims: 2, files: {`,
+      `  "notes/a.md": { hash: "ha", folder: "notes", chunks: [{ path: "notes/a.md", text: "a", vector: [1, 0] }], linksOut: [] },`,
+      `} });`,
+      `const before = fs.readdirSync(process.env.STATE_DIR).filter((name) => name.startsWith("index.json")).sort();`,
+      `const candidate = brain.loadIndex();`,
+      `candidate.files["notes/b.md"] = { hash: "hb", folder: "notes", chunks: [{ path: "notes/b.md", text: "b", vector: [0, 1] }], linksOut: [] };`,
+      `const originalFsync = fs.fsyncSync;`,
+      `let directoryFsyncs = 0;`,
+      `fs.fsyncSync = function(fd) {`,
+      `  if (fs.fstatSync(fd).isDirectory() && ++directoryFsyncs === 2) { const error = new Error("fixture EIO"); error.code = "EIO"; throw error; }`,
+      `  return originalFsync.call(this, fd);`,
+      `};`,
+      `let rejected = false, error = "";`,
+      `try { brain.saveIndex(candidate); } catch (e) { rejected = true; error = String(e?.message ?? e); }`,
+      `fs.fsyncSync = originalFsync;`,
+      `const disk = JSON.parse(fs.readFileSync(process.env.BRAIN_INDEX, "utf8"));`,
+      `const sidecarExists = typeof disk.vectorFile === "string" && fs.existsSync(process.env.STATE_DIR + "/" + disk.vectorFile);`,
+      `const after = fs.readdirSync(process.env.STATE_DIR).filter((name) => name.startsWith("index.json")).sort();`,
+      `const tempCount = after.filter((name) => name.includes(".tmp-")).length;`,
+      `brain._resetIndexCacheForTest();`,
+      `const loaded = brain.loadIndex();`,
+      `process.stdout.write(JSON.stringify({ rejected, error, directoryFsyncs, before, after, sidecarExists, tempCount, keys: Object.keys(loaded.files).sort() }));`,
+      `})().catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: path.join(tmp, "home"),
+          NOTES_DIR: `notes=${notesDir}`,
+          STATE_DIR: stateDir,
+          BRAIN_INDEX: idxPath,
+          QUERY_LOG: "/dev/null",
+          EMBEDDINGS_MODEL: "fixture-model",
+        },
+      });
+      const r = JSON.parse(out);
+      assert.equal(r.directoryFsyncs, 2, "두 번째 directory fsync에서 EIO fixture가 발생해야 함");
+      assert.equal(r.rejected, true, "EIO를 durable success로 보고하면 안 됨");
+      assert.match(r.error, /색인.*저장|저장.*색인/);
+      assert.equal(r.sidecarExists, true, "rename된 JSON이 참조한 sidecar를 삭제하면 안 됨");
+      assert.ok(r.after.length >= r.before.length + 1, "fsync 실패에서는 직전 generation을 GC하지 않아야 함");
+      assert.equal(r.tempCount, 0);
+      assert.deepEqual(r.keys, ["notes/a.md", "notes/b.md"], "fresh load 가능한 일관된 generation이어야 함");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("삭제 처리 전에 시작된 임베딩이 끝나도 삭제된 노트를 색인에 되살리지 않는다", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-index-delete-race-"));
     const notesDir = path.join(tmp, "notes");
@@ -1016,7 +1664,7 @@ describe("인덱스 캐시·원자성·동시성 (009)", () => {
       `const stale = brain.loadIndex();`,
       `delete stale.files["notes/victim.md"];`,
       `execFileSync("node", ["--import", "tsx/esm", "-e",`,
-      `  "import(" + JSON.stringify(${JSON.stringify(BRAIN_JS)}) + ").then((m) => { const i=m.loadIndex(); i.files['notes/unrelated.md']={hash:'unrelated',folder:'notes',chunks:[],linksOut:[]}; m.saveIndex(i); })"`,
+      `  "import(" + JSON.stringify(${JSON.stringify(BRAIN_JS)}) + ").then((m) => { const i=m.loadIndex(); i.files['orphan/unrelated.md']={hash:'unrelated',folder:'orphan',chunks:[],linksOut:[]}; m.saveIndex(i); })"`,
       `], { cwd: ${JSON.stringify(REPO_ROOT)}, env: process.env });`,
       `brain.saveIndex(stale, [], [{ key: "notes/victim.md", expectedHash: victimHash, fullPath: process.env.NOTES_ROOT + "/victim.md", rootDir: process.env.NOTES_ROOT }]);`,
       `process.stdout.write(JSON.stringify(Object.keys(brain.loadIndex().files).sort()));`,
@@ -1034,13 +1682,13 @@ describe("인덱스 캐시·원자성·동시성 (009)", () => {
           BRAIN_INDEX: idxPath,
         },
       });
-      assert.deepEqual(JSON.parse(out), ["notes/unrelated.md"]);
+      assert.deepEqual(JSON.parse(out), ["orphan/unrelated.md"]);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
 
-  it("같은 경로에 같은 내용으로 재생성된 source는 늦은 삭제 의도가 지우지 않는다", () => {
+  it("disk generation이 그대로여도 같은 경로·bytes로 재생성된 source는 늦은 삭제 의도가 지우지 않는다", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-index-identical-recreate-"));
     const notesDir = path.join(tmp, "notes");
     const idxPath = path.join(tmp, ".brain-index.json");
@@ -1051,7 +1699,6 @@ describe("인덱스 캐시·원자성·동시성 (009)", () => {
       `(async () => {`,
       `const fs = require("node:fs");`,
       `const crypto = require("node:crypto");`,
-      `const { execFileSync } = require("node:child_process");`,
       `const hash = crypto.createHash("sha256").update("동일하게 재생성될 내용").digest("hex");`,
       `const brain = await import(${JSON.stringify(BRAIN_JS)});`,
       `brain.saveIndex({ version: brain.loadIndex().version, embeddingModel: "text-embedding-3-small", files: {`,
@@ -1061,9 +1708,6 @@ describe("인덱스 캐시·원자성·동시성 (009)", () => {
       `delete stale.files["notes/victim.md"];`,
       `fs.unlinkSync(process.env.SOURCE_PATH);`,
       `fs.writeFileSync(process.env.SOURCE_PATH, "동일하게 재생성될 내용");`,
-      `execFileSync("node", ["--import", "tsx/esm", "-e",`,
-      `  "import(" + JSON.stringify(${JSON.stringify(BRAIN_JS)}) + ").then((m) => m.saveIndex(m.loadIndex()))"`,
-      `], { cwd: ${JSON.stringify(REPO_ROOT)}, env: process.env });`,
       `brain.saveIndex(stale, [], [{ key: "notes/victim.md", expectedHash: hash, fullPath: process.env.SOURCE_PATH, rootDir: process.env.NOTES_ROOT }]);`,
       `process.stdout.write(JSON.stringify(Object.keys(brain.loadIndex().files)));`,
       `})().catch((e) => { console.error(e); process.exit(1); });`,
@@ -1087,6 +1731,68 @@ describe("인덱스 캐시·원자성·동시성 (009)", () => {
     }
   });
 
+  it("삭제 확인 뒤 JSON commit 직전에 source가 재생성되면 이전 generation을 그대로 보존한다", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-index-recreate-before-commit-"));
+    const notesDir = path.join(tmp, "notes");
+    const idxPath = path.join(tmp, ".brain-index.json");
+    const source = path.join(notesDir, "victim.md");
+    fs.mkdirSync(notesDir);
+    fs.writeFileSync(source, "commit 직전 재생성될 동일 bytes");
+    const script = [
+      `(async () => {`,
+      `const fs = require("node:fs");`,
+      `const crypto = require("node:crypto");`,
+      `const text = "commit 직전 재생성될 동일 bytes";`,
+      `const hash = crypto.createHash("sha256").update(text).digest("hex");`,
+      `const brain = await import(${JSON.stringify(BRAIN_JS)});`,
+      `brain.saveIndex({ version: brain.loadIndex().version, embeddingModel: "text-embedding-3-small", files: {`,
+      `  "notes/victim.md": { hash, folder: "notes", chunks: [], linksOut: [] },`,
+      `} });`,
+      `const before = fs.readFileSync(process.env.BRAIN_INDEX);`,
+      `const stale = brain.loadIndex();`,
+      `delete stale.files["notes/victim.md"];`,
+      `fs.unlinkSync(process.env.SOURCE_PATH);`,
+      `const originalOpenSync = fs.openSync;`,
+      `let recreated = false;`,
+      `fs.openSync = function(target, ...args) {`,
+      `  const fd = originalOpenSync.call(this, target, ...args);`,
+      `  if (!recreated && String(target).startsWith(process.env.BRAIN_INDEX + ".tmp-")) {`,
+      `    fs.writeFileSync(process.env.SOURCE_PATH, text); recreated = true;`,
+      `  }`,
+      `  return fd;`,
+      `};`,
+      `let rejected = false;`,
+      `try {`,
+      `  brain.saveIndex(stale, [], [{ key: "notes/victim.md", expectedHash: hash, fullPath: process.env.SOURCE_PATH, rootDir: process.env.NOTES_ROOT }]);`,
+      `} catch { rejected = true; } finally { fs.openSync = originalOpenSync; }`,
+      `const after = fs.readFileSync(process.env.BRAIN_INDEX);`,
+      `process.stdout.write(JSON.stringify({ rejected, recreated, bytesUnchanged: before.equals(after), keys: Object.keys(JSON.parse(after).files) }));`,
+      `})().catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        timeout: 5_000,
+        env: {
+          ...process.env,
+          NOTES_DIR: `notes=${notesDir}`,
+          NOTES_ROOT: notesDir,
+          SOURCE_PATH: source,
+          BRAIN_INDEX: idxPath,
+        },
+      });
+      assert.deepEqual(JSON.parse(out), {
+        rejected: true,
+        recreated: true,
+        bytesUnchanged: true,
+        keys: ["notes/victim.md"],
+      });
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("스캔 프루닝과 무관한 동시 저장이 경쟁해도 삭제 source를 되살리지 않는다", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-index-prune-unrelated-save-"));
     const notesDir = path.join(tmp, "notes");
@@ -1103,7 +1809,7 @@ describe("인덱스 캐시·원자성·동시성 (009)", () => {
       `  let raw = ""; req.on("data", (c) => (raw += c));`,
       `  req.on("end", () => {`,
       `    execFileSync("node", ["--import", "tsx/esm", "-e",`,
-      `      "import(" + JSON.stringify(${JSON.stringify(BRAIN_JS)}) + ").then((m) => { const i=m.loadIndex(); i.files['notes/unrelated.md']={hash:'unrelated',folder:'notes',chunks:[],linksOut:[]}; m.saveIndex(i); })"`,
+      `      "import(" + JSON.stringify(${JSON.stringify(BRAIN_JS)}) + ").then((m) => { const i=m.loadIndex(); i.files['orphan/unrelated.md']={hash:'unrelated',folder:'orphan',chunks:[],linksOut:[]}; m.saveIndex(i); })"`,
       `    ], { cwd: ${JSON.stringify(REPO_ROOT)}, env: process.env });`,
       `    const n = JSON.parse(raw).input.length;`,
       `    res.setHeader("content-type", "application/json");`,
@@ -1137,7 +1843,7 @@ describe("인덱스 캐시·원자성·동시성 (009)", () => {
           EMBED_RETRIES: "1",
         },
       });
-      assert.deepEqual(JSON.parse(out), ["notes/new.md", "notes/unrelated.md"]);
+      assert.deepEqual(JSON.parse(out), ["notes/new.md", "orphan/unrelated.md"]);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -1200,6 +1906,7 @@ describe("인덱스 캐시·원자성·동시성 (009)", () => {
       `const fs = require("node:fs");`,
       `const crypto = require("node:crypto");`,
       `const hash = (text) => crypto.createHash("sha256").update(text).digest("hex");`,
+      `const sealIndex = (idx) => { delete idx.indexDigest; idx.indexDigest = hash(JSON.stringify(idx)); return idx; };`,
       `const brain = await import(${JSON.stringify(BRAIN_JS)});`,
       `const pendingHash = hash("현재 model의 pending revision");`,
       `const incompatibleHash = hash("다른 model의 durable revision");`,
@@ -1208,9 +1915,10 @@ describe("인덱스 캐시·원자성·동시성 (009)", () => {
       `} });`,
       `const stale = brain.loadIndex();`,
       `stale.files["notes/victim.md"].hash = pendingHash;`,
-      `fs.writeFileSync(process.env.BRAIN_INDEX, JSON.stringify({ version: stale.version, embeddingModel: "incompatible-model", files: {`,
+      `const external = await sealIndex({ version: stale.version, embeddingModel: "incompatible-model", files: {`,
       `  "notes/victim.md": { hash: incompatibleHash, folder: "notes", chunks: [], linksOut: [] },`,
-      `} }));`,
+      `} });`,
+      `fs.writeFileSync(process.env.BRAIN_INDEX, JSON.stringify(external));`,
       `fs.rmSync(process.env.NOTES_ROOT, { recursive: true, force: true });`,
       `brain.saveIndex(stale, [{ key: "notes/victim.md", fullPath: process.env.SOURCE_PATH, rootDir: process.env.NOTES_ROOT, hash: pendingHash }]);`,
       `const final = brain.loadIndex();`,
@@ -1249,6 +1957,7 @@ describe("인덱스 캐시·원자성·동시성 (009)", () => {
       `const path = require("node:path");`,
       `const crypto = require("node:crypto");`,
       `const hash = (text) => crypto.createHash("sha256").update(text).digest("hex");`,
+      `const sealIndex = (idx) => { delete idx.indexDigest; idx.indexDigest = hash(JSON.stringify(idx)); return idx; };`,
       `const brain = await import(${JSON.stringify(BRAIN_JS)});`,
       `const pendingHash = hash("현재 model의 pending revision");`,
       `const incompatibleHash = hash("다른 차원의 durable revision");`,
@@ -1261,9 +1970,14 @@ describe("인덱스 캐시·원자성·동시성 (009)", () => {
       `sidecar.write("LMV1", 0, "ascii"); sidecar.writeUInt32LE(3, 4); sidecar.writeUInt32LE(1, 8);`,
       `sidecar.writeFloatLE(1, 16); sidecar.writeFloatLE(2, 20); sidecar.writeFloatLE(3, 24);`,
       `fs.writeFileSync(path.join(path.dirname(process.env.BRAIN_INDEX), vectorFile), sidecar);`,
-      `fs.writeFileSync(process.env.BRAIN_INDEX, JSON.stringify({ version: stale.version, embeddingModel: "text-embedding-3-small", vectorFile, files: {`,
+      `const vectorDigest = hash(sidecar);`,
+      `const external = sealIndex({ version: stale.version, embeddingModel: "text-embedding-3-small", dims: 3, vectorFile, vectorDigest, files: {`,
       `  "notes/victim.md": { hash: incompatibleHash, folder: "notes", chunks: [{ path: "notes/victim.md", text: "incompatible", slot: 0 }], linksOut: [] },`,
-      `} }));`,
+      `} });`,
+      `fs.writeFileSync(process.env.BRAIN_INDEX, JSON.stringify(external));`,
+      `brain._resetIndexCacheForTest();`,
+      `const externalLoaded = brain.loadIndex();`,
+      `if (externalLoaded.files["notes/victim.md"]?.chunks?.[0]?.vector?.length !== 3) throw new Error("valid external writer fixture did not hydrate");`,
       `fs.rmSync(process.env.NOTES_ROOT, { recursive: true, force: true });`,
       `brain.saveIndex(stale, [{ key: "notes/victim.md", fullPath: process.env.SOURCE_PATH, rootDir: process.env.NOTES_ROOT, hash: pendingHash }]);`,
       `process.stdout.write(JSON.stringify({ finalHash: brain.loadIndex().files["notes/victim.md"]?.hash ?? null }));`,
@@ -1355,7 +2069,8 @@ describe("인덱스 캐시·원자성·동시성 (009)", () => {
       m.saveIndex({ version: V, files: { "a/x.md": { hash: "h", folder: "a", chunks: [], linksOut: [] } } });
       m.loadIndex(); // 캐시 적중 상태 만들기
       // 외부 변경 시뮬: saveIndex 안 거치고 파일 직접 교체 + mtime 강제 변경
-      fs.writeFileSync(idxPath, JSON.stringify({ version: V, files: { "b/y.md": { hash: "h2", folder: "b", chunks: [], linksOut: [] } } }));
+      const external = await sealIndex({ version: V, files: { "b/y.md": { hash: "h2", folder: "b", chunks: [], linksOut: [] } } });
+      fs.writeFileSync(idxPath, JSON.stringify(external));
       const future = Date.now() / 1000 + 10;
       fs.utimesSync(idxPath, future, future);
       const after = m.loadIndex();
@@ -1410,6 +2125,76 @@ describe("인덱스 캐시·원자성·동시성 (009)", () => {
       process.stdout.write(JSON.stringify({ fileCount: Object.keys(after.files).length }));
     `);
     assert.equal(r.fileCount, 0);
+  });
+});
+
+describe("Phase 2 index fingerprint identity", () => {
+  it("same-size atomic replacement가 mtime을 복원해도 cache stale hit를 허용하지 않는다", () => {
+    const r = runBrainProbe(`
+      const V = m.loadIndex().version;
+      const fe = (folder) => ({ hash: "h", folder, chunks: [], linksOut: [] });
+      m.saveIndex({ version: V, files: { "a/a.md": fe("a") } });
+      const fixed = 1700000000;
+      fs.utimesSync(idxPath, fixed, fixed);
+      m._resetIndexCacheForTest();
+      m.loadIndex(); // fixed mtime의 캐시 snapshot
+      const before = fs.statSync(idxPath);
+      const disk = JSON.parse(fs.readFileSync(idxPath, "utf8"));
+      disk.files = { "b/b.md": fe("b") }; // key·folder 모두 같은 길이
+      const replacement = JSON.stringify(await sealIndex(disk));
+      const originalSize = fs.statSync(idxPath).size;
+      const tmp = idxPath + ".external-replacement";
+      fs.writeFileSync(tmp, replacement);
+      fs.utimesSync(tmp, fixed, fixed);
+      fs.renameSync(tmp, idxPath);
+      const afterStat = fs.statSync(idxPath);
+      const after = m.loadIndex();
+      process.stdout.write(JSON.stringify({
+        keys: Object.keys(after.files), sameSize: afterStat.size === originalSize,
+        sameMtime: afterStat.mtimeMs === before.mtimeMs,
+        identityChanged: afterStat.dev !== before.dev || afterStat.ino !== before.ino || afterStat.ctimeMs !== before.ctimeMs,
+      }));
+    `);
+    assert.equal(r.sameSize, true, "fixture가 size를 바꾸면 mtime+size 결함을 재현하지 못함");
+    assert.equal(r.sameMtime, true, "fixture가 원래 mtime을 정확히 복원해야 함");
+    assert.equal(r.identityChanged, true, "atomic replacement identity는 달라야 함");
+    assert.deepEqual(r.keys, ["b/b.md"], "교체된 디스크 내용을 다시 읽어야 함");
+  });
+
+  it("same-size atomic replacement+mtime 복원도 saveIndex reload-merge에서 동시 갱신을 보존한다", () => {
+    const r = runBrainProbe(`
+      const V = m.loadIndex().version;
+      const fe = (folder, hash = folder) => ({ hash, folder, chunks: [], linksOut: [] });
+      m.saveIndex({ version: V, files: { "a/a.md": fe("a"), "x/x.md": fe("x") } });
+      const fixed = 1700000000;
+      fs.utimesSync(idxPath, fixed, fixed);
+      m._resetIndexCacheForTest();
+      const mine = m.loadIndex();
+      const before = fs.statSync(idxPath);
+      const disk = JSON.parse(fs.readFileSync(idxPath, "utf8"));
+      delete disk.files["x/x.md"];
+      disk.files["b/b.md"] = fe("b"); // x→b: JSON byte length 동일
+      const replacement = JSON.stringify(await sealIndex(disk));
+      const originalSize = fs.statSync(idxPath).size;
+      const tmp = idxPath + ".external-replacement";
+      fs.writeFileSync(tmp, replacement);
+      fs.utimesSync(tmp, fixed, fixed);
+      fs.renameSync(tmp, idxPath);
+      const externalStat = fs.statSync(idxPath);
+      delete mine.files["x/x.md"];
+      mine.files["c/c.md"] = fe("c");
+      m.saveIndex(mine);
+      const final = m.loadIndex();
+      process.stdout.write(JSON.stringify({
+        keys: Object.keys(final.files).sort(), sameSize: externalStat.size === originalSize,
+        sameMtime: externalStat.mtimeMs === before.mtimeMs,
+        identityChanged: externalStat.dev !== before.dev || externalStat.ino !== before.ino || externalStat.ctimeMs !== before.ctimeMs,
+      }));
+    `);
+    assert.equal(r.sameSize, true);
+    assert.equal(r.sameMtime, true);
+    assert.equal(r.identityChanged, true);
+    assert.deepEqual(r.keys, ["a/a.md", "b/b.md", "c/c.md"], "외부 b와 내 c가 모두 보존돼야 함");
   });
 });
 
@@ -1640,11 +2425,16 @@ describe("인덱스 다중 프로세스 안전 (013)", () => {
   it("AC-11: 다른 프로세스가 먼저 저장한 엔트리가 내 저장으로 유실되지 않는다(reload-merge)", () => {
     const r = runBrainProbe(`
       const V = m.loadIndex().version;
-      const fe = (folder) => ({ hash: "h", folder, chunks: [], linksOut: [] });
+      const emptyHash = await sha256("");
+      const fe = (folder) => ({ hash: emptyHash, folder, chunks: [], linksOut: [] });
+      for (const name of ["a.md", "b.md", "c.md"]) fs.writeFileSync(process.env.NOTES_ROOT + "/" + name, "");
       // 내 로드 시점: a만 있는 인덱스 저장(cachedStat 확정)
       m.saveIndex({ version: V, files: { "notes/a.md": fe("notes") } });
       // 다른 프로세스 저장 시뮬: saveIndex를 거치지 않고 직접 교체(b 추가) + mtime 변경
-      fs.writeFileSync(idxPath, JSON.stringify({ version: V, files: { "notes/a.md": fe("notes"), "notes/b.md": fe("notes") } }));
+      fs.writeFileSync(idxPath, JSON.stringify(await sealIndex({
+        version: V,
+        files: { "notes/a.md": fe("notes"), "notes/b.md": fe("notes") },
+      })));
       const future = Date.now() / 1000 + 10;
       fs.utimesSync(idxPath, future, future);
       // 내 저장: c를 추가 — b가 유실되면 안 된다
@@ -1725,11 +2515,16 @@ describe("인덱스 다중 프로세스 안전 (013)", () => {
   it("결함1 회귀: 중간의 무관한 loadIndex가 있어도 병합 기준(객체별 스냅샷)이 유지된다", () => {
     const r = runBrainProbe(`
       const V = m.loadIndex().version;
-      const fe = (folder) => ({ hash: "h", folder, chunks: [], linksOut: [] });
+      const emptyHash = await sha256("");
+      const fe = (folder) => ({ hash: emptyHash, folder, chunks: [], linksOut: [] });
+      for (const name of ["a.md", "b.md", "c.md"]) fs.writeFileSync(process.env.NOTES_ROOT + "/" + name, "");
       m.saveIndex({ version: V, files: { "notes/a.md": fe("notes") } });
       const mine = m.loadIndex(); // 내 작업본 — 이 시점(a만 존재)이 병합 기준이어야 한다
       // 다른 프로세스가 b를 추가 저장
-      fs.writeFileSync(idxPath, JSON.stringify({ version: V, files: { "notes/a.md": fe("notes"), "notes/b.md": fe("notes") } }));
+      fs.writeFileSync(idxPath, JSON.stringify(await sealIndex({
+        version: V,
+        files: { "notes/a.md": fe("notes"), "notes/b.md": fe("notes") },
+      })));
       const future = Date.now() / 1000 + 10;
       fs.utimesSync(idxPath, future, future);
       m.loadIndex(); // 무관한 중간 로드(다른 도구 호출·watcher) — 공유 캐시가 전진하는 상황
@@ -1933,7 +2728,7 @@ function makePruneFixture(): { root: string; idxPath: string; nd: (labels: strin
 
 async function withEmbedStub(
   fn: (base: string, calls: () => number) => Promise<void>,
-  opts: { failMarker?: string } = {}, // 요청 본문에 마커가 있으면 500 — 순번 기반보다 결정적(021 AC-3)
+  opts: { failMarker?: string; onRequest?: () => void } = {}, // 요청 본문에 마커가 있으면 500 — 순번 기반보다 결정적(021 AC-3)
 ): Promise<void> {
   let count = 0;
   const srv = http.createServer((req, res) => {
@@ -1941,6 +2736,7 @@ async function withEmbedStub(
     req.on("data", (c) => (raw += c));
     req.on("end", () => {
       count++;
+      opts.onRequest?.();
       if (opts.failMarker && raw.includes(opts.failMarker)) {
         res.statusCode = 500;
         res.end(JSON.stringify({ error: "stub failure" }));
@@ -2360,16 +3156,28 @@ describe("색인 쓰기 위생 (022)", () => {
     }
   });
 
-  it("AC-1b: 스탬프 없는 구형 색인의 무변경 재색인도 저장 0회(스탬프-only는 dirty 아님)", async () => {
+  it("AC-1b: indexDigest만 없는 구형 v5는 손상 chunk를 버리고 정본에서 재생성한 뒤 안정화한다", async () => {
     const f = makeBatchFixture(2);
     try {
-      await withEmbedStub(async (base) => {
+      await withEmbedStub(async (base, calls) => {
         await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
         const idx = JSON.parse(fs.readFileSync(f.idxPath, "utf8"));
-        delete idx.embeddingModel; // pre-스탬프 v4 재현(loadIndex는 스탬프 없으면 그대로 로드)
+        const trustedText = fs.readFileSync(path.join(f.root, "n", "f0.md"), "utf8");
+        const corruptText = "X".repeat(trustedText.length);
+        idx.files["n/f0.md"].chunks[0].text = corruptText;
+        delete idx.indexDigest; // model/dims/vectorDigest는 유효하고 indexDigest만 없는 legacy v5
         fs.writeFileSync(f.idxPath, JSON.stringify(idx));
-        const r = await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
-        assert.equal(r.saves, 0, "스탬프-only 전이는 저장을 만들지 않음(현 기본 정책 고정)");
+        const callsBefore = calls();
+        const migrated = await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
+        assert.ok(migrated.saves >= 1, "digest 없는 generation은 Markdown 정본에서 안전 재생성");
+        assert.ok(calls() - callsBefore > 0, "Markdown 정본을 재임베딩");
+        const sealed = JSON.parse(fs.readFileSync(f.idxPath, "utf8"));
+        assert.match(sealed.indexDigest ?? "", /^[0-9a-f]{64}$/, "재생성 generation은 indexDigest 보유");
+        assert.equal(sealed.embeddingModel, "text-embedding-3-small", "현재 embedding model stamp 유지");
+        assert.equal(sealed.files["n/f0.md"].chunks[0].text, trustedText, "손상 chunk가 아니라 Markdown 정본으로 복구");
+        assert.notEqual(sealed.files["n/f0.md"].chunks[0].text, corruptText);
+        const stable = await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
+        assert.equal(stable.saves, 0, "안전 재생성 뒤 무변경 실행은 저장하지 않음");
       });
     } finally {
       fs.rmSync(f.root, { recursive: true, force: true });
@@ -2440,6 +3248,120 @@ function diskJson(idxPath: string): any {
   return JSON.parse(fs.readFileSync(idxPath, "utf8"));
 }
 
+function runSidecarDigestRecoveryProbe(
+  mode: "same-length-flip" | "legacy-no-digest" | "nonfinite-nan" | "nonfinite-posinf" | "nonfinite-neginf",
+): any {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), `lm-sidecar-digest-${mode}-`));
+  const notes = path.join(root, "notes");
+  const state = path.join(root, "state");
+  const idxPath = path.join(state, "index.json");
+  const source = path.join(notes, "canonical.md");
+  const marker = `PHASE2-SIDECAR-${mode}`;
+  const sourceText = `# 정본\n\n${marker} 동일 길이 손상 뒤 Markdown에서 다시 색인할 본문입니다.\n`;
+  fs.mkdirSync(notes, { recursive: true });
+  fs.mkdirSync(state, { recursive: true });
+  fs.writeFileSync(source, sourceText);
+  const sourceBefore = fs.readFileSync(source);
+  const childEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    HOME: path.join(root, "home"),
+    NOTES_DIR: `canonical=${notes}`,
+    BRAIN_INDEX: idxPath,
+    QUERY_LOG: path.join(state, "query-log.jsonl"),
+    EMBEDDINGS_URL: "http://embedding.invalid/v1",
+    EMBEDDINGS_MODEL: "fixture-model",
+    EMBEDDINGS_KEY: "fixture-key",
+    EMBED_RETRIES: "1",
+    SOURCE_TEXT: sourceText,
+    MARKER: marker,
+  };
+  try {
+    const prepareScript = [
+      `(async () => {`,
+      `const fs = require("node:fs");`,
+      `const crypto = require("node:crypto");`,
+      `const m = await import(${JSON.stringify(BRAIN_JS)});`,
+      `const text = fs.readFileSync(${JSON.stringify(source)}, "utf8");`,
+      `const hash = crypto.createHash("sha256").update(text).digest("hex");`,
+      `m.saveIndex({ version: m.loadIndex().version, embeddingModel: "fixture-model", dims: 4, files: {`,
+      `  "canonical/canonical.md": { hash, folder: "canonical", chunks: [{ path: "canonical/canonical.md", text, vector: [1, 0, 0, 0] }], linksOut: [] },`,
+      `} });`,
+      `const disk = JSON.parse(fs.readFileSync(process.env.BRAIN_INDEX, "utf8"));`,
+      `process.stdout.write(JSON.stringify({ vectorFile: disk.vectorFile, vectorDigest: disk.vectorDigest ?? null }));`,
+      `})().catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    const prepared = JSON.parse(execFileSync("node", ["--import", "tsx/esm", "-e", prepareScript], {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+      env: childEnv,
+    }));
+    const sidecarPath = path.join(state, prepared.vectorFile);
+    const sidecarBefore = fs.readFileSync(sidecarPath);
+    if (mode === "same-length-flip") {
+      const corrupted = Buffer.from(sidecarBefore);
+      corrupted[corrupted.length - 1] ^= 0x01; // finite float의 하위 bit만 반전 — 길이·header는 불변
+      fs.writeFileSync(sidecarPath, corrupted);
+      assert.equal(fs.statSync(sidecarPath).size, sidecarBefore.length, "손상 fixture는 반드시 동일 길이");
+    } else if (mode === "legacy-no-digest") {
+      const disk = diskJson(idxPath);
+      delete disk.vectorDigest; // digest 도입 전 v5 metadata
+      delete disk.indexDigest;
+      disk.indexDigest = crypto.createHash("sha256").update(JSON.stringify(disk)).digest("hex");
+      fs.writeFileSync(idxPath, JSON.stringify(disk));
+    } else {
+      const corrupted = Buffer.from(sidecarBefore);
+      const value = mode === "nonfinite-nan"
+        ? Number.NaN
+        : mode === "nonfinite-posinf"
+          ? Number.POSITIVE_INFINITY
+          : Number.NEGATIVE_INFINITY;
+      corrupted.writeFloatLE(value, 16);
+      fs.writeFileSync(sidecarPath, corrupted);
+      const disk = diskJson(idxPath);
+      disk.vectorDigest = crypto.createHash("sha256").update(corrupted).digest("hex");
+      delete disk.indexDigest;
+      disk.indexDigest = crypto.createHash("sha256").update(JSON.stringify(disk)).digest("hex");
+      fs.writeFileSync(idxPath, JSON.stringify(disk));
+    }
+
+    const recoverScript = [
+      `(async () => {`,
+      `const fs = require("node:fs");`,
+      `const crypto = require("node:crypto");`,
+      `const requests = [];`,
+      `globalThis.fetch = async (_url, init) => {`,
+      `  const input = JSON.parse(String(init?.body ?? "{}")).input ?? [];`,
+      `  requests.push(...input.map(String));`,
+      `  return { ok: true, status: 200, json: async () => ({ data: input.map((_, index) => ({ index, embedding: [1, 0, 0, 0] })) }) };`,
+      `};`,
+      `const m = await import(${JSON.stringify(BRAIN_JS)});`,
+      `const hits = await m.searchNotes(process.env.MARKER);`,
+      `const disk = JSON.parse(fs.readFileSync(process.env.BRAIN_INDEX, "utf8"));`,
+      `const sidecar = fs.readFileSync(${JSON.stringify(state)} + "/" + disk.vectorFile);`,
+      `const actualDigest = crypto.createHash("sha256").update(sidecar).digest("hex");`,
+      `const temps = fs.readdirSync(${JSON.stringify(state)}).filter((name) => name.includes(".tmp-"));`,
+      `process.stdout.write(JSON.stringify({`,
+      `  hitPaths: hits.map((h) => h.path), hitText: hits.map((h) => h.text).join("\\n"),`,
+      `  sourceEmbedded: requests.some((text) => text.includes(process.env.MARKER) && text !== process.env.MARKER),`,
+      `  vectorDigest: disk.vectorDigest ?? null, actualDigest, temps,`,
+      `}));`,
+      `})().catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    const recovered = JSON.parse(execFileSync("node", ["--import", "tsx/esm", "-e", recoverScript], {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+      env: childEnv,
+    }));
+    return {
+      preparedDigest: prepared.vectorDigest,
+      ...recovered,
+      sourceEqual: sourceBefore.equals(fs.readFileSync(source)),
+    };
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
 async function runBrainScript(
   base: string,
   env: Record<string, string>,
@@ -2449,6 +3371,7 @@ async function runBrainScript(
     `import * as fsx from "node:fs";`,
     `import * as pathx from "node:path";`,
     `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+    `const sealIndex = async (idx) => { delete idx.indexDigest; const web = globalThis["cr" + "ypto"]; idx.indexDigest = Buffer.from(await web.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(idx)))).toString("hex"); return idx; };`,
     body,
     `}).catch((e) => { console.error(e); process.exit(1); });`,
   ].join("\n");
@@ -2542,15 +3465,16 @@ describe("색인 포맷 v5 — 벡터 사이드카 (023)", () => {
         await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
         const { stdout, stderr } = await runBrainScript(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath }, `
           const idxPath = process.env.BRAIN_INDEX;
+          const raw = JSON.parse(fsx.readFileSync(idxPath, "utf8"));
+          const dir = pathx.dirname(idxPath);
+          const oldVec = pathx.join(dir, raw.vectorFile);
+          const newName = raw.vectorFile + "x"; // 새 generation basename(접두 유지)
+          raw.vectorFile = newName;
+          const replacement = JSON.stringify(await sealIndex(raw));
           m._setAfterJsonParseHookForTest(() => {
             // 동시 writer 재현: 새 gen 커밋 + 옛 gen GC — reader는 옛 gen 참조를 쥔 상태
-            const raw = JSON.parse(fsx.readFileSync(idxPath, "utf8"));
-            const dir = pathx.dirname(idxPath);
-            const oldVec = pathx.join(dir, raw.vectorFile);
-            const newName = raw.vectorFile + "x"; // 새 generation basename(접두 유지)
             fsx.copyFileSync(oldVec, pathx.join(dir, newName));
-            raw.vectorFile = newName;
-            fsx.writeFileSync(idxPath, JSON.stringify(raw));
+            fsx.writeFileSync(idxPath, replacement);
             fsx.rmSync(oldVec);
             m._setAfterJsonParseHookForTest(null); // 재파싱에는 미적용
           });
@@ -2591,26 +3515,30 @@ describe("색인 포맷 v5 — 벡터 사이드카 (023)", () => {
     }
   });
 
-  it("AC-6: 디스크 v4 · 인메모리 v5 — reload-merge가 병합하지 않는다(교차버전 가드)", async () => {
+  it("AC-6: 디스크 v4 · 인메모리 v5 — 일반 reload-merge는 legacy generation을 덮지 않고 실패한다", async () => {
     const f = makeBatchFixture(1);
     try {
       await withEmbedStub(async (base) => {
         await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
         const { stdout } = await runBrainScript(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath }, `
           const idx = m.loadIndex(); // v5 인메모리(n/f0.md)
-          // 구버전 프로세스의 v4 저장 재현 — 다른 항목(ghost) 포함
-          fsx.writeFileSync(process.env.BRAIN_INDEX, JSON.stringify({
+          const legacy = JSON.stringify({
             version: 4, embeddingModel: idx.embeddingModel, dims: 4,
             files: { "ghost/g.md": { hash: "h", folder: "ghost", chunks: [{ path: "ghost/g.md", text: "고스트", vector: [1,0,0,0] }], linksOut: [] } },
-          }));
-          m.saveIndex(idx); // stat 변화 → 병합 시도 → 버전 가드로 스킵돼야 함
-          const disk = JSON.parse(fsx.readFileSync(process.env.BRAIN_INDEX, "utf8"));
-          process.stdout.write(JSON.stringify({ keys: Object.keys(disk.files), version: disk.version }));
+          });
+          fsx.writeFileSync(process.env.BRAIN_INDEX, legacy);
+          let rejected = false;
+          let error = "";
+          try { m.saveIndex(idx); } catch (e) { rejected = true; error = String(e?.message ?? e); }
+          const after = fsx.readFileSync(process.env.BRAIN_INDEX, "utf8");
+          process.stdout.write(JSON.stringify({ rejected, unchanged: after === legacy, error, disk: JSON.parse(after) }));
         `);
         const r = JSON.parse(stdout);
-        assert.ok(!r.keys.includes("ghost/g.md"), "v4 항목이 병합되지 않음");
-        assert.ok(r.keys.includes("n/f0.md"), "내 항목 유지");
-        assert.equal(r.version, 5);
+        assert.equal(r.rejected, true);
+        assert.equal(r.unchanged, true, "검증 불가능한 v4 bytes를 v5로 재봉인하지 않음");
+        assert.equal(r.disk.version, 4);
+        assert.deepEqual(Object.keys(r.disk.files), ["ghost/g.md"]);
+        assert.match(r.error, /색인.*저장|저장.*색인/);
       });
     } finally {
       fs.rmSync(f.root, { recursive: true, force: true });
@@ -2644,12 +3572,49 @@ describe("색인 포맷 v5 — 벡터 사이드카 (023)", () => {
     }
   });
 
-  it("AC-8: v4 색인 무재임베딩 마이그레이션 — 임베딩 0건 + v5 영속", async () => {
+  it("Phase 2: reload-merge는 indexDigest 불일치 generation을 stale writer로 재봉인하지 않고 저장을 중단한다", async () => {
+    const f = makeBatchFixture(1);
+    try {
+      await withEmbedStub(async (base) => {
+        await runSaveProbe(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath });
+        const { stdout } = await runBrainScript(base, { NOTES_DIR: f.nd, BRAIN_INDEX: f.idxPath }, `
+          const staleWriter = m.loadIndex();
+          const forged = JSON.parse(fsx.readFileSync(process.env.BRAIN_INDEX, "utf8"));
+          delete forged.files["n/f0.md"];
+          forged.files["forged/ghost.md"] = {
+            hash: "forged-hash",
+            folder: "forged",
+            chunks: [],
+            linksOut: [],
+          };
+          // indexDigest는 의도적으로 갱신하지 않는다. stale writer 저장이 이 손상 generation을
+          // 무시하면 삭제된 항목을 부활시킨 뒤 새 valid digest로 laundering할 수 있다.
+          const corruptBytes = JSON.stringify(forged);
+          fsx.writeFileSync(process.env.BRAIN_INDEX, corruptBytes);
+          let rejected = false;
+          let error = "";
+          try { m.saveIndex(staleWriter); } catch (e) { rejected = true; error = String(e?.message ?? e); }
+          const afterBytes = fsx.readFileSync(process.env.BRAIN_INDEX, "utf8");
+          process.stdout.write(JSON.stringify({ rejected, error, bytesUnchanged: afterBytes === corruptBytes }));
+        `);
+        const result = JSON.parse(stdout);
+        assert.equal(result.rejected, true, "digest가 틀린 disk generation을 관측한 stale writer는 저장을 중단");
+        assert.equal(result.bytesUnchanged, true, "손상 generation을 stale 메모리로 덮어 새 digest를 부여하지 않음");
+        assert.match(result.error, /색인.*저장|저장.*색인/);
+      });
+    } finally {
+      fs.rmSync(f.root, { recursive: true, force: true });
+    }
+  });
+
+  it("AC-8: digest 없는 v4는 chunk/vector를 신뢰하지 않고 Markdown에서 clean reindex한다", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "lm-migrate-"));
     const idxPath = path.join(root, "index.json");
     try {
       fs.mkdirSync(path.join(root, "n"));
-      const text = "마이그레이션 노트 본문입니다";
+      const text = "trusted migration source payload 0000";
+      const corruptText = text.replace("trusted", "corrupt");
+      assert.equal(corruptText.length, text.length);
       fs.writeFileSync(path.join(root, "n", "m.md"), text);
       const hash = crypto.createHash("sha256").update(text).digest("hex");
       fs.writeFileSync(
@@ -2657,27 +3622,275 @@ describe("색인 포맷 v5 — 벡터 사이드카 (023)", () => {
         JSON.stringify({
           version: 4,
           dims: 4,
-          files: { "n/m.md": { hash, folder: "n", chunks: [{ path: "n/m.md", text, vector: [1, 0, 0, 0] }], linksOut: [] } },
+          files: { "n/m.md": { hash, folder: "n", chunks: [{ path: "n/m.md", text: corruptText, vector: [1, 0, 0, 0] }], linksOut: [] } },
         }),
       );
       await withEmbedStub(async (base, calls) => {
         const before = calls();
         const { stderr } = await runReindexCli(idxPath, base, { NOTES_DIR: `n=${path.join(root, "n")}` });
-        assert.equal(calls() - before, 0, "무재임베딩(인라인 벡터 재사용)");
-        assert.match(stderr, /새 형식/, "마이그레이션 안내");
+        assert.ok(calls() - before > 0, "검증 불가능한 legacy 파생물을 버리고 재임베딩");
+        assert.match(stderr, /처음부터 다시 색인/, "안전 재생성 안내");
         const idx = diskJson(idxPath);
         assert.equal(idx.version, 5, "v5로 영속");
         assert.equal(idx.files["n/m.md"].chunks[0].slot, 0, "slot 참조");
+        assert.equal(idx.files["n/m.md"].chunks[0].text, text, "Markdown 정본 text로 복구");
+        assert.notEqual(idx.files["n/m.md"].chunks[0].text, corruptText);
         assert.ok(idx.vectorFile && fs.existsSync(path.join(root, idx.vectorFile)), "사이드카 생성");
         const h = readSidecarHeaderT(path.join(root, idx.vectorFile));
         assert.equal(h.count, 1);
-        // 마이그레이션된 v5로 검색 정상(쿼리 임베딩 1건은 재색인 카운트와 분리 계측)
         const { stdout } = await runBrainScript(base, { NOTES_DIR: `n=${path.join(root, "n")}`, BRAIN_INDEX: idxPath }, `
           const hits = await m.searchNotes("마이그레이션 노트");
           process.stdout.write(JSON.stringify({ hitPaths: hits.map((h) => h.path) }));
         `);
         assert.deepEqual(JSON.parse(stdout).hitPaths, ["n/m.md"], "마이그레이션 후 검색 정상");
       });
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("검증 불가능한 legacy generation의 canonical root를 열 수 없으면 승격 없이 reindex가 실패한다", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "lm-migrate-unavailable-"));
+    const idxPath = path.join(root, "index.json");
+    const blockedRoot = path.join(root, "not-a-directory");
+    fs.writeFileSync(blockedRoot, "regular file blocks canonical root");
+    fs.writeFileSync(idxPath, JSON.stringify({
+      version: 4,
+      dims: 4,
+      files: { "n/m.md": { hash: "legacy-hash", folder: "n", chunks: [{ path: "n/m.md", text: "untrusted legacy chunk", vector: [1, 0, 0, 0] }], linksOut: [] } },
+    }));
+    const before = fs.readFileSync(idxPath);
+    try {
+      await withEmbedStub(async (base) => {
+        let rejected = false;
+        try {
+          await runReindexCli(idxPath, base, { NOTES_DIR: `n=${blockedRoot}` });
+        } catch {
+          rejected = true;
+        }
+        assert.equal(rejected, true, "canonical root unavailable이면 non-zero여야 함");
+        assert.equal(before.equals(fs.readFileSync(idxPath)), true, "검증 불가 legacy bytes를 v5로 승격하면 안 됨");
+      });
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("검증 불가능한 legacy generation의 아직 존재하지 않는 canonical root를 만들거나 승격하지 않는다", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "lm-migrate-missing-root-"));
+    const idxPath = path.join(root, "index.json");
+    const missingRoot = path.join(root, "detached-canonical-root");
+    fs.writeFileSync(idxPath, JSON.stringify({
+      version: 4,
+      dims: 4,
+      files: { "n/m.md": { hash: "legacy-hash", folder: "n", chunks: [{ path: "n/m.md", text: "untrusted legacy chunk", vector: [1, 0, 0, 0] }], linksOut: [] } },
+    }));
+    const before = fs.readFileSync(idxPath);
+    try {
+      await withEmbedStub(async (base) => {
+        let rejected = false;
+        try {
+          await runReindexCli(idxPath, base, { NOTES_DIR: `n=${missingRoot}` });
+        } catch {
+          rejected = true;
+        }
+        assert.equal(rejected, true, "legacy clean rebuild는 missing root를 빈 canonical root로 만들면 안 됨");
+        assert.equal(fs.existsSync(missingRoot), false, "unavailable root의 이름을 새로 publish하지 않음");
+        assert.equal(before.equals(fs.readFileSync(idxPath)), true, "검증 불가 legacy generation bytes를 보존");
+      });
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("legacy clean rebuild의 embedding 중 canonical root가 사라지면 기존 generation을 보존한다", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "lm-migrate-root-loss-"));
+    const notes = path.join(root, "notes");
+    const moved = path.join(root, "notes-away");
+    const idxPath = path.join(root, "index.json");
+    const sourceText = "canonical source must remain available until clean rebuild commit";
+    fs.mkdirSync(notes, { recursive: true });
+    fs.writeFileSync(path.join(notes, "a.md"), sourceText);
+    fs.writeFileSync(idxPath, JSON.stringify({
+      version: 4,
+      embeddingModel: "fixture-model",
+      dims: 4,
+      files: {
+        "notes/a.md": {
+          hash: crypto.createHash("sha256").update(sourceText).digest("hex"),
+          folder: "notes",
+          chunks: [{ path: "notes/a.md", text: "untrusted legacy payload", vector: [1, 0, 0, 0] }],
+          linksOut: [],
+        },
+      },
+    }));
+    const before = fs.readFileSync(idxPath);
+    let movedOnce = false;
+    try {
+      await withEmbedStub(async (base) => {
+        let rejected = false;
+        let error = "";
+        try {
+          await runReindexCli(idxPath, base, { NOTES_DIR: `notes=${notes}`, EMBED_RETRIES: "1" });
+        } catch (cause) {
+          rejected = true;
+          error = String((cause as Error).message ?? cause);
+        }
+        const after = fs.readFileSync(idxPath);
+        assert.equal(rejected, true, "scan 뒤 root가 사라진 clean rebuild는 non-zero여야 함");
+        assert.equal(fs.existsSync(notes), false, "commit 시점에는 configured root가 unavailable인 대조군");
+        assert.equal(before.equals(after), true, "기존 legacy generation bytes를 빈 v5로 승격하면 안 됨");
+        assert.equal(JSON.parse(after.toString("utf8")).version, 4);
+        assert.doesNotMatch(error, new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), "오류에 canonical 절대경로를 노출하지 않음");
+      }, {
+        onRequest: () => {
+          if (movedOnce) return;
+          fs.renameSync(notes, moved);
+          movedOnce = true;
+        },
+      });
+      assert.equal(movedOnce, true, "실제 embedding request 중 root-loss hook 도달");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("legacy clean rebuild는 nested canonical scan 실패를 빈 scan으로 승격하지 않고 bytes를 보존한다", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "lm-migrate-nested-scan-failure-"));
+    const notes = path.join(root, "notes");
+    const nested = path.join(notes, "nested");
+    const indexPath = path.join(root, "index.json");
+    fs.mkdirSync(nested, { recursive: true });
+    const source = path.join(nested, "victim.md");
+    fs.writeFileSync(source, "nested canonical source must survive scan failure");
+    fs.writeFileSync(indexPath, JSON.stringify({
+      version: 4,
+      embeddingModel: "fixture-model",
+      dims: 2,
+      files: {
+        "notes/nested/victim.md": {
+          hash: "legacy-untrusted-hash",
+          folder: "notes",
+          chunks: [{ path: "notes/nested/victim.md", text: "untrusted legacy chunk", vector: [1, 0] }],
+          linksOut: [],
+        },
+      },
+    }));
+    const script = [
+      `import fs from "node:fs";`,
+      `import path from "node:path";`,
+      `const nested = ${JSON.stringify(nested)};`,
+      `const originalReaddirSync = fs.readdirSync;`,
+      `fs.readdirSync = function(target, ...args) {`,
+      `  if (path.resolve(String(target)) === path.resolve(nested)) {`,
+      `    const error = new Error("synthetic nested EACCES"); error.code = "EACCES"; throw error;`,
+      `  }`,
+      `  return originalReaddirSync.call(this, target, ...args);`,
+      `};`,
+      `globalThis.fetch = async () => { throw new Error("embedding must not run after incomplete scan"); };`,
+      `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+      `  const before = fs.readFileSync(process.env.BRAIN_INDEX);`,
+      `  let rejected = false, error = "";`,
+      `  try { await m.reindex(); } catch (e) { rejected = true; error = String(e?.message ?? e); }`,
+      `  const after = fs.readFileSync(process.env.BRAIN_INDEX);`,
+      `  fs.readdirSync = originalReaddirSync;`,
+      `  process.stdout.write(JSON.stringify({`,
+      `    rejected, error, bytesUnchanged: before.equals(after),`,
+      `    version: JSON.parse(after).version, sourceExists: fs.existsSync(${JSON.stringify(source)}),`,
+      `  }));`,
+      `}).catch((e) => { fs.readdirSync = originalReaddirSync; console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const result = JSON.parse(execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        timeout: 5_000,
+        env: {
+          ...process.env,
+          HOME: path.join(root, "home"),
+          NOTES_DIR: `notes=${notes}`,
+          BRAIN_INDEX: indexPath,
+          QUERY_LOG: path.join(root, "query-log.jsonl"),
+          EMBEDDINGS_MODEL: "fixture-model",
+          EMBEDDINGS_KEY: "fixture-key",
+          EMBED_RETRIES: "1",
+        },
+      }));
+      assert.equal(result.rejected, true, "불완전한 nested scan은 non-zero여야 함");
+      assert.equal(result.bytesUnchanged, true, "legacy generation을 빈 v5로 승격하면 안 됨");
+      assert.equal(result.version, 4);
+      assert.equal(result.sourceExists, true);
+      assert.match(result.error, /스캔|폴더|색인/);
+      assert.doesNotMatch(result.error, new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), "오류에 canonical 절대경로를 노출하지 않음");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("정상 v5 reindex도 nested canonical scan 실패에서 기존 generation을 prune하지 않는다", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "lm-v5-nested-scan-failure-"));
+    const notes = path.join(root, "notes");
+    const nested = path.join(notes, "nested");
+    const indexPath = path.join(root, "index.json");
+    fs.mkdirSync(nested, { recursive: true });
+    const source = path.join(nested, "victim.md");
+    const sourceText = "trusted v5 canonical source must survive scan failure";
+    fs.writeFileSync(source, sourceText);
+    const script = [
+      `import fs from "node:fs";`,
+      `import path from "node:path";`,
+      `globalThis.fetch = async () => { throw new Error("embedding must not run after incomplete scan"); };`,
+      `import(${JSON.stringify(BRAIN_JS)}).then(async (m) => {`,
+      `  const sourceText = ${JSON.stringify(sourceText)};`,
+      `  const sourceHash = Buffer.from(await globalThis["cr" + "ypto"].subtle.digest("SHA-256", new TextEncoder().encode(sourceText))).toString("hex");`,
+      `  m.saveIndex({ version: m.loadIndex().version, embeddingModel: "fixture-model", dims: 2, files: {`,
+      `    "notes/nested/victim.md": {`,
+      `      hash: sourceHash, folder: "notes",`,
+      `      chunks: [{ path: "notes/nested/victim.md", text: sourceText, vector: [1, 0] }], linksOut: [],`,
+      `    },`,
+      `  } });`,
+      `  const before = fs.readFileSync(process.env.BRAIN_INDEX);`,
+      `  const originalReaddirSync = fs.readdirSync;`,
+      `  fs.readdirSync = function(target, ...args) {`,
+      `    if (path.resolve(String(target)) === path.resolve(${JSON.stringify(nested)})) {`,
+      `      const error = new Error("synthetic nested EACCES"); error.code = "EACCES"; throw error;`,
+      `    }`,
+      `    return originalReaddirSync.call(this, target, ...args);`,
+      `  };`,
+      `  let rejected = false, error = "";`,
+      `  try { await m.reindex(); } catch (e) { rejected = true; error = String(e?.message ?? e); }`,
+      `  fs.readdirSync = originalReaddirSync;`,
+      `  const after = fs.readFileSync(process.env.BRAIN_INDEX);`,
+      `  const disk = JSON.parse(after);`,
+      `  process.stdout.write(JSON.stringify({`,
+      `    rejected, error, bytesUnchanged: before.equals(after), version: disk.version,`,
+      `    retained: Object.hasOwn(disk.files, "notes/nested/victim.md"), sourceExists: fs.existsSync(${JSON.stringify(source)}),`,
+      `  }));`,
+      `}).catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const result = JSON.parse(execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        timeout: 5_000,
+        env: {
+          ...process.env,
+          HOME: path.join(root, "home"),
+          NOTES_DIR: `notes=${notes}`,
+          BRAIN_INDEX: indexPath,
+          QUERY_LOG: path.join(root, "query-log.jsonl"),
+          EMBEDDINGS_MODEL: "fixture-model",
+          EMBEDDINGS_KEY: "fixture-key",
+          EMBED_RETRIES: "1",
+        },
+      }));
+      assert.equal(result.rejected, true);
+      assert.equal(result.bytesUnchanged, true);
+      assert.equal(result.version, 5);
+      assert.equal(result.retained, true);
+      assert.equal(result.sourceExists, true);
+      assert.match(result.error, /스캔|폴더|색인/);
+      assert.doesNotMatch(result.error, new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
@@ -2781,6 +3994,111 @@ describe("색인 포맷 v5 — 벡터 사이드카 (023)", () => {
         assert.ok(calls() - before > 0, "전량 재빌드(재임베딩)");
         assert.equal(diskJson(idxPath).version, 5, "최종 포맷 v5");
       });
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("Phase 2 sidecar digest 무결성", () => {
+  it("새 v5 JSON이 sidecar 전체 payload의 deterministic SHA-256 digest를 bind한다", () => {
+    const r = runSidecarDigestRecoveryProbe("same-length-flip");
+    assert.match(r.preparedDigest ?? "", /^[0-9a-f]{64}$/);
+    assert.equal(r.vectorDigest, r.actualDigest, "복구 저장 metadata가 새 sidecar 전체 bytes와 일치");
+  });
+
+  it("동일 길이 finite bit flip을 hydrate 전에 거부하고 Markdown에서 재임베딩해 fresh search를 복구한다", () => {
+    const r = runSidecarDigestRecoveryProbe("same-length-flip");
+    assert.equal(r.sourceEmbedded, true, "손상된 파생 벡터를 재사용하지 않고 source를 다시 임베딩");
+    assert.deepEqual(r.hitPaths, ["canonical/canonical.md"]);
+    assert.match(r.hitText, /PHASE2-SIDECAR-same-length-flip/);
+    assert.equal(r.sourceEqual, true, "Markdown 정본 byte 불변");
+    assert.deepEqual(r.temps, [], "성공 뒤 JSON·sidecar temp 잔여 없음");
+  });
+
+  it("digest 없는 legacy v5는 신뢰하지 않고 정본에서 무손실 재생성한다", () => {
+    const r = runSidecarDigestRecoveryProbe("legacy-no-digest");
+    assert.equal(r.sourceEmbedded, true, "legacy 무검증 sidecar를 source에서 재생성");
+    assert.deepEqual(r.hitPaths, ["canonical/canonical.md"]);
+    assert.equal(r.sourceEqual, true, "legacy 재생성도 Markdown 정본 byte 불변");
+    assert.match(r.vectorDigest ?? "", /^[0-9a-f]{64}$/);
+    assert.equal(r.vectorDigest, r.actualDigest);
+    assert.deepEqual(r.temps, []);
+  });
+
+  for (const mode of ["nonfinite-nan", "nonfinite-posinf", "nonfinite-neginf"] as const) {
+    it(`valid digest로 봉인된 ${mode} sidecar도 hydrate 전에 거부하고 정본에서 복구한다`, () => {
+      const r = runSidecarDigestRecoveryProbe(mode);
+      assert.equal(r.sourceEmbedded, true, "비유한 sidecar vector를 재사용하지 않아야 함");
+      assert.deepEqual(r.hitPaths, ["canonical/canonical.md"]);
+      assert.match(r.hitText, new RegExp(`PHASE2-SIDECAR-${mode}`));
+      assert.equal(r.sourceEqual, true);
+      assert.equal(r.vectorDigest, r.actualDigest, "복구 generation digest 정합");
+      assert.deepEqual(r.temps, []);
+    });
+  }
+
+  it("digest-valid same-length forged chunk도 Markdown 정본에서 재생성하고 위조 text를 반환하지 않는다", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "lm-phase2-json-digest-"));
+    const notes = path.join(root, "notes");
+    const state = path.join(root, "state");
+    const indexPath = path.join(state, "index.json");
+    fs.mkdirSync(notes, { recursive: true });
+    fs.mkdirSync(state, { recursive: true });
+    const trustedText = "trusted source revision payload 0000";
+    const corruptText = trustedText.replace("trusted", "corrupt");
+    assert.equal(corruptText.length, trustedText.length, "same-length corruption fixture");
+    const sourcePath = path.join(notes, "victim.md");
+    fs.writeFileSync(sourcePath, trustedText);
+    const script = [
+      `(async () => {`,
+      `const fs = require("node:fs");`,
+      `const crypto = require("node:crypto");`,
+      `const brain = await import(${JSON.stringify(BRAIN_JS)});`,
+      `const sha = (text) => crypto.createHash("sha256").update(text).digest("hex");`,
+      `brain.saveIndex({ version: brain.loadIndex().version, embeddingModel: "fixture-model", dims: 2, files: {`,
+      `  "notes/victim.md": { hash: sha(process.env.TRUSTED_TEXT), folder: "notes", chunks: [{ path: "notes/victim.md", text: process.env.TRUSTED_TEXT, vector: [1, 0] }], linksOut: [] },`,
+      `} });`,
+      `const damaged = JSON.parse(fs.readFileSync(process.env.BRAIN_INDEX, "utf8"));`,
+      `damaged.files["notes/victim.md"].chunks[0].text = process.env.CORRUPT_TEXT;`,
+      `delete damaged.indexDigest;`,
+      `damaged.indexDigest = sha(JSON.stringify(damaged));`,
+      `fs.writeFileSync(process.env.BRAIN_INDEX, JSON.stringify(damaged));`,
+      `let sourceEmbedded = false;`,
+      `globalThis.fetch = async (_url, init) => {`,
+      `  const input = JSON.parse(String(init?.body ?? "{}")).input ?? [];`,
+      `  if (input.includes(process.env.TRUSTED_TEXT)) sourceEmbedded = true;`,
+      `  return { ok: true, status: 200, json: async () => ({ data: input.map((_, index) => ({ index, embedding: [1, 0] })) }) };`,
+      `};`,
+      `brain._resetIndexCacheForTest();`,
+      `const hits = await brain.searchNotes("JSON integrity query");`,
+      `const healed = JSON.parse(fs.readFileSync(process.env.BRAIN_INDEX, "utf8"));`,
+      `process.stdout.write(JSON.stringify({ sourceEmbedded, hits, indexDigest: healed.indexDigest, healedText: healed.files["notes/victim.md"]?.chunks?.[0]?.text }));`,
+      `})().catch((e) => { console.error(e); process.exit(1); });`,
+    ].join("\n");
+    try {
+      const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: path.join(root, "home"),
+          NOTES_DIR: `notes=${notes}`,
+          BRAIN_INDEX: indexPath,
+          QUERY_LOG: "/dev/null",
+          EMBEDDINGS_MODEL: "fixture-model",
+          EMBEDDINGS_URL: "http://embedding.invalid/v1",
+          EMBEDDINGS_KEY: "fixture-key",
+          EMBED_RETRIES: "1",
+          TRUSTED_TEXT: trustedText,
+          CORRUPT_TEXT: corruptText,
+        },
+      });
+      const r = JSON.parse(out);
+      assert.equal(r.sourceEmbedded, true, "손상 JSON을 재사용하지 않고 source를 재임베딩해야 함");
+      assert.equal(r.hits[0]?.text, trustedText);
+      assert.equal(r.healedText, trustedText);
+      assert.match(r.indexDigest ?? "", /^[0-9a-f]{64}$/);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }

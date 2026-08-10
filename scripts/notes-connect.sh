@@ -84,6 +84,9 @@ rec() { I_LABEL+=("$1"); I_STATUS+=("$2"); I_REASON+=("$3"); }
 
 IFS=',' read -r -a RAW <<< "$NOTES_REPOS"
 for raw in ${RAW[@]+"${RAW[@]}"}; do
+  if has_control_chars "$raw"; then
+    rec "-" failed "URL에 제어문자가 있어 거부"; continue
+  fi
   item="$(printf '%s' "$raw" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
   [ -z "$item" ] && continue
 

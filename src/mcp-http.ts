@@ -170,7 +170,7 @@ export async function serveHttp(cfg: HttpConfig): Promise<ServeHttpHandle> {
   return {
     port: boundPort,
     async close() {
-      watcher.close();
+      await watcher.close();
       for (const t of transports.values()) {
         try {
           await t.close();

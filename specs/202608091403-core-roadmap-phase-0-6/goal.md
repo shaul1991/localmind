@@ -12,7 +12,8 @@ LocalMind의 최근 개선은 4시간 주기 연구·구현 작업으로 빠르�
 
 - Phase 0부터 Phase 6까지 순서대로 구현한다.
 - 각 Phase는 하나의 검증된 커밋으로 구분한다.
-- 일곱 커밋은 하나의 feature branch와 하나의 Draft PR에 누적한다.
+- Phase 0·1은 각각의 `[verified]` 커밋을 유지한 선행 PR로 병합한다. Phase 2~6은 후속
+  feature branch에 각각 하나의 `[verified]` 커밋으로 누적해 Draft PR로 제출한다.
 - `main` 직접 push와 자동 merge는 하지 않는다.
 
 ## 근거

@@ -6,9 +6,25 @@
  */
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { buildServer, configSummary, readyMessage, safePublicLabel } from "./mcp-server.js";
+
+// whoami가 deployment marker를 생성하므로 실제 HOME/notes에 쓰기 전에 모듈 env를 격리한다.
+const MCP_TEST_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-mcp-server-unit-"));
+const MCP_TEST_NOTES = path.join(MCP_TEST_ROOT, "notes");
+const MCP_TEST_ENV_KEYS = ["HOME", "NOTES_DIR", "BRAIN_INDEX", "QUERY_LOG", "LOCALMIND_DEPLOYMENT_ID"] as const;
+const MCP_TEST_PREVIOUS_ENV = new Map(MCP_TEST_ENV_KEYS.map((key) => [key, process.env[key]]));
+fs.mkdirSync(MCP_TEST_NOTES, { recursive: true });
+process.env.HOME = path.join(MCP_TEST_ROOT, "home");
+process.env.NOTES_DIR = `localmind=${MCP_TEST_NOTES}`;
+process.env.BRAIN_INDEX = path.join(MCP_TEST_ROOT, "state", "index.json");
+process.env.QUERY_LOG = path.join(MCP_TEST_ROOT, "state", "query-log.jsonl");
+process.env.LOCALMIND_DEPLOYMENT_ID = "localmind";
+const { _readBrainRootIdForTest, buildServer, configSummary, readyMessage, safePublicLabel } = await import("./mcp-server.js");
 
 describe("MCP tool surface (great-reduction AC-1)", () => {
   let client: Client;
@@ -22,6 +38,11 @@ describe("MCP tool surface (great-reduction AC-1)", () => {
 
   after(async () => {
     await client.close();
+    for (const key of MCP_TEST_ENV_KEYS) {
+      const value = MCP_TEST_PREVIOUS_ENV.get(key);
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+    fs.rmSync(MCP_TEST_ROOT, { recursive: true, force: true });
   });
 
   it("도구 표면: capture_note·search_notes·whoami + brief(living-memory FR-3) — 정확히 4개", async () => {
@@ -36,10 +57,197 @@ describe("MCP tool surface (great-reduction AC-1)", () => {
     assert.equal(result.isError, false);
     const text = (result.content as Array<{ text?: string }>).map((c) => c.text ?? "").join("\n");
     assert.match(text, /deployment: localmind/);
+    assert.match(text, /brain fingerprint: [0-9a-f]{64}/);
     assert.match(text, /notes folder labels:/);
-    assert.doesNotMatch(text, /gateway|8787|8767|memory:/);
+    const lines = text.split("\n");
+    assert.equal(lines[0], "🧠 deployment: localmind");
+    assert.equal(lines[2], "notes folder labels:");
+    assert.ok(lines.slice(3).every((line) => /^  - [\p{L}\p{N}._-]+$/u.test(line)), "허용된 공개 label 행만 반환해야 한다");
     assert.doesNotMatch(text, new RegExp(os.hostname().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     assert.doesNotMatch(text, /\/(?:Users|home|root|tmp)\//);
+  });
+
+  it("canonical marker publish 경합의 loser도 parent directory를 fsync한 뒤 identity를 반환한다", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-brain-id-race-"));
+    const originalLinkSync = fs.linkSync;
+    const originalFsyncSync = fs.fsyncSync;
+    let fsyncCalls = 0;
+    try {
+      fs.fsyncSync = ((fd: number) => {
+        fsyncCalls++;
+        return originalFsyncSync(fd);
+      }) as typeof fs.fsyncSync;
+      fs.linkSync = ((existingPath: fs.PathLike, newPath: fs.PathLike) => {
+        // 다른 writer가 먼저 같은 marker를 publish한 직후 EEXIST를 돌려준 경합을 재현한다.
+        originalLinkSync(existingPath, newPath);
+        throw Object.assign(new Error("race winner published marker"), { code: "EEXIST" });
+      }) as typeof fs.linkSync;
+
+      const id = _readBrainRootIdForTest(root);
+      assert.match(id ?? "", /^[0-9a-f-]{36}$/);
+      assert.equal(fsyncCalls, 2, "temp file fsync 뒤 race winner의 parent directory도 fsync해야 함");
+    } finally {
+      fs.linkSync = originalLinkSync;
+      fs.fsyncSync = originalFsyncSync;
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("link publish 직후 publisher가 사라져도 existing-marker observer가 parent directory를 fsync한다", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-brain-id-observer-"));
+    const marker = path.join(root, ".localmind-brain-id");
+    const tmp = path.join(root, ".publisher-tmp");
+    const id = "11111111-1111-4111-8111-111111111111";
+    const originalFsyncSync = fs.fsyncSync;
+    let observerFsyncCalls = 0;
+    try {
+      const fd = fs.openSync(tmp, "wx", 0o600);
+      fs.writeFileSync(fd, `${id}\n`, "utf8");
+      originalFsyncSync(fd); // publisher는 file bytes까지만 durable하게 함
+      fs.closeSync(fd);
+      fs.linkSync(tmp, marker); // publish 뒤 directory fsync 전에 publisher가 사라진 상태
+
+      fs.fsyncSync = ((directoryFd: number) => {
+        observerFsyncCalls++;
+        return originalFsyncSync(directoryFd);
+      }) as typeof fs.fsyncSync;
+      assert.equal(_readBrainRootIdForTest(root), id);
+      assert.equal(observerFsyncCalls, 1, "existing marker를 성공으로 반환하기 전에 directory fsync");
+    } finally {
+      fs.fsyncSync = originalFsyncSync;
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("existing-marker observer의 parent directory fsync 실패를 성공으로 삼키지 않는다", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-brain-id-observer-eio-"));
+    const originalFsyncSync = fs.fsyncSync;
+    try {
+      fs.writeFileSync(path.join(root, ".localmind-brain-id"), "22222222-2222-4222-8222-222222222222\n", { mode: 0o600 });
+      fs.fsyncSync = (() => { throw Object.assign(new Error("fixture directory EIO"), { code: "EIO" }); }) as typeof fs.fsyncSync;
+      assert.throws(() => _readBrainRootIdForTest(root), /fixture directory EIO/);
+    } finally {
+      fs.fsyncSync = originalFsyncSync;
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("canonical fingerprint는 같은 label·root 집합의 NOTES_DIR 순서와 무관하다", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-brain-order-"));
+    const a = path.join(root, "a");
+    const b = path.join(root, "b");
+    fs.mkdirSync(a, { recursive: true });
+    fs.mkdirSync(b, { recursive: true });
+    const script = [
+      `(async () => {`,
+      `  const m = await import("./src/mcp-server.ts");`,
+      `  process.stdout.write(String(m.brainRootFingerprint()));`,
+      `})().catch((error) => { console.error(error); process.exit(1); });`,
+    ].join("\n");
+    const probe = (notesDir: string): string => execFileSync(
+      process.execPath,
+      ["--import", "tsx/esm", "-e", script],
+      {
+        cwd: path.resolve(path.dirname(new URL(import.meta.url).pathname), ".."),
+        env: {
+          ...process.env,
+          HOME: path.join(root, "home"),
+          NOTES_DIR: notesDir,
+          BRAIN_INDEX: path.join(root, "state", "index.json"),
+          QUERY_LOG: path.join(root, "state", "query-log.jsonl"),
+        },
+        encoding: "utf8",
+      },
+    );
+    try {
+      const forward = probe(`a=${a},b=${b}`);
+      const reversed = probe(`b=${b},a=${a}`);
+      assert.match(forward, /^[0-9a-f]{64}$/);
+      assert.equal(reversed, forward, "설정 순서만 바뀐 같은 canonical brain은 같은 fingerprint여야 함");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("canonical fingerprint는 duplicate label root 집합의 NOTES_DIR 순서와 무관하다", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-brain-duplicate-order-"));
+    const a = path.join(root, "a");
+    const b = path.join(root, "b");
+    fs.mkdirSync(a, { recursive: true });
+    fs.mkdirSync(b, { recursive: true });
+    const script = [
+      `(async () => {`,
+      `  const server = await import("./src/mcp-server.ts");`,
+      `  const brain = await import("./src/brain.ts");`,
+      `  process.stdout.write(JSON.stringify({ fingerprint: server.brainRootFingerprint(), folders: brain.notesFolders() }));`,
+      `})().catch((error) => { console.error(error); process.exit(1); });`,
+    ].join("\n");
+    const probe = (notesDir: string): { fingerprint: string; folders: Array<{ label: string; dir: string }> } => JSON.parse(execFileSync(
+      process.execPath,
+      ["--import", "tsx/esm", "-e", script],
+      {
+        cwd: path.resolve(path.dirname(new URL(import.meta.url).pathname), ".."),
+        env: {
+          ...process.env,
+          HOME: path.join(root, "home"),
+          NOTES_DIR: notesDir,
+          BRAIN_INDEX: path.join(root, "state", "index.json"),
+          QUERY_LOG: path.join(root, "state", "query-log.jsonl"),
+        },
+        encoding: "utf8",
+      },
+    ));
+    try {
+      const forward = probe(`dup=${a},dup=${b}`);
+      const reversed = probe(`dup=${b},dup=${a}`);
+      assert.equal(reversed.fingerprint, forward.fingerprint, "같은 duplicate-label root 집합은 순서가 바뀌어도 같은 identity");
+      const byCanonicalPath = (folders: Array<{ label: string; dir: string }>) =>
+        [...folders].sort((x, y) => x.dir < y.dir ? -1 : x.dir > y.dir ? 1 : 0);
+      assert.deepEqual(byCanonicalPath(reversed.folders), byCanonicalPath(forward.folders), "canonical path 기준 label suffix mapping도 동일");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("duplicate suffix는 명시 label을 선점하지 않고 NOTES_DIR 역순에도 path binding이 같다", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-brain-explicit-suffix-"));
+    const a = path.join(root, "a");
+    const b = path.join(root, "b");
+    const c = path.join(root, "c");
+    for (const dir of [a, b, c]) fs.mkdirSync(dir, { recursive: true });
+    const script = [
+      `(async () => {`,
+      `  const brain = await import("./src/brain.ts");`,
+      `  process.stdout.write(JSON.stringify(brain.notesFolders()));`,
+      `})().catch((error) => { console.error(error); process.exit(1); });`,
+    ].join("\n");
+    const probe = (notesDir: string): Array<{ label: string; dir: string }> => JSON.parse(execFileSync(
+      process.execPath,
+      ["--import", "tsx/esm", "-e", script],
+      {
+        cwd: path.resolve(path.dirname(new URL(import.meta.url).pathname), ".."),
+        env: {
+          ...process.env,
+          HOME: path.join(root, "home"),
+          NOTES_DIR: notesDir,
+          BRAIN_INDEX: path.join(root, "state", "index.json"),
+          QUERY_LOG: path.join(root, "state", "query-log.jsonl"),
+        },
+        encoding: "utf8",
+      },
+    ));
+    const byDir = (folders: Array<{ label: string; dir: string }>) =>
+      Object.fromEntries(folders.map((folder) => [folder.dir, folder.label]));
+    try {
+      const forward = byDir(probe(`dup=${a},dup=${b},dup-2=${c}`));
+      const reversed = byDir(probe(`dup-2=${c},dup=${b},dup=${a}`));
+      assert.deepEqual(reversed, forward, "같은 root 집합은 입력 순서와 무관한 label binding을 가져야 함");
+      assert.equal(forward[a], "dup");
+      assert.equal(forward[b], "dup-3", "duplicate suffix는 예약된 dup-2를 건너뜀");
+      assert.equal(forward[c], "dup-2", "사용자가 명시한 label을 그대로 보존");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("서버 준비 로그 요약도 hostname·절대경로를 노출하지 않는다", () => {
@@ -191,11 +399,6 @@ describe("durable capture 경계 (Phase 1 C)", () => {
 // ── living-memory (specs/202607211621) — 통합 probe ─────────────────────────
 // capture/search/brief는 모듈 초기화 시 env(NOTES_DIR 등)를 읽으므로, brain.test.ts의
 // probe 패턴을 따라 자식 프로세스에서 임베딩 스텁과 함께 실행한다(외부 서버 불필요).
-import { execFileSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-
 const REPO = path.resolve(new URL(".", import.meta.url).pathname, "..");
 
 function runMcpProbe(notesDir: string, body: string, extraEnv: Record<string, string> = {}): any {

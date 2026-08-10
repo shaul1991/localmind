@@ -9,6 +9,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { capture, listFolders, searchNotes } from "./brain.js";
@@ -33,6 +34,106 @@ export function safePublicLabel(value: string | undefined): string {
 export const BRAIN_ID = safePublicLabel(process.env.LOCALMIND_DEPLOYMENT_ID) === "unknown"
   ? "localmind"
   : safePublicLabel(process.env.LOCALMIND_DEPLOYMENT_ID);
+
+/** canonical deployment marker. backup에서 제외돼 복제 host는 새 identity를 받는다. */
+const BRAIN_ID_MARKER = ".localmind-brain-id";
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+function fsyncDirectory(dir: string): void {
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(dir, "r");
+    fs.fsyncSync(fd);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (!["EINVAL", "ENOTSUP", "ENOSYS", "EBADF", "EISDIR"].includes(code ?? "")) throw error;
+  } finally {
+    if (fd !== null) fs.closeSync(fd);
+  }
+}
+
+function readBrainRootId(rootDir: string): string | null {
+  let root: string;
+  try {
+    root = fs.realpathSync(rootDir);
+    if (!fs.statSync(root).isDirectory()) return null;
+  } catch {
+    return null;
+  }
+  const marker = path.join(root, BRAIN_ID_MARKER);
+  const readMarker = (): string | null => {
+    try {
+      const stat = fs.lstatSync(marker);
+      if (!stat.isFile() || stat.isSymbolicLink()) return null;
+      const value = fs.readFileSync(marker, "utf8").trim();
+      return UUID_RE.test(value) ? value : null;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    }
+  };
+
+  const existing = readMarker();
+  if (existing) {
+    // link publish를 관측한 별도 프로세스도 winner의 directory durability를 대신 닫는다.
+    // 이미 오래된 marker여도 fsync는 안전하며, 오류는 identity success로 삼키지 않는다.
+    fsyncDirectory(root);
+    return existing;
+  }
+  if (fs.existsSync(marker)) {
+    const raced = readMarker(); // race 승자는 수용, malformed marker는 fail closed
+    if (raced) fsyncDirectory(root);
+    return raced;
+  }
+
+  const id = crypto.randomUUID();
+  const tmp = path.join(root, `${BRAIN_ID_MARKER}.tmp-${process.pid}-${crypto.randomUUID()}`);
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(tmp, "wx", 0o600);
+    fs.writeFileSync(fd, `${id}\n`, "utf8");
+    fs.fsyncSync(fd);
+    fs.closeSync(fd);
+    fd = null;
+    try {
+      fs.linkSync(tmp, marker); // no-replace atomic publish; EEXIST면 다른 프로세스 승자 사용
+      fsyncDirectory(root);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      // 다른 writer의 hard-link publish를 관측한 loser도 같은 parent directory를 fsync한다.
+      // winner가 link 직후 중단돼도 durability 경계가 닫힌 뒤에만 identity를 반환한다.
+      fsyncDirectory(root);
+    }
+  } finally {
+    if (fd !== null) try { fs.closeSync(fd); } catch { /* 원래 오류 보존 */ }
+    try { fs.rmSync(tmp, { force: true }); } catch { /* 읽기에서 fail closed */ }
+  }
+  return readMarker();
+}
+
+/** 테스트 전용: canonical root marker의 원자 publish·durability 경계를 검증한다. */
+export function _readBrainRootIdForTest(rootDir: string): string | null {
+  return readBrainRootId(rootDir);
+}
+
+/**
+ * 각 canonical notes root에 원자적으로 저장된 random deployment ID를 label과 결합한다.
+ * 경로·inode는 hash 입력으로 쓰지 않아 동일 경로/동일 dev·ino의 다른 host가 충돌하지 않는다.
+ */
+export function brainRootFingerprint(): string | null {
+  const identities: string[] = [];
+  try {
+    for (const folder of listFolders()) {
+      const id = readBrainRootId(folder.dir);
+      if (!id) return null;
+      identities.push(`${folder.label.length}:${folder.label}:${id}`);
+    }
+  } catch {
+    return null;
+  }
+  identities.sort(); // NOTES_DIR 나열 순서는 배포 identity의 일부가 아니다.
+  return crypto.createHash("sha256").update(identities.join("\n")).digest("hex");
+}
 
 // 서버 버전은 package.json이 정본 — 릴리스 bump가 그대로 반영되게 동적으로 읽는다(실패 시 폴백).
 const PKG_VERSION: string = (() => {
@@ -124,9 +225,17 @@ export function buildServer(): McpServer {
       inputSchema: {},
     },
     async () => {
+      const fingerprint = brainRootFingerprint();
+      if (!fingerprint) {
+        return textResult(
+          "canonical notes folder identity를 확인할 수 없어 이 두뇌를 안전하게 식별하지 않았어요.",
+          true,
+          "🧠",
+        );
+      }
       const folders = listFolders().map((f) => `  - ${safePublicLabel(f.label)}`).join("\n");
       return textResult(
-        `deployment: ${BRAIN_ID}\n` + `notes folder labels:\n${folders}`,
+        `deployment: ${BRAIN_ID}\n` + `brain fingerprint: ${fingerprint}\n` + `notes folder labels:\n${folders}`,
         false, "🧠",
       );
     },

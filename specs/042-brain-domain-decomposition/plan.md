@@ -34,7 +34,8 @@ composition root다. 내부 모듈은 facade를 import하지 않는다. 테스�
 
 - **Store state**: 디스크 색인·sidecar와 그것을 반영한 프로세스 cache/stat 상태.
 - **Index run state**: 한 번의 scan/embed/prune/rebind 실행과 single-flight promise.
-- **Hydration**: JSON·sidecar 또는 v4 inline vector를 현재 인메모리 `BrainIndex`로 읽는 과정.
+- **Hydration**: digest-valid v5 JSON·sidecar를 현재 인메모리 `BrainIndex`로 읽는 과정.
+  v4·무-digest v5 inline/vector payload는 hydrate하지 않고 authenticated clean-rebuild 대상으로 둔다.
 - **Commit**: 락 아래 최신 디스크 내용을 병합하고 새 sidecar와 JSON 참조를 원자적으로 게시하는 과정.
 - **Rebind**: 동일 label의 기록된 폴더 경로와 현재 설정 경로가 달라진 상태. 기본 preserve,
   명시적 adopt가 기존 계약이다.
@@ -112,7 +113,7 @@ interface Indexer {
   ensureIndexed(): Promise<BrainIndex>;
   reindex(): Promise<{ files: number; chunks: number; summary: ReindexSummary | null }>;
   remove(key: string): void;
-  watch(): { close(): void };
+  watch(): { ready: Promise<void>; close(): Promise<void> };
   resetForTest(): void;
   readonly runCount: number;
 }
@@ -156,7 +157,16 @@ interface QueryEventReader {
   owner에 위임해 기존 공개 seam의 동기 반환과 효과를 보존한다.
 - facade `listMarkdown()`은 하나의 production MarkdownScanner에 위임한다. Indexer와 Capture/listing도
   같은 scanner를 주입받으며 별도 순회·제외 정책을 복제하지 않는다. 기본 `isRoot=true`, caller-supplied
-  `rootEntries`, 하위 readdir 실패 무시를 포함한 현재 signature와 동작을 보존한다.
+  `rootEntries`를 포함한 현재 signature를 보존한다. 하위 `readdir` 실패는 불완전한 scan을 빈
+  result로 취급하지 않고 fail-closed로 전파해 prune·clean-rebuild 저장을 차단한다. authenticated
+  clean rebuild는 legacy/model/dimension 전환 모두 기존 durable generation을 유지한 채 memory-only로
+  구성하고 progress/failure save를 하지 않는다. scan한 root와 guarded source identity를 JSON rename
+  전후에 재검증하며 drift면 이전 JSON bytes로 atomic rollback한다.
+- digest-valid generation도 canonical root label의 `folder`, chunk 수·path·text·link 의미가 일치해야
+  unchanged로 재사용하며 검색 반환 직전에 같은 의미를 재검증한다. deletion intent와 guarded source는
+  pre/post-commit ABA guard를 사용하고 actual JSON rename 순간 recreate·same-byte identity 교체가
+  관측되면 기존 generation을 복원한다. same-label binding reload-merge는 load baseline three-way
+  규칙으로 최신 durable adopt를 보존하고 양쪽 변경 충돌은 fail closed한다.
 - facade `indexLabelReport()`는 IndexDiagnostics에 그대로 위임한다. Diagnostics는 IndexStore의 read와
   FolderConfig, 주입된 read-only directory probe만 사용하고 scanner/indexer를 호출하지 않는다.
 - `Capture`와 `RAG`는 class 여부와 관계없이 factory로 dependency를 받되, facade의 production
@@ -179,7 +189,7 @@ interface QueryEventReader {
 - [ ] **3. 하단 경계 추출**: 공유 타입·순수 note utilities, FolderConfig, QueryEventSink/Reader,
   MarkdownScanner를 이동한다. 환경값 평가 시점, scanner 제외/실패 동작, query log 디렉터리 lazy 준비,
   write failure 격리를 snapshot과 오류 주입 테스트로 보존한다.
-- [ ] **4. IndexStore·Diagnostics 추출**: v4/v5 hydration, sidecar, cache/stat/load snapshot,
+- [ ] **4. IndexStore·Diagnostics 추출**: v4 clean-rebuild admission과 v5 hydration, sidecar, cache/stat/load snapshot,
   migration/heal flags, 파일 락·stale 처리, disk merge, atomic save/GC, 기존 테스트 seam을 하나의
   store로 이동하고 read-only label diagnostics를 연결한다. 이 단계에서는 scan·embedding·prune 코드를
   이동하지 않으며 AC-16의 mutation count는 0이어야 한다.
@@ -193,7 +203,7 @@ interface QueryEventReader {
   기록을 RAG로 옮긴다. `brain.ts`에는 import, production 조립, 위임/re-export와 기존 테스트 seam
   연결만 남긴다.
 - [ ] **8. 통합 검증**: typecheck/build/전체 테스트를 실행하고 사본 v4/v5 색인으로
-  무재임베딩, 분해 전후 search/capture/ask/API·MCP snapshot을 비교한다. 원본 사용자 색인은
+  legacy clean-rebuild와 v5 무재생성, 분해 전후 search/capture/ask/API·MCP snapshot을 비교한다. 원본 사용자 색인은
   실증 입력으로 직접 수정하지 않는다.
 - [ ] **9. 적대적 self-review**: 별도 컨텍스트 리뷰어가 FR·AC 1:1, 데이터 손실·경합,
   초기화 순서, 오류 처리, 불필요한 abstraction, 041 최신 계약을 점검한다. 실질 결함 수정 후
@@ -210,22 +220,22 @@ interface QueryEventReader {
   실패하는 테스트를 먼저 만들고 최소 추출로 통과시킨다.
 - 파일·HOME·색인은 임시 디렉터리와 자식 프로세스로 격리한다. 실제 사용자 노트, 실제 질의
   로그, 기본 `~/.localmind`를 읽기·수정하는 테스트를 금지한다.
-- embedding/gateway/시계는 결정적 stub을 사용한다. “재임베딩 없음”은 호출 횟수 0으로, 저장
-  억제는 기존 run-count seam으로 판정한다.
+- embedding/gateway/시계는 결정적 stub을 사용한다. digest-valid v5의 “재임베딩 없음”과
+  legacy clean-rebuild의 호출 발생을 각각 계측하고, 저장 억제는 기존 run-count seam으로 판정한다.
 - 분해 전 기준값은 fixture/snapshot으로 동결하되 개인 데이터나 시크릿을 저장하지 않는다.
 
 | AC | 테스트 레벨 | 방법 | 상태 |
 |---|---|---|---|
 | AC-1 | 타입·단위 | export manifest + 기존 import 소비 fixture typecheck | [ ] |
 | AC-2 | 단위·자식 프로세스 | import 후 env 변경 matrix로 direct Brain, 기본/persona RAG, curator, scanner agent/skill 제외 경로 비교 | [ ] |
-| AC-3 | 통합 | v4 정상·손상 fixture load/save, embedding calls=0 | [ ] |
+| AC-3 | 통합 | forged chunk/`folder`, legacy/model/dimension memory-only rebuild, progress·actual-rename root/source rollback | [ ] |
 | AC-4 | 통합 | 정상·누락·손상 sidecar와 after-JSON-parse 경합 seam | [ ] |
-| AC-5 | 다중 프로세스 | 같은 index에 서로 다른 update 저장 후 합집합·vector 검증 | [ ] |
+| AC-5 | 다중 프로세스 | 서로 다른 update 합집합·vector와 same-label binding three-way decision table | [ ] |
 | AC-6 | 동시성 단위 | watcher+호출자 병렬 요청, index run count=1 | [ ] |
 | AC-7 | 통합 | missing/unreadable/fallback 폴더와 prune 요청 matrix | [ ] |
 | AC-8 | 통합 | rebind 기본 preserve와 명시 adopt 각각 검증 | [ ] |
 | AC-9 | 단위·통합 | 동시각·동명 capture, validation/tag/cache/index 결과 | [ ] |
-| AC-10 | 통합 | watcher create/update/delete debounce + trash 상대경로 | [ ] |
+| AC-10 | 통합 | watcher create/update/delete, active callback drain, pre-closed watcher 유한 close + trash 상대경로 | [ ] |
 | AC-11 | 단위·snapshot | 고정 adapters로 hit/prompt/source/verifier/result 비교 | [ ] |
 | AC-12 | 단위·통합 | 041 event matrix + append 실패가 use case를 막지 않음 | [ ] |
 | AC-13 | 단위 | unchanged/dirty/migration/heal별 save run count | [ ] |
@@ -240,7 +250,7 @@ interface QueryEventReader {
 1. facade export가 빠졌거나 type-only/value export가 뒤바뀌지 않았는가.
 2. 환경변수 읽기와 singleton 생성 순서가 바뀌어 테스트·프로덕션 동작이 달라지지 않았는가.
 3. IndexStore cache/stat/migration state 또는 Indexer single-flight가 복제되지 않았는가.
-4. 락 획득 후 최신 디스크 병합, sidecar commit·GC, v4 hydration에 경합 창이 생기지 않았는가.
+4. 락 획득 후 최신 디스크 병합, sidecar commit·GC, v4 clean-rebuild admission에 경합 창이 생기지 않았는가.
 5. scan 실패 라벨, fallback, rebind preserve가 삭제로 오판되지 않는가.
 6. watcher, capture, delete, search가 서로 다른 Indexer/Store 인스턴스를 쓰지 않는가.
 7. 041 이벤트 의미·필드·건수 또는 로그 실패 격리가 달라지지 않았는가.

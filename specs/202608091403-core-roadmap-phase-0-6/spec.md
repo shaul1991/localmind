@@ -14,7 +14,8 @@
 
 ### Phase 0 — 기준선
 - 북극성 사용자 여정과 Phase 0~6의 범위·종료 게이트가 저장소 정본 문서로 존재한다.
-- 일곱 Phase를 일곱 커밋으로 누적하고 하나의 PR로 제출하는 규칙이 명시된다.
+- 각 Phase를 독립 `[verified]` 커밋으로 유지한다. Phase 0·1은 선행 PR, Phase 2~6은
+  후속 feature branch와 Draft PR로 제출하는 rollout 경계가 명시된다.
 
 ### Phase 1 — 첫 유용 결과의 신뢰성
 - setup은 필수 readiness 실패를 성공으로 표시하지 않는다.
@@ -26,6 +27,29 @@
 - clean-room backup→recover→reindex 검증이 자동화된다.
 - 색인 손상은 정본을 건드리지 않고 탐지·재생성된다.
 - local/remote canonical brain 계약이 split-brain을 조용히 만들지 않는다.
+- JSON 의미 payload와 vector sidecar bytes는 각각 digest로 봉인하고, 비유한 Float32 및 digest 없는
+  legacy generation은 신뢰하지 않고 readable canonical Markdown에서 clean rebuild한다. digest가
+  유효해도 `folder`·chunk path/text·link가 canonical root label·chunking 결과와 다르면 재생성하고
+  검색 반환을 차단한다.
+- canonical root 또는 source I/O가 unavailable이면 빈 검색·부분 generation을 성공으로 보고하지
+  않으며 confirmed file missing·revision change와 구분한다. legacy/model/dimension clean rebuild는
+  기존 durable generation을 전체 scan·embedding·guard 검증 전까지 유지하고 progress/failure save를
+  하지 않는다. JSON rename 전후 root/source/deletion guard가 깨지면 이전 JSON bytes로 rollback한다.
+- 동일 label binding의 stale writer merge는 load baseline 기준 three-way merge를 사용해 최신 durable
+  adopt를 되돌리지 않으며 양쪽 변경 충돌은 fail closed한다. delete/recreate와 same-byte source identity
+  ABA는 canonical source와 이전 generation을 보존한다.
+- file fsync → no-replace/rename publish → parent-directory fsync 순서를 winner·loser·기존 marker
+  observer 모두 지키고 durability 오류를 전파한다.
+- embedding·setup·doctor·recover URL의 userinfo/query/fragment는 argv·PTY echo·stderr·MCP content에
+  노출하지 않으며 다중 `@` userinfo도 마지막 authority delimiter까지 마스킹한다. C0/DEL control
+  character는 parsing·fetch·curl·subprocess·로그 전에 거부한다. 기존 origin도 clone/pull/identity
+  비교 전에 검증하고 update는 literal `origin`과 현재 branch ref만 소비한다. recover Git ingress는
+  로컬 경로·HTTPS·SSH만 허용하고 remote-helper·unknown scheme·다중 `@` authority를 git/gh 전에 거부한다.
+- query-log restore merge는 destination symlink를 따라 외부 파일을 읽거나 교체하지 않는다. watcher close는
+  active callback과 open watcher를 drain하되 이미 close event가 발생한 watcher를 다시 기다리지 않는다.
+  watcher stderr는 공개-safe label만 사용하고 canonical absolute root나 raw filesystem error를 출력하지 않는다.
+- index/marker/vector/lock.guard는 이전 commit에서 추적됐더라도 backup generation에서 제거하고,
+  recover 하위 단계 실패는 독립 복원을 계속하되 최종 non-zero와 성공 메시지 억제로 집계한다.
 
 ### Phase 3 — 검색 품질 회귀 게이트
 - 공개 합성 corpus를 production retrieval 경로로 실행하는 일급 명령이 있다.
@@ -49,7 +73,8 @@
 
 ## PR Acceptance Criteria
 
-- `origin/main` 이후 정확히 7개의 Phase 커밋이 순서대로 존재한다.
+- `main`의 Phase 0·1과 후속 branch의 Phase 2~6이 각각 하나의 독립 `[verified]` 커밋으로
+  존재해, 전체 일곱 Phase 경계가 순서대로 추적 가능하다.
 - Node 20·22·24 CI, 전체 TypeScript/shell tests, typecheck, build, diff check가 성공한다.
 - 독립 보안·로직·동시성 리뷰 blocker가 0이다.
 - 모든 GitHub 리뷰·인라인 코멘트·미해결 스레드를 확인하고 유효한 지적을 수정·검증·회신한다.

@@ -2,13 +2,14 @@
 
 - [x] Phase 0 — 기준선·로드맵 정본 고정 및 커밋
 - [x] Phase 1 — setup·capture·embedding 무결성 TDD 및 커밋
-- [ ] Phase 2 — 색인·백업·canonical brain 내구성 TDD 및 커밋
+- [ ] Phase 2 — 구현·live 회귀 완료, docs-inclusive frozen gate·독립 blocker-0 리뷰·`[verified]` 커밋 대기
 - [ ] Phase 3 — 검색 품질 회귀 게이트 TDD 및 커밋
 - [ ] Phase 4 — brief·decision lifecycle TDD 및 커밋
 - [ ] Phase 5 — 이식성·운영·보안 계약 검증 및 커밋
 - [ ] Phase 6 — evidence-gated living memory TDD 및 커밋
-- [ ] 전체 테스트·typecheck·build·shell tests·diff check
-- [ ] 독립 보안·로직·동시성·spec 리뷰 blocker 0
-- [ ] 정확히 7개 커밋 확인
-- [ ] 단일 Draft PR push 및 CI 확인
+- [x] Phase 0·1 선행 PR의 CI·리뷰 표면 확인 및 사람 승인 rebase-merge
+- [ ] Phase 2~6 각 candidate의 전체 테스트·typecheck·build·shell tests·diff check
+- [ ] Phase 2~6 각 candidate의 독립 보안·로직·동시성·spec 리뷰 blocker 0
+- [ ] Phase 2~6의 정확히 5개 `[verified]` 커밋 확인
+- [ ] 후속 Draft PR push 및 full-SHA CI 확인
 - [ ] GitHub 리뷰·인라인 코멘트·미해결 스레드 확인 및 회신

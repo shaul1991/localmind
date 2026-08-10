@@ -11,6 +11,8 @@ set -uo pipefail
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BACKUP_DIR="${BACKUP_DIR:-$HOME/.localmind}"
 BACKUP_EXTRA_FILES="${BACKUP_EXTRA_FILES:-}"
+. "$PROJECT_DIR/scripts/lib/read-env.sh"
+ENV_FILE="${LOCALMIND_ENV_FILE:-$PROJECT_DIR/.env}"
 
 FAILURES=""
 
@@ -24,10 +26,142 @@ if ! git -C "$BACKUP_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   exit 2  # specs/031 — 백업 자체가 불가한 사전조건 실패 = 코어(소프트 1과 구분: device-sync가 "백업 없이 계속"하지 않게)
 fi
 
-# ── 3) 파생물 제외(.gitignore 시드) ─────────────────────────────
-for p in '.brain-index.json' '.brain-index.json.tmp' '.brain-index.json.tmp-*' '.brain-index.json.lock' '.brain-index.json.vec-*' '.trash/' 'query-log.jsonl' '_bindings/'; do
-  grep -qxF "$p" "$BACKUP_DIR/.gitignore" 2>/dev/null || echo "$p" >> "$BACKUP_DIR/.gitignore"
+# ── 3) 파생물 제외(.gitignore 시드 + 과거 tracked artifact 정리) ─────────────
+DERIVED_PATHS=(
+  '.brain-index.json' '.brain-index.json.tmp' '.brain-index.json.tmp-*'
+  '.brain-index.json.lock' '.brain-index.json.lock.guard' '.brain-index.json.vec-*'
+  '.localmind-brain-id' '.localmind-brain-id.tmp-*' '.trash/' 'query-log.jsonl' '_bindings/'
+)
+CUSTOM_IGNORE_PATTERNS=()
+CUSTOM_TRACKED_PATHS=()
+CUSTOM_PATHS_SET=0
+
+# production brain과 같은 우선순위(env > 비실행 .env > 기본값)로 custom 파생물 위치를
+# 계산한다. backup repo 밖의 경로는 건드리지 않고, 내부 exact relative path만 pathspec에 추가한다.
+expand_config_path() {
+  case "$1" in
+    '~') printf '%s' "$HOME" ;;
+    '~/'*) printf '%s/%s' "$HOME" "${1#\~/}" ;;
+    /*) printf '%s' "$1" ;;
+    *) printf '%s/%s' "$PROJECT_DIR" "$1" ;;
+  esac
+}
+relative_to_backup() {
+  BACKUP_ROOT="$BACKUP_DIR" DERIVED_TARGET="$1" node -e '
+const path = require("node:path");
+const root = path.resolve(process.env.BACKUP_ROOT);
+const target = path.resolve(process.env.DERIVED_TARGET);
+const rel = path.relative(root, target);
+if (/[\u0000-\u001f\u007f]/u.test(rel)) process.exit(2);
+if (rel && rel !== ".." && !rel.startsWith(".." + path.sep) && !path.isAbsolute(rel)) {
+  process.stdout.write(rel.split(path.sep).join("/"));
+}
+' 2>/dev/null || return 1
+}
+gitignore_literal_pattern() {
+  DERIVED_REL="$1" node -e '
+const rel = process.env.DERIVED_REL;
+if (/[\u0000-\u001f\u007f]/u.test(rel)) process.exit(2);
+const escaped = rel.replace(/[\\*?\[\]#! ]/gu, "\\$&");
+process.stdout.write("/" + escaped);
+' 2>/dev/null || return 1
+}
+git_glob_literal_prefix() {
+  DERIVED_REL="$1" node -e '
+const rel = process.env.DERIVED_REL;
+if (/[\u0000-\u001f\u007f]/u.test(rel)) process.exit(2);
+process.stdout.write(rel.replace(/[\\*?\[\]]/gu, "\\$&"));
+' 2>/dev/null || return 1
+}
+
+EFFECTIVE_NOTES_DIR="${NOTES_DIR:-$(read_env_val NOTES_DIR "$ENV_FILE")}"; EFFECTIVE_NOTES_DIR="${EFFECTIVE_NOTES_DIR:-$HOME/.localmind}"
+FIRST_NOTES_ROOT="${EFFECTIVE_NOTES_DIR%%,*}"; case "$FIRST_NOTES_ROOT" in *=*) FIRST_NOTES_ROOT="${FIRST_NOTES_ROOT#*=}";; esac
+EFFECTIVE_BRAIN_INDEX="${BRAIN_INDEX:-$(read_env_val BRAIN_INDEX "$ENV_FILE")}"; EFFECTIVE_BRAIN_INDEX="${EFFECTIVE_BRAIN_INDEX:-$(expand_config_path "$FIRST_NOTES_ROOT")/.brain-index.json}"
+EFFECTIVE_QUERY_LOG="${QUERY_LOG:-$(read_env_val QUERY_LOG "$ENV_FILE")}"; EFFECTIVE_QUERY_LOG="${EFFECTIVE_QUERY_LOG:-$HOME/.localmind/query-log.jsonl}"
+
+if ! CUSTOM_INDEX_REL="$(relative_to_backup "$(expand_config_path "$EFFECTIVE_BRAIN_INDEX")")"; then
+  echo "✗ custom index 파생물 경로를 안전하게 확인하지 못해 백업 publish를 중단합니다."
+  exit 2
+fi
+if [ -n "$CUSTOM_INDEX_REL" ]; then
+  if ! CUSTOM_INDEX_IGNORE="$(gitignore_literal_pattern "$CUSTOM_INDEX_REL")" \
+     || ! CUSTOM_INDEX_GLOB="$(git_glob_literal_prefix "$CUSTOM_INDEX_REL")"; then
+    echo "✗ custom index 파생물 경로를 안전하게 인코딩하지 못해 백업 publish를 중단합니다."
+    exit 2
+  fi
+  CUSTOM_IGNORE_PATTERNS+=(
+    "$CUSTOM_INDEX_IGNORE" "${CUSTOM_INDEX_IGNORE}.tmp" "${CUSTOM_INDEX_IGNORE}.tmp-*"
+    "${CUSTOM_INDEX_IGNORE}.lock" "${CUSTOM_INDEX_IGNORE}.lock.guard" "${CUSTOM_INDEX_IGNORE}.vec-*"
+  )
+  CUSTOM_TRACKED_PATHS+=(
+    ":(literal)$CUSTOM_INDEX_REL" ":(literal)${CUSTOM_INDEX_REL}.tmp"
+    ":(glob)${CUSTOM_INDEX_GLOB}.tmp-*" ":(literal)${CUSTOM_INDEX_REL}.lock"
+    ":(literal)${CUSTOM_INDEX_REL}.lock.guard" ":(glob)${CUSTOM_INDEX_GLOB}.vec-*"
+  )
+  CUSTOM_PATHS_SET=1
+fi
+if ! CUSTOM_QUERY_REL="$(relative_to_backup "$(expand_config_path "$EFFECTIVE_QUERY_LOG")")"; then
+  echo "✗ custom query-log 파생물 경로를 안전하게 확인하지 못해 백업 publish를 중단합니다."
+  exit 2
+fi
+if [ -n "$CUSTOM_QUERY_REL" ]; then
+  if ! CUSTOM_QUERY_IGNORE="$(gitignore_literal_pattern "$CUSTOM_QUERY_REL")"; then
+    echo "✗ custom query-log 파생물 경로를 안전하게 인코딩하지 못해 백업 publish를 중단합니다."
+    exit 2
+  fi
+  CUSTOM_IGNORE_PATTERNS+=("$CUSTOM_QUERY_IGNORE")
+  CUSTOM_TRACKED_PATHS+=(":(literal)$CUSTOM_QUERY_REL")
+  CUSTOM_PATHS_SET=1
+fi
+
+GITIGNORE_PATH="$BACKUP_DIR/.gitignore"
+if [ -L "$GITIGNORE_PATH" ] || { [ -e "$GITIGNORE_PATH" ] && [ ! -f "$GITIGNORE_PATH" ]; }; then
+  echo "✗ .gitignore가 안전한 일반 파일이 아니어서 백업 publish를 중단합니다."
+  exit 2
+fi
+if ! GIT_METADATA_DIR="$(git -C "$BACKUP_DIR" rev-parse --absolute-git-dir 2>/dev/null)" \
+   || ! GITIGNORE_TMP="$(mktemp "$GIT_METADATA_DIR/localmind-gitignore.XXXXXX")"; then
+  echo "✗ .gitignore 갱신 준비에 실패해 백업 publish를 중단합니다."
+  exit 2
+fi
+if [ -f "$GITIGNORE_PATH" ] && ! command cat "$GITIGNORE_PATH" > "$GITIGNORE_TMP"; then
+  rm -f "$GITIGNORE_TMP"
+  echo "✗ .gitignore를 읽지 못해 백업 publish를 중단합니다."
+  exit 2
+fi
+IGNORE_PATTERNS=("${DERIVED_PATHS[@]}")
+if [ "$CUSTOM_PATHS_SET" -eq 1 ]; then
+  IGNORE_PATTERNS+=("${CUSTOM_IGNORE_PATTERNS[@]}")
+fi
+for p in "${IGNORE_PATTERNS[@]}"; do
+  if ! command grep -qxF -- "$p" "$GITIGNORE_TMP" 2>/dev/null; then
+    if ! printf '%s\n' "$p" >> "$GITIGNORE_TMP"; then
+      rm -f "$GITIGNORE_TMP"
+      echo "✗ .gitignore에 파생물 제외 규칙을 기록하지 못해 백업 publish를 중단합니다."
+      exit 2
+    fi
+  fi
 done
+if ! mv "$GITIGNORE_TMP" "$GITIGNORE_PATH"; then
+  rm -f "$GITIGNORE_TMP"
+  echo "✗ .gitignore 갱신을 확정하지 못해 백업 publish를 중단합니다."
+  exit 2
+fi
+
+# .gitignore는 이미 tracked인 파일을 제거하지 않는다. stale lock owner/marker/vector가 과거
+# commit에 들어갔어도 다음 backup generation에서 반드시 삭제를 stage한다. marker는 canonical
+# root가 backup root 아래 nested/multi-root여도 host identity를 물려주지 않게 재귀 pathspec을 쓴다.
+TRACKED_DERIVED_PATHS=(
+  "${DERIVED_PATHS[@]}"
+  ':(glob)**/.localmind-brain-id' ':(glob)**/.localmind-brain-id.tmp-*'
+)
+if [ "$CUSTOM_PATHS_SET" -eq 1 ]; then
+  TRACKED_DERIVED_PATHS+=("${CUSTOM_TRACKED_PATHS[@]}")
+fi
+if ! git -C "$BACKUP_DIR" rm -r --cached --ignore-unmatch -- "${TRACKED_DERIVED_PATHS[@]}" >/dev/null; then
+  echo "✗ 백업 저장소에서 파생물 추적을 해제하지 못해 중단합니다."
+  exit 2
+fi
 
 # ── 4) 개인 설정 파일(extras) — 실패해도 계속 ───────────────────
 if BACKUP_DIR="$BACKUP_DIR" BACKUP_EXTRA_FILES="$BACKUP_EXTRA_FILES" \
@@ -45,7 +179,7 @@ fi
 # ── 4.7) 쿼리 로그 opt-in 백업(specs/019 FR-3) ───────────────────
 # 004의 "로컬 전용" 제약을 사용자 opt-in에 한해 완화한다(019에서 개정). 기본은 여전히 제외.
 if [ "${BACKUP_QUERY_LOG:-}" = "1" ]; then
-  QL_SRC="${QUERY_LOG:-$HOME/.localmind/query-log.jsonl}"   # 위치 해석은 004와 동일
+  QL_SRC="$(expand_config_path "$EFFECTIVE_QUERY_LOG")"
   if [ -f "$QL_SRC" ]; then
     dev_id="$(hostname -s 2>/dev/null | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]/-/g')"
     [ -z "$dev_id" ] && dev_id="device"                     # 극단 hostname 폴백(FR-3)
@@ -80,14 +214,24 @@ fi
 if ! git -C "$BACKUP_DIR" add -A; then
   echo "! 노트 스테이징 실패"
   FAILURES="$FAILURES 노트커밋"
-elif git -C "$BACKUP_DIR" diff --cached --quiet; then
-  echo "변경 없음 — 커밋 생략"
-elif git -C "$BACKUP_DIR" commit -q -m "localmind backup $(date +%Y-%m-%dT%H:%M)"; then
-  echo "✓ 커밋"
 else
-  echo "! 노트 커밋 실패 — git 사용자 정보가 없을 수 있어요. 아래 실행 후 다시 시도하세요:"
-  echo "    git config --global user.email \"you@example.com\" && git config --global user.name \"이름\""
-  FAILURES="$FAILURES 노트커밋"
+  if ! STILL_TRACKED_DERIVED="$(git -C "$BACKUP_DIR" ls-files --cached -- "${TRACKED_DERIVED_PATHS[@]}")"; then
+    echo "✗ 스테이징 후 파생물 추적 상태를 검증하지 못해 백업 publish를 중단합니다."
+    exit 2
+  fi
+  if [ -n "$STILL_TRACKED_DERIVED" ]; then
+    echo "✗ 스테이징 후에도 파생물이 추적되어 백업 publish를 중단합니다."
+    exit 2
+  fi
+  if git -C "$BACKUP_DIR" diff --cached --quiet; then
+    echo "변경 없음 — 커밋 생략"
+  elif git -C "$BACKUP_DIR" commit -q -m "localmind backup $(date +%Y-%m-%dT%H:%M)"; then
+    echo "✓ 커밋"
+  else
+    echo "! 노트 커밋 실패 — git 사용자 정보가 없을 수 있어요. 아래 실행 후 다시 시도하세요:"
+    echo "    git config --global user.email \"you@example.com\" && git config --global user.name \"이름\""
+    FAILURES="$FAILURES 노트커밋"
+  fi
 fi
 
 # ── 6) push — 실패 원인·해결을 알린다(FR-7). LC_ALL=C로 감지 문자열 고정 ────

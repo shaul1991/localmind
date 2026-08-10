@@ -40,8 +40,10 @@ Open question 2로 남겼다 — 그것이 이 스펙이다.
    연속 + 헤더)로 저장한다. 로드 파싱·파일 크기·저장 직렬화 비용을 낮추되, JSON·사이드카
    2파일의 **원자성과 정합**(락·reload-merge·다중 프로세스)을 그대로 유지하고, 부분 손상은
    재임베딩으로 자가 치유한다.
-2. **O2 — 무재임베딩 마이그레이션**: 기존 v4 색인을 임베딩 호출 없이 v5로 무손실 변환한다.
-   변환 불가(손상)만 전량 재빌드로 폴백한다.
+2. **O2 — 인증 가능한 마이그레이션** *(Phase 2 durability 개정)*: digest가 없던 v4/v5 파생물은
+   내용 무결성을 증명할 수 없으므로 chunk/vector를 재사용하지 않는다. readable canonical Markdown
+   전체에서 clean reindex한 뒤 digest가 있는 v5 generation으로 저장한다. canonical root 일부라도
+   unavailable이면 승격하지 않고 non-zero로 실패한다.
 
 ## Success metrics
 
@@ -54,8 +56,8 @@ Open question 2로 남겼다 — 그것이 이 스펙이다.
 - **로드 파싱 시간(콜드)**: `cachedIndex` 무효화 후 `loadIndex` 1회 wall-clock. v5가 v4보다
   짧을 것(기대 수 배↓ — 대형 숫자 배열 파싱 제거). 측정법을 plan에 고정.
 - **저장 직렬화 시간**: 동일 색인 `saveIndex` 1회 wall-clock(사이드카 write 포함).
-- **마이그레이션 재임베딩 0건**: v4 색인을 v5로 로드·저장할 때 임베딩 호출 0(스텁 계측
-  `calls()==0`으로 결정적 검증).
+- **마이그레이션 정본 충실성**: digest 없는 v4/v5의 chunk text를 손상시켜도 canonical Markdown
+  전체를 재임베딩(`calls()>0`)하고, 저장·검색 결과에 손상 payload가 남지 않는다.
 - **자가 치유**: 사이드카 부재·손상 시 영향 파일만(또는 전량) 재임베딩되고 이후 검색 정상.
 - **회귀 0**: 기존 스위트(`npm test` · `LOCALMIND_INTEGRATION=1 npm test`) green.
 
@@ -66,7 +68,8 @@ Open question 2로 남겼다 — 그것이 이 스펙이다.
 
 - JSON 크기: 124.1MB → **17.7~18.6MB (6.7×↓)**. 사이드카 32.3MB(이론값
   `16 + 8262×1024×4`와 바이트 일치). 총 디스크 124MB → 51MB.
-- 마이그레이션: **1초, 재임베딩 0건**(양 기기 동일 — v4 인라인 벡터 재사용 확인).
+- 당시 마이그레이션: **1초, 재임베딩 0건**(양 기기 동일). 이 결과는 historical 성능 기록이며,
+  Phase 2 durability 개정 뒤에는 무결성을 인증할 수 없어 허용 기준으로 사용하지 않는다.
 - 2차 재색인: clean(색인 mtime 불변 — 022 무변경 저장 생략과 합성), 사이드카 1개 유지.
 - v5 검색 정상(실코퍼스 5히트 확인), doctor 정합 ✓.
 
@@ -92,8 +95,9 @@ Open question 2로 남겼다 — 그것이 이 스펙이다.
   수동 정리 안내). 즉 롤백은 안전하되 재임베딩 비용을 지불한다. (즉시 롤백용 v4 백업
   보존은 Open questions — 디스크 2배 일시 점유 vs 재임베딩 회피 트레이드오프.)
 - **원자성**: JSON과 사이드카 2파일의 rename 2회는 원자적이지 않다. 이를 "JSON이
-  사이드카를 단방향 참조 + JSON rename만이 커밋점"으로 해소한다(spec FR-2). 락·
-  reload-merge·다중 프로세스 정합은 그대로 두되 사이드카 로드를 포함한다.
+  사이드카를 단방향 참조 + JSON rename 직후 canonical guard 성공만 commit success + drift면 이전
+  JSON bytes atomic rollback"으로 해소한다(spec FR-2). 락·reload-merge·다중 프로세스 정합은
+  그대로 두되 사이드카 로드를 포함한다.
 - **BRAIN_INDEX 관례 확장**: 사이드카·temp·lock은 모두 `INDEX_PATH` 인접에 둔다
   (`${INDEX_PATH}.vec-<gen>` 등). 색인 파일이 노트 폴더 안에 있을 수 있으므로, 사이드카도
   git 추적·백업 시드에서 **기존 `.brain-index.json`과 동일하게 제외**한다.

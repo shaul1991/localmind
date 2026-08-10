@@ -29,21 +29,39 @@ function expandHome(p: string): string {
 // 라벨은 출처 표기(label/파일명)와 folder 스코프 필터에 쓰인다. 미지정 시 폴더명에서 자동.
 function parseFolders(): NoteFolder[] {
   const raw = (process.env.NOTES_DIR ?? path.join(process.env.HOME ?? ".", ".localmind")).trim();
-  const used = new Set<string>();
-  const folders: NoteFolder[] = [];
-  for (const spec of raw.split(",").map((s) => s.trim()).filter(Boolean)) {
+  const candidates = raw.split(",").map((s) => s.trim()).filter(Boolean).map((spec, order) => {
     const eq = spec.indexOf("=");
-    let label = eq > 0 ? spec.slice(0, eq).trim() : "";
-    let dir = path.resolve(expandHome(eq > 0 ? spec.slice(eq + 1).trim() : spec));
-    if (!label) label = path.basename(dir).replace(/^\.+/, "") || "notes"; // 선행 점 제거(.localmind→localmind)
-    let uniq = label;
-    for (let n = 2; used.has(uniq); n++) uniq = `${label}-${n}`; // 라벨 충돌 방지
-    used.add(uniq);
-    folders.push({ label: uniq, dir });
+    let baseLabel = eq > 0 ? spec.slice(0, eq).trim() : "";
+    const dir = path.resolve(expandHome(eq > 0 ? spec.slice(eq + 1).trim() : spec));
+    if (!baseLabel) baseLabel = path.basename(dir).replace(/^\.+/, "") || "notes"; // 선행 점 제거(.localmind→localmind)
+    return { baseLabel, dir, order };
+  });
+  if (candidates.length === 0) {
+    return [{ label: "notes", dir: path.resolve(path.join(process.env.HOME ?? ".", ".localmind")) }];
   }
-  return folders.length
-    ? folders
-    : [{ label: "notes", dir: path.resolve(path.join(process.env.HOME ?? ".", ".localmind")) }];
+
+  // suffix는 입력 순서가 아니라 (기본 label, canonical path) 정렬로 결정한다. 반환 순서는
+  // 기존 NOTES_DIR 의미(첫 root가 기본 index 위치)를 보존하되, 같은 root 집합을 재정렬해도
+  // path→label binding과 brain identity가 바뀌지 않는다.
+  const reservedBaseLabels = new Set(candidates.map((candidate) => candidate.baseLabel));
+  const used = new Set<string>();
+  const assigned = new Map<number, string>();
+  const canonical = [...candidates].sort((a, b) => {
+    if (a.baseLabel !== b.baseLabel) return a.baseLabel < b.baseLabel ? -1 : 1;
+    if (a.dir !== b.dir) return a.dir < b.dir ? -1 : 1;
+    return a.order - b.order;
+  });
+  for (const candidate of canonical) {
+    let label = candidate.baseLabel;
+    for (
+      let n = 2;
+      used.has(label) || (label !== candidate.baseLabel && reservedBaseLabels.has(label));
+      n++
+    ) label = `${candidate.baseLabel}-${n}`;
+    used.add(label);
+    assigned.set(candidate.order, label);
+  }
+  return candidates.map((candidate) => ({ label: assigned.get(candidate.order)!, dir: candidate.dir }));
 }
 
 const FOLDERS = parseFolders();
@@ -83,6 +101,20 @@ const EMB_URL = (process.env.EMBEDDINGS_URL ?? "http://localhost:11434/v1").repl
 const EMB_KEY = process.env.EMBEDDINGS_KEY ?? process.env.LITELLM_MASTER_KEY ?? "";
 const EMB_MODEL = process.env.EMBEDDINGS_MODEL ?? "text-embedding-3-small";
 
+function embeddingEndpointIsSafe(raw: string): boolean {
+  if (/[\u0000-\u001F\u007F]/.test(raw) || raw !== raw.trim()) return false;
+  try {
+    const parsed = new URL(raw);
+    return ["http:", "https:"].includes(parsed.protocol)
+      && parsed.username === ""
+      && parsed.password === ""
+      && parsed.search === ""
+      && parsed.hash === "";
+  } catch {
+    return false;
+  }
+}
+
 // specs/041 — 검색 조합·임베딩 구현의 안정된 식별자. 이 상수 하나를 logger 이벤트와
 // readRuntimeSnapshot projection이 공유한다(literal 복제 금지 — 042가 owner를 옮겨도 한 곳만).
 const RETRIEVAL_ALGORITHM = "cosine-full-scan-v1" as const;
@@ -109,6 +141,11 @@ let pendingAppends = new Set<Promise<void>>();
 let drainAttempted = 0;
 let drainSucceeded = 0;
 let drainFailed = 0;
+function reportQueryLogFailure(): void {
+  // Filesystem Error.message에는 QUERY_LOG의 절대경로·제어문자가 포함될 수 있다.
+  // stdio MCP의 stderr는 부모 host에 노출되므로 공개 경계에는 allowlisted 진단만 남긴다.
+  process.stderr.write("[localmind-brain] 쿼리 로그 기록 실패(무시)\n");
+}
 function logQuery(rec: QueryLogRecord): void {
   drainAttempted++;
   let settle!: () => void;
@@ -129,12 +166,12 @@ function logQuery(rec: QueryLogRecord): void {
     }
     fs.appendFile(QUERY_LOG_PATH, JSON.stringify(rec) + "\n", (err) => {
       if (err) {
-        process.stderr.write(`[localmind-brain] 쿼리 로그 기록 실패(무시): ${err.message}\n`);
+        reportQueryLogFailure();
         done(false);
       } else done(true);
     });
-  } catch (e) {
-    process.stderr.write(`[localmind-brain] 쿼리 로그 기록 실패(무시): ${(e as Error).message}\n`);
+  } catch {
+    reportQueryLogFailure();
     done(false);
   }
 }
@@ -151,7 +188,7 @@ async function drainQueryEvents(): Promise<QueryEventDrainResult> {
   return result;
 }
 
-const INDEX_VERSION = 5; // 4→5: 벡터를 바이너리 사이드카로 분리(specs/023 — 디스크 인코딩만 변경)
+const INDEX_VERSION = 5; // 4→5: 벡터 사이드카. legacy disk payload는 Phase 2에서 정본 clean-rebuild.
 
 /** 인메모리 청크 — 벡터 보유(검색·병합은 이 형태만 본다, specs/023 불변식). */
 interface IndexedChunk {
@@ -180,6 +217,12 @@ export interface BrainIndex {
   dims?: number;
   /** v5 — 현재 벡터 사이드카 파일 basename(specs/023 FR-1). files가 비면 생략. */
   vectorFile?: string;
+  /** v5 — vectorFile 전체 bytes의 SHA-256. JSON commit이 참조하는 sidecar의 의미 payload를
+   *  bind해 길이가 같은 bit flip도 hydrate 전에 거부한다(Phase 2 durability). */
+  vectorDigest?: string;
+  /** v5 — 이 필드 자체를 제외한 JSON payload의 SHA-256. chunk text/path/hash·bindings·
+   *  vectorDigest를 하나의 generation으로 bind해 valid-JSON same-length 손상도 거부한다. */
+  indexDigest?: string;
   /** 라벨 → 정규화된 원본 폴더 경로(specs/024 FR-1). 선택 필드(additive — 버전 불변,
    *  구버전 코드는 무시). 라벨 재사용(재바인딩)과 폴더 내 파일 삭제를 구분하는 근거. */
   bindings?: Record<string, string>;
@@ -210,14 +253,43 @@ function buildSidecar(vectors: number[][], dims: number): Buffer {
 
 type Sidecar = { dims: number; count: number; body: Buffer };
 
-function readSidecarFile(abs: string): Sidecar | null {
+function digestBytes(buf: Buffer): string {
+  return crypto.createHash("sha256").update(buf).digest("hex");
+}
+
+function indexPayloadWithoutDigest(idx: BrainIndex): Omit<BrainIndex, "indexDigest"> {
+  const { indexDigest: _ignored, ...payload } = idx;
+  return payload;
+}
+
+function serializeIndexWithDigest(idx: BrainIndex): { json: string; digest: string } {
+  const payload = indexPayloadWithoutDigest(idx);
+  const digest = digestBytes(Buffer.from(JSON.stringify(payload), "utf8"));
+  return { json: JSON.stringify({ ...payload, indexDigest: digest }), digest };
+}
+
+function hasValidIndexDigest(idx: BrainIndex): boolean {
+  if (!/^[0-9a-f]{64}$/.test(idx.indexDigest ?? "")) return false;
+  const actual = digestBytes(Buffer.from(JSON.stringify(indexPayloadWithoutDigest(idx)), "utf8"));
+  return actual === idx.indexDigest;
+}
+
+function readSidecarFile(abs: string, expectedDigest: string | undefined): Sidecar | null {
   try {
     const buf = fs.readFileSync(abs);
+    // digest 도입 전 v5는 길이만으로 동일 길이 손상을 구분할 수 없다. Markdown이 정본이고
+    // 색인은 파생물이므로 legacy sidecar를 신뢰하지 않고 해당 파일 항목을 재생성한다.
+    if (!expectedDigest || digestBytes(buf) !== expectedDigest) return null;
     if (buf.length < SIDECAR_HEADER || buf.toString("ascii", 0, 4) !== "LMV1") return null;
     const dims = buf.readUInt32LE(4);
     const count = buf.readUInt32LE(8);
     if (dims === 0 || buf.length !== SIDECAR_HEADER + count * dims * 4) return null; // 부분 손상(truncate 포함)
-    return { dims, count, body: buf.subarray(SIDECAR_HEADER) };
+    const body = buf.subarray(SIDECAR_HEADER);
+    // Digest는 bytes가 writer가 의도한 그대로임만 증명하며 숫자 의미의 유효성은 증명하지
+    // 않는다. NaN/±Infinity를 valid digest로 봉인한 generation도 hydrate 전에 폐기한다.
+    for (let offset = 0; offset < body.length; offset += 4)
+      if (!Number.isFinite(body.readFloatLE(offset))) return null;
+    return { dims, count, body };
   } catch {
     return null; // 부재·권한 — 호출부가 재시도/자가치유 판단(FR-3)
   }
@@ -225,20 +297,51 @@ function readSidecarFile(abs: string): Sidecar | null {
 
 /** 디스크 JSON(slot 참조)을 사이드카로 하이드레이션해 인메모리(벡터 보유)로 만든다.
  *  해석 불가한 파일 항목은 제거(자가 치유 — 다음 스캔에서 재임베딩). 반환: 제거 수. */
-function hydrateV5(idx: BrainIndex, sc: Sidecar | null): number {
+function hydrateV5(idx: BrainIndex, sc: Sidecar | null, failClosed = false): number {
+  // Digest는 writer가 봉인한 bytes만 인증한다. slot의 정수성·유일성·완전성은 별도 의미
+  // 계약이다. 하나라도 깨지면 slot alias/gap이 어느 파일에 영향을 줬는지 신뢰할 수 없으므로
+  // sidecar generation 전체를 폐기하고 canonical Markdown에서 재생성한다.
+  const hasVectorChunks = Object.values(idx.files).some((fe) => Array.isArray(fe.chunks) && fe.chunks.length > 0);
+  let layoutValid = hasVectorChunks ? sc !== null : sc === null;
+  if (sc) {
+    const slots = new Set<number>();
+    for (const fe of Object.values(idx.files)) {
+      if (!Array.isArray(fe.chunks)) {
+        layoutValid = false;
+        break;
+      }
+      for (const c of fe.chunks as unknown as DiskChunk[]) {
+        if (
+          typeof c.path !== "string"
+          || typeof c.text !== "string"
+          || !Number.isSafeInteger(c.slot)
+          || c.slot < 0
+          || c.slot >= sc.count
+          || slots.has(c.slot)
+        ) {
+          layoutValid = false;
+          break;
+        }
+        slots.add(c.slot);
+      }
+      if (!layoutValid) break;
+    }
+    if (slots.size !== sc.count) layoutValid = false;
+  }
+  if (failClosed && !layoutValid) throw new Error("sidecar semantic integrity mismatch");
+  const usableSidecar = layoutValid ? sc : null;
+
   let healed = 0;
   for (const [key, fe] of Object.entries(idx.files)) {
     if (fe.chunks.length === 0) continue; // 빈 파일 — 벡터 불필요
     const chunks: IndexedChunk[] = [];
-    let ok = sc !== null;
-    if (sc) {
+    let ok = usableSidecar !== null;
+    if (usableSidecar) {
       for (const c of fe.chunks as unknown as DiskChunk[]) {
-        if (typeof c.slot !== "number" || c.slot < 0 || c.slot >= sc.count) {
-          ok = false;
-          break;
+        const vector = new Array<number>(usableSidecar.dims);
+        for (let j = 0; j < usableSidecar.dims; j++) {
+          vector[j] = usableSidecar.body.readFloatLE((c.slot * usableSidecar.dims + j) * 4);
         }
-        const vector = new Array<number>(sc.dims);
-        for (let j = 0; j < sc.dims; j++) vector[j] = sc.body.readFloatLE((c.slot * sc.dims + j) * 4);
         chunks.push({ path: c.path, text: c.text, vector });
       }
     }
@@ -281,14 +384,6 @@ function gcSidecars(keepBasename: string | null): void {
   }
 }
 
-// v4 → v5 무재임베딩 마이그레이션 플래그(FR-4) — 다음 저장(재색인의 dirty 판정 포함)이 영속화.
-let migrationPending = false;
-let migrateNotified = false;
-function notifyMigrateOnce(): void {
-  if (migrateNotified) return;
-  migrateNotified = true;
-  process.stderr.write("[localmind-brain] 색인을 새 형식(v5 — 벡터 분리 저장)으로 전환합니다. 다시 색인할 필요는 없어요.\n");
-}
 let sidecarHealNotified = false;
 function notifySidecarHealOnce(n: number): void {
   if (sidecarHealNotified) return;
@@ -306,23 +401,117 @@ function ensureDirs(): void {
   for (const f of FOLDERS) fs.mkdirSync(f.dir, { recursive: true });
 }
 
+// saveIndex의 두 commit 파일(sidecar→JSON)에 공통 적용하는 작은 durable-write helper.
+// 파일 내용 fsync → rename 순서는 필수다. parent directory fsync는 지원 불가 오류만
+// 제한적으로 허용하고, EIO·ENOSPC 같은 실제 저장 실패는 호출자에게 전파한다.
+let durableTempCounter = 0;
+function writeFsyncedTemp(finalPath: string, data: string | Buffer): string {
+  const tmp = `${finalPath}.tmp-${process.pid}-${durableTempCounter++}-${crypto.randomUUID()}`;
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(tmp, "wx");
+    fs.writeFileSync(fd, data);
+    fs.fsyncSync(fd);
+    fs.closeSync(fd);
+    fd = null;
+    return tmp;
+  } catch (error) {
+    if (fd !== null) try { fs.closeSync(fd); } catch { /* 원래 오류 보존 */ }
+    try { fs.rmSync(tmp, { force: true }); } catch { /* 원래 오류 보존 */ }
+    throw error;
+  }
+}
+
+function fsyncDirectoryPath(dir: string): void {
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(dir, "r");
+    fs.fsyncSync(fd);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (!new Set(["EINVAL", "ENOTSUP", "ENOSYS", "EBADF", "EISDIR"]).has(code ?? "")) throw error;
+    // 일부 macOS/Linux 파일시스템·샌드박스는 directory fsync 자체를 지원하지 않는다.
+  } finally {
+    if (fd !== null) fs.closeSync(fd);
+  }
+}
+
+function fsyncParentDirectory(filePath: string): void {
+  fsyncDirectoryPath(path.dirname(filePath));
+}
+
+/** recursive mkdir이 숨기는 각 ancestor publish를 durable하게 닫는다.
+ * target에서 가장 가까운 기존 ancestor까지 역추적하고, 누락 component를 하나씩 만든 뒤
+ * child inode와 parent directory entry를 모두 fsync한다. EEXIST race observer도 동일하다. */
+function ensureDurableDirectory(targetDir: string): void {
+  const target = path.resolve(targetDir);
+  const missing: string[] = [];
+  let cursor = target;
+  for (;;) {
+    try {
+      if (!fs.statSync(cursor).isDirectory()) throw new Error("index parent is not a directory");
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      missing.unshift(cursor);
+      const parent = path.dirname(cursor);
+      if (parent === cursor) throw error;
+      cursor = parent;
+    }
+  }
+
+  for (const dir of missing) {
+    try {
+      fs.mkdirSync(dir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST" || !fs.statSync(dir).isDirectory()) throw error;
+    }
+    fsyncDirectoryPath(dir);
+    fsyncDirectoryPath(path.dirname(dir));
+  }
+}
+
+function commitFsyncedTemp(tmp: string, finalPath: string, afterRename?: () => void): void {
+  fs.renameSync(tmp, finalPath);
+  afterRename?.();
+  fsyncParentDirectory(finalPath);
+}
+
 // 인메모리 캐시: 인덱스 파일(76MB까지 관찰됨)을 매 조회마다 파싱하지 않도록,
-// 파일 stat(mtime+size)이 마지막 로드와 같으면 파싱된 객체를 재사용한다.
-// mtime 해상도가 1초인 파일시스템에선 같은 초 내 외부 변경을 놓칠 수 있어 size도 함께 본다.
+// 파일 identity+revision fingerprint가 마지막 로드와 같으면 파싱된 객체를 재사용한다.
+// mtime+size만으로는 같은 크기의 atomic replacement 뒤 mtime 복원을 구분하지 못하므로
+// dev·ino(파일 identity)와 ctimeMs(metadata revision)까지 함께 본다(Phase 2 durability).
+type IndexFingerprint = { dev: number; ino: number; mtimeMs: number; ctimeMs: number; size: number };
+function indexFingerprint(stat: fs.Stats): IndexFingerprint {
+  return { dev: stat.dev, ino: stat.ino, mtimeMs: stat.mtimeMs, ctimeMs: stat.ctimeMs, size: stat.size };
+}
+function sameFingerprint(a: IndexFingerprint, b: IndexFingerprint): boolean {
+  return a.dev === b.dev && a.ino === b.ino && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs && a.size === b.size;
+}
 let cachedIndex: BrainIndex | null = null;
-let cachedStat: { mtimeMs: number; size: number } | null = null;
+let cachedStat: IndexFingerprint | null = null;
+// 기존 disk generation을 신뢰할 수 없어 canonical Markdown 전체에서 다시 만들어야 하는 상태.
+// root 일부라도 unavailable이면 손상 파생물을 새 digest로 승격하지 않고 실패한다.
+let fullRebuildPending = false;
 
 // 각 인덱스 객체가 "언제의 디스크"에서 왔는지를 객체 자체에 스냅샷한다(symbol 키 —
 // JSON 직렬화에 안 섞임). saveIndex의 reload-merge 기준을 공유 cachedStat이 아니라
 // 이 스냅샷으로 잡아야, 중간의 무관한 loadIndex(다른 도구 호출·watcher)가 cachedStat을
 // 전진시켜 병합을 무력화하는 경합이 없다(specs/013 self-review 결함 1).
 const LOAD_STAT = Symbol("localmind.loadStat");
-type LoadStat = { mtimeMs: number; size: number } | null; // null = 로드 시점에 디스크 파일 없음
+const LOAD_BINDINGS = Symbol("localmind.loadBindings");
+type LoadStat = IndexFingerprint | null; // null = 로드 시점에 디스크 파일 없음
 function setLoadStat(idx: BrainIndex, stat: LoadStat): void {
   (idx as unknown as Record<symbol, LoadStat>)[LOAD_STAT] = stat;
 }
 function getLoadStat(idx: BrainIndex): LoadStat | undefined {
   return (idx as unknown as Record<symbol, LoadStat | undefined>)[LOAD_STAT];
+}
+function setLoadBindings(idx: BrainIndex): void {
+  (idx as unknown as Record<symbol, Record<string, string>>)[LOAD_BINDINGS] = { ...(idx.bindings ?? {}) };
+}
+function getLoadBindings(idx: BrainIndex): Record<string, string> | undefined {
+  return (idx as unknown as Record<symbol, Record<string, string> | undefined>)[LOAD_BINDINGS];
 }
 
 // 테스트 계측: doEnsureIndexed 실제 실행 횟수(single-flight 검증용).
@@ -332,6 +521,7 @@ let indexRunCount = 0;
 export function _resetIndexCacheForTest(): void {
   cachedIndex = null;
   cachedStat = null;
+  fullRebuildPending = false;
   indexRunCount = 0;
   saveRunCount = 0;
 }
@@ -358,12 +548,15 @@ export function loadIndex(): BrainIndex {
     // 파일 없음 → 낡은 캐시를 반환하지 않도록 무효화하고 빈 인덱스.
     cachedIndex = null;
     cachedStat = null;
+    fullRebuildPending = false;
     const empty: BrainIndex = { version: INDEX_VERSION, files: {} };
     setLoadStat(empty, null);
+    setLoadBindings(empty);
     return empty;
   }
 
-  if (cachedIndex && cachedStat && cachedStat.mtimeMs === stat.mtimeMs && cachedStat.size === stat.size) {
+  const fingerprint = indexFingerprint(stat);
+  if (cachedIndex && cachedStat && sameFingerprint(cachedStat, fingerprint)) {
     return cachedIndex; // 캐시 적중 — 디스크 재파싱 생략
   }
 
@@ -374,44 +567,28 @@ export function loadIndex(): BrainIndex {
       if (idx.embeddingModel !== undefined && idx.embeddingModel !== EMB_MODEL) {
         notifyReindexOnce(`임베딩 모델이 바뀌어(${idx.embeddingModel} → ${EMB_MODEL})`);
       } else if (idx.version === 4) {
-        // specs/023 FR-4 — v4(인라인 벡터) 무재임베딩 마이그레이션: 벡터를 그대로 재사용해
-        // v5 인메모리로 전환하고, 다음 저장이 v5(JSON slot + 사이드카)로 영속화한다.
-        let broken = 0;
-        let expectDims = idx.dims; // stamp-less v4는 첫 유효 벡터 길이로 통일(불균일 → 자가 치유)
-        for (const [key, fe] of Object.entries(idx.files)) {
-          const valid = fe.chunks.every((c) => {
-            const v = (c as IndexedChunk).vector;
-            // 유한 숫자 + dims 일치(전 청크 균일)까지 검증 — 손상 v4 벡터가 사이드카에
-            // NaN Float32로 영속되지 않게(교차 리뷰 지적). 불합격은 재임베딩 자가 치유.
-            if (!Array.isArray(v) || v.length === 0 || !v.every((x) => Number.isFinite(x))) return false;
-            if (expectDims === undefined) expectDims = v.length;
-            return v.length === expectDims;
-          });
-          if (!valid) {
-            delete idx.files[key];
-            broken++;
-          }
-        }
-        if (idx.dims === undefined) idx.dims = expectDims; // dims 스탬프 영속(리뷰 경미-1)
-        idx.version = INDEX_VERSION;
-        migrationPending = true;
-        notifyMigrateOnce();
-        if (broken > 0) notifySidecarHealOnce(broken);
-        cachedIndex = idx;
-        cachedStat = { mtimeMs: stat.mtimeMs, size: stat.size };
-        setLoadStat(idx, cachedStat);
-        return idx;
+        // v4에는 JSON payload digest가 없어 chunk text/hash/vector를 정본과 독립적으로
+        // 인증할 수 없다. 손상된 파생물을 새 digest로 재봉인하지 말고 전량 재생성한다.
+        notifyReindexOnce("검증할 수 없는 구형 색인(v4)이어서");
       } else {
         // v5 — 사이드카 하이드레이션. 부재·불일치면 JSON 1회 재파싱(FR-3): vectorFile이
         // 새 generation으로 전진했으면 동시 저장의 양성 경합이므로 그것을 읽는다(자가 치유 아님).
+        if (!hasValidIndexDigest(idx)) throw new Error("index payload digest mismatch");
         afterJsonParseHook?.();
-        let sc = idx.vectorFile ? readSidecarFile(sidecarAbs(idx.vectorFile)) : null;
+        let sc = idx.vectorFile ? readSidecarFile(sidecarAbs(idx.vectorFile), idx.vectorDigest) : null;
+        // digest-valid legacy v5가 JSON dims stamp만 빠뜨렸다면 sidecar header를 정본으로
+        // in-memory에 명시 보완한다. 그래야 query embedding 차원 gate가 우회되지 않는다.
+        if (sc && idx.dims === undefined) idx.dims = sc.dims;
         if (idx.vectorFile && !scUsable(sc, idx.dims)) {
           try {
             const again = JSON.parse(fs.readFileSync(INDEX_PATH, "utf8")) as BrainIndex;
-            if (again.version === INDEX_VERSION && again.files && again.vectorFile && again.vectorFile !== idx.vectorFile) {
+            if (
+              again.version === INDEX_VERSION && again.files && hasValidIndexDigest(again)
+              && again.vectorFile && again.vectorFile !== idx.vectorFile
+            ) {
               idx = again;
-              sc = readSidecarFile(sidecarAbs(again.vectorFile));
+              sc = readSidecarFile(sidecarAbs(again.vectorFile), again.vectorDigest);
+              if (sc && idx.dims === undefined) idx.dims = sc.dims;
               stat = fs.statSync(INDEX_PATH); // 캐시 기준을 재파싱본에 맞춘다
             }
           } catch {
@@ -419,10 +596,14 @@ export function loadIndex(): BrainIndex {
           }
         }
         const healed = hydrateV5(idx, scUsable(sc, idx.dims) ? sc : null);
-        if (healed > 0) notifySidecarHealOnce(healed);
+        if (healed > 0) {
+          fullRebuildPending = true;
+          notifySidecarHealOnce(healed);
+        }
         cachedIndex = idx;
-        cachedStat = { mtimeMs: stat.mtimeMs, size: stat.size };
+        cachedStat = indexFingerprint(stat);
         setLoadStat(idx, cachedStat);
+        setLoadBindings(idx);
         return idx;
       }
     } else if (typeof idx?.version === "number") {
@@ -437,8 +618,10 @@ export function loadIndex(): BrainIndex {
   // 버전 불일치(스키마 변경)·모델 변경·손상 → 전체 재인덱싱. 캐시는 무효화.
   cachedIndex = null;
   cachedStat = null;
+  fullRebuildPending = true;
   const fresh: BrainIndex = { version: INDEX_VERSION, embeddingModel: EMB_MODEL, files: {} };
-  setLoadStat(fresh, { mtimeMs: stat.mtimeMs, size: stat.size });
+  setLoadStat(fresh, indexFingerprint(stat));
+  setLoadBindings(fresh);
   return fresh;
 }
 
@@ -526,7 +709,7 @@ function acquireLock(): void {
   // BRAIN_INDEX는 노트 정본 밖의 파생 색인 경로로 옮길 수 있다. 첫 저장 전에 부모를
   // 준비해 lock 생성 실패가 영구 재시도로 바뀌지 않게 한다. 생성 불가 경로는 즉시 실패한다.
   try {
-    fs.mkdirSync(path.dirname(INDEX_PATH), { recursive: true });
+    ensureDurableDirectory(path.dirname(INDEX_PATH));
   } catch {
     throw indexStorageError();
   }
@@ -605,10 +788,20 @@ function releaseLock(): void {
  *  일치하는 쪽을 채택한다. 디스크에만 있는 키는 보존한다(다른 프로세스가 색인한 파일).
  *  삭제 반영의 지연(내가 지운 키를 디스크가 아직 갖고 있는 경우 등)은 다음 스캔에서
  *  수렴한다 — 파일이 정본이므로 인덱스는 언제나 재유도 가능. */
-function mergeIndexFromDisk(ours: BrainIndex, disk: BrainIndex): void {
+function mergeIndexFromDisk(
+  ours: BrainIndex,
+  disk: BrainIndex,
+  deletions: readonly DeletionIntent[] = [],
+): void {
   for (const [key, dfe] of Object.entries(disk.files)) {
     const ofe = ours.files[key];
     if (!ofe) {
+      // explicit tombstone과 같은 durable revision은 아래 deletion guard가 같은 lock 안에서
+      // source 부재·재생성을 판정할 baseline이다. 일반 disk-only admission과 구분한다.
+      const pendingDeletion = deletions.some((deletion) => (
+        deletion.key === key && deletion.expectedHash === dfe.hash
+      ));
+      if (!pendingDeletion) assertConcurrentEntryCanonicalBeforeMerge(key, dfe);
       ours.files[key] = dfe;
       continue;
     }
@@ -618,16 +811,45 @@ function mergeIndexFromDisk(ours: BrainIndex, disk: BrainIndex): void {
     if (!f) continue;
     try {
       const cur = sha(fs.readFileSync(path.join(f.dir, key.slice(dfe.folder.length + 1)), "utf8"));
-      if (dfe.hash === cur && ofe.hash !== cur) ours.files[key] = dfe;
-    } catch {
+      if (dfe.hash === cur && ofe.hash !== cur) {
+        assertConcurrentEntryCanonicalBeforeMerge(key, dfe);
+        ours.files[key] = dfe;
+      }
+    } catch (error) {
+      if (error instanceof IndexSemanticIntegrityError) throw error;
       /* 파일 없음 — 내 것 유지, 다음 스캔에서 정리 */
     }
   }
   if (ours.dims === undefined && disk.dims !== undefined) ours.dims = disk.dims;
-  // specs/024 FR-4 — bindings 병합: 내 기록 우선, 없는 라벨만 디스크에서 채움(??=).
-  for (const [label, dir] of Object.entries(disk.bindings ?? {})) {
-    ours.bindings ??= {};
-    ours.bindings[label] ??= dir;
+  // specs/024 FR-4 — load 시점 baseline을 기준으로 three-way merge한다. stale writer의
+  // unchanged 값이 최신 durable adopt를 되돌리면 안 되고, 양쪽이 다르게 바뀐 충돌은
+  // 어느 쪽도 조용히 덮지 않고 재시도를 요구한다.
+  const baseline = getLoadBindings(ours);
+  ours.bindings ??= {};
+  if (!baseline) {
+    Object.assign(ours.bindings, disk.bindings ?? {}); // 외부 조립 객체: durable disk 우선
+  } else {
+    const labels = new Set([
+      ...Object.keys(baseline),
+      ...Object.keys(ours.bindings),
+      ...Object.keys(disk.bindings ?? {}),
+    ]);
+    for (const label of labels) {
+      const before = baseline[label];
+      const oursNow = ours.bindings[label];
+      const diskNow = disk.bindings?.[label];
+      if (oursNow === diskNow) continue;
+      const oursChanged = oursNow !== before;
+      const diskChanged = diskNow !== before;
+      if (!oursChanged && diskChanged) {
+        if (diskNow === undefined) delete ours.bindings[label];
+        else ours.bindings[label] = diskNow;
+      } else if (oursChanged && diskChanged) {
+        throw new IndexSourceRevisionError(
+          "라벨 경로 바인딩이 동시에 변경되어 최신 값을 덮지 않았어요. 재색인해 다시 시도해 주세요.",
+        );
+      }
+    }
   }
 }
 
@@ -640,12 +862,64 @@ function indexesCompatible(ours: BrainIndex, disk: BrainIndex): boolean {
   );
 }
 
-type SourceGuard = { key: string; fullPath: string; rootDir: string; hash: string };
+type SourceGuard = { key: string; fullPath: string; rootDir: string; hash: string; identity?: IndexFingerprint };
+type SourceRootGuard = { rootDir: string; dev: number; ino: number };
 type DeletionIntent = { key: string; expectedHash: string } &
   ({ fullPath: string; rootDir: string } | { force: true });
 
+function fileEntryMatchesCanonical(
+  key: string,
+  entry: FileEntry | undefined,
+  canonicalFolder: string,
+  canonicalHash: string,
+  canonicalChunks: readonly string[],
+  canonicalLinks: readonly string[],
+): boolean {
+  if (
+    !entry
+    || entry.folder !== canonicalFolder
+    || entry.hash !== canonicalHash
+    || !Array.isArray(entry.chunks)
+    || !Array.isArray(entry.linksOut)
+    || entry.chunks.length !== canonicalChunks.length
+  ) return false;
+  if (!entry.chunks.every((chunk, i) => (
+    chunk !== null
+    && typeof chunk === "object"
+    && chunk.path === key
+    && chunk.text === canonicalChunks[i]
+  ))) return false;
+  return entry.linksOut.length === canonicalLinks.length
+    && entry.linksOut.every((link, i) => typeof link === "string" && link === canonicalLinks[i]);
+}
+
 class IndexVectorIntegrityError extends Error {}
 class IndexSourceRevisionError extends Error {}
+class IndexSemanticIntegrityError extends Error {}
+
+/** stale writer가 동시 disk generation에서 새로 채택하는 entry는 digest만 맞아서는 안 된다.
+ * canonical label/key 구조와 현재 Markdown에서 파생한 chunk/link 의미까지 일치해야 한다. */
+function assertConcurrentEntryCanonicalBeforeMerge(key: string, entry: FileEntry): void {
+  const prefix = `${entry.folder}/`;
+  if (!key.startsWith(prefix) || key.length <= prefix.length) {
+    throw new IndexSemanticIntegrityError("동시 색인 generation의 canonical label/key 의미를 확인할 수 없어요.");
+  }
+  // 현재 등록에서 빠진 durable orphan은 canonical Markdown으로 검증할 수 없다. 자기 folder prefix가
+  // 맞으면 reload-merge에서 보존하되 검색 표면에서는 기존 registered-folder filter가 제외한다.
+  if (!FOLDER_BY_LABEL.has(entry.folder)) return;
+  const status = indexedSourceRevisionStatus(key, entry);
+  if (status !== "match") {
+    throw new IndexSemanticIntegrityError(
+      status === "derived_mismatch"
+        ? "동시 색인 generation의 파생 의미가 canonical Markdown과 달라 저장하지 않았어요."
+        : "동시 색인 generation의 source revision을 canonical Markdown과 일치시킬 수 없어 저장하지 않았어요.",
+    );
+  }
+}
+
+// canonical root 전체 scan을 통과한 doEnsureIndexed만 한 번 사용할 수 있는 capability.
+// public saveIndex 호출자가 임의 객체를 넘겨도 WeakSet membership을 위조할 수 없다.
+const invalidDiskReplacementAuthorizations = new WeakSet<object>();
 
 /** 내부·테스트용: 인덱스 파일을 원자적으로 저장한다(락 + reload-merge + 캐시 갱신).
  * sourceGuards는 비동기 임베딩이 읽은 revision을 durable commit 직전에 다시 확인하고,
@@ -654,68 +928,168 @@ export function saveIndex(
   idx: BrainIndex,
   sourceGuards: readonly SourceGuard[] = [],
   deletions: readonly DeletionIntent[] = [],
+  invalidDiskReplacementAuthorization?: object,
+  sourceRootGuards: readonly SourceRootGuard[] = [],
 ): void {
   saveRunCount++;
+  const effectiveDeletions: DeletionIntent[] = [...deletions];
+  const mayReplaceInvalidDisk = invalidDiskReplacementAuthorization !== undefined
+    && invalidDiskReplacementAuthorizations.delete(invalidDiskReplacementAuthorization);
   acquireLock();
   let pendingJsonTemp = "";
   let pendingSidecarTemp = "";
   let uncommittedSidecar = "";
   let jsonCommitted = false;
+  let previousJsonBytes: Buffer | null = null;
+  const assertSourceRootsStillAvailable = (): void => {
+    for (const guard of sourceRootGuards) {
+      try {
+        const stat = fs.statSync(guard.rootDir);
+        if (!stat.isDirectory() || stat.dev !== guard.dev || stat.ino !== guard.ino) throw new Error("root identity changed");
+        fs.readdirSync(guard.rootDir);
+      } catch {
+        throw new IndexSourceRevisionError(
+          "색인 저장 직전에 canonical 노트 폴더를 다시 확인할 수 없어 기존 generation을 보존했어요.",
+        );
+      }
+    }
+  };
+  const assertGuardedSourcesStillMatch = (): void => {
+    for (const guard of sourceGuards) {
+      if (idx.files[guard.key]?.hash !== guard.hash) continue;
+      try {
+        const text = fs.readFileSync(guard.fullPath, "utf8");
+        const stat = fs.statSync(guard.fullPath);
+        if (sha(text) !== guard.hash || (guard.identity && !sameFingerprint(guard.identity, indexFingerprint(stat)))) {
+          throw new Error("source revision changed");
+        }
+      } catch {
+        throw new IndexSourceRevisionError(
+          `색인 저장 직전에 노트 revision이 변경되어 이번 결과를 저장하지 않았어요: ${guard.key}`,
+        );
+      }
+    }
+  };
+  const assertDeletedSourcesStillMissing = (): void => {
+    for (const deletion of effectiveDeletions) {
+      if ("force" in deletion || idx.files[deletion.key]) continue;
+      try {
+        fs.readFileSync(deletion.fullPath);
+        throw new IndexSourceRevisionError(
+          "색인 commit 순간 삭제된 노트가 다시 생성되어 이전 generation을 복원했어요.",
+        );
+      } catch (error) {
+        if (error instanceof IndexSourceRevisionError) throw error;
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          throw new IndexSourceRevisionError(
+            "색인 commit 순간 삭제된 노트 상태를 확인할 수 없어 이전 generation을 복원했어요.",
+          );
+        }
+      }
+      try {
+        fs.readdirSync(deletion.rootDir);
+      } catch {
+        throw new IndexSourceRevisionError(
+          "색인 commit 순간 canonical 노트 폴더를 확인할 수 없어 이전 generation을 복원했어요.",
+        );
+      }
+    }
+  };
+  const rollbackCommittedJson = (): void => {
+    if (previousJsonBytes === null) {
+      fs.rmSync(INDEX_PATH, { force: true });
+      fsyncParentDirectory(INDEX_PATH);
+    } else {
+      let rollbackTemp = "";
+      try {
+        rollbackTemp = writeFsyncedTemp(INDEX_PATH, previousJsonBytes);
+        commitFsyncedTemp(rollbackTemp, INDEX_PATH);
+        rollbackTemp = "";
+      } finally {
+        if (rollbackTemp) {
+          try { fs.rmSync(rollbackTemp, { force: true }); } catch { /* rollback 오류를 보존 */ }
+        }
+      }
+    }
+    jsonCommitted = false;
+  };
   try {
     let diskAtSave: BrainIndex | null = null;
     // reload-merge: 이 객체의 로드 시점 이후 다른 프로세스가 저장했으면 병합(FR-6).
     // 기준은 객체별 스냅샷(LOAD_STAT) — 공유 cachedStat을 기준으로 삼으면 중간의 무관한
     // loadIndex가 기준을 전진시켜 병합이 무력화된다(self-review 결함 1). 스냅샷이 없는
     // 객체(테스트·외부 조립)는 cachedStat으로 폴백.
+    let diskStat: fs.Stats | null = null;
     try {
-      const stat = fs.statSync(INDEX_PATH);
+      diskStat = fs.statSync(INDEX_PATH);
+    } catch (error) {
+      // 저장 시작 시점부터 파일이 없는 경우만 새 generation의 정상 bootstrap이다. 이미
+      // 관측한 파일의 parse/digest/sidecar 실패까지 absent처럼 삼키면 stale 메모리가 손상·
+      // 삭제 generation을 덮고 새 valid digest를 부여할 수 있으므로 아래 단계 오류는 전파한다.
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    if (diskStat) {
       const base = getLoadStat(idx) === undefined ? cachedStat : getLoadStat(idx);
-      const diskChanged = !base || base.mtimeMs !== stat.mtimeMs || base.size !== stat.size;
-      // source root가 commit 직전에 사라지면 pending revision 대신 durable baseline을 복원해야
-      // 한다. stat이 그대로인 경우에도 guarded save는 디스크 후보를 읽어 둔다.
-      if (diskChanged || sourceGuards.length > 0) {
-        // 디스크가 v5면 그 사이드카로 하이드레이션해 병합한다(specs/023 — 병합 채택 항목도
-        // 인메모리 형태(벡터 보유)여야 재직렬화가 성립). 해석 불가 항목은 병합에서 제외
-        // (재임베딩 자가 치유). v4 등 다른 버전은 아래 가드가 병합을 건너뛴다.
+      const diskChanged = !base || !sameFingerprint(base, indexFingerprint(diskStat));
+      // Existing generation은 stat 동일 여부와 무관하게 항상 검증한다. 같은 stat의 손상이나
+      // loadIndex가 만든 empty recovery object가 invalid bytes를 재봉인하는 우회를 막는다.
+      try {
         const disk = JSON.parse(fs.readFileSync(INDEX_PATH, "utf8")) as BrainIndex;
-        if (disk.version === INDEX_VERSION && disk.files) {
-          const dsc = disk.vectorFile ? readSidecarFile(sidecarAbs(disk.vectorFile)) : null;
-          // stamp가 없는 v5 후보도 sidecar의 실제 차원을 compatibility gate에 반영한다.
-          // 그렇지 않으면 다른 차원 벡터를 병합한 뒤 ours.dims로 잘라 재직렬화할 수 있다.
-          if (disk.dims === undefined && dsc) disk.dims = dsc.dims;
-          hydrateV5(disk, scUsable(dsc, disk.dims) ? dsc : null);
-        }
+        if (disk.version !== INDEX_VERSION || !disk.files) throw new Error("unsupported index generation");
+        if (!hasValidIndexDigest(disk)) throw new Error("index payload digest mismatch");
+        const dsc = disk.vectorFile ? readSidecarFile(sidecarAbs(disk.vectorFile), disk.vectorDigest) : null;
+        if (disk.dims === undefined && dsc) disk.dims = dsc.dims;
+        hydrateV5(disk, scUsable(dsc, disk.dims) ? dsc : null, true);
         diskAtSave = disk;
-        // 버전·임베딩 모델이 다른 인덱스(마이그레이션·모델 교체 중)는 병합하지 않는다 —
-        // 낡은 벡터를 되살리면 차원 불일치가 재발한다.
-        if (diskChanged && indexesCompatible(idx, disk)) {
-          mergeIndexFromDisk(idx, disk);
+        // 버전·임베딩 모델·차원이 같은 최신 writer만 병합한다. source guard가 있을 때는
+        // diskAtSave를 보존해 commit 직전 source 불일치 시 durable winner로 복원한다.
+        if (diskChanged && sourceRootGuards.length === 0 && indexesCompatible(idx, disk)) {
+          mergeIndexFromDisk(idx, disk, effectiveDeletions);
         }
+      } catch (error) {
+        if (error instanceof IndexSourceRevisionError) throw error;
+        if (!mayReplaceInvalidDisk) throw error;
+        // 모든 canonical root scan을 통과한 one-shot clean rebuild만 untrusted generation을
+        // 대체한다. stale/public writer는 이 capability를 얻을 수 없다.
+        diskAtSave = null;
       }
-    } catch {
-      /* 디스크에 없음/손상 — 그대로 저장 */
     }
 
     // 단순한 map 부재는 stale writer가 키를 몰랐던 것과 구분할 수 없다. 삭제 시점의 hash를
     // tombstone으로 전달해 reload-merge가 같은 revision을 복원했을 때만 제거한다. 그 사이
-    // 다른 writer가 새 revision을 저장했다면 expectedHash가 달라 보존한다.
-    for (const deletion of deletions) {
-      if (idx.files[deletion.key]?.hash !== deletion.expectedHash) continue;
+    // 다른 writer가 새 revision을 저장했다면 expectedHash가 달라 보존한다. disk generation이
+    // unchanged여도 diskAtSave는 검증된 durable baseline이므로 delete→same-bytes recreate ABA에서
+    // source가 존재하면 그 entry를 복원한다.
+    for (const deletion of effectiveDeletions) {
+      const current = idx.files[deletion.key];
+      if (current && current.hash !== deletion.expectedHash) continue;
       if ("force" in deletion) {
         delete idx.files[deletion.key];
         continue;
       }
+      const durable = diskAtSave && indexesCompatible(idx, diskAtSave)
+        ? diskAtSave.files[deletion.key]
+        : undefined;
+      const preserveDurableBaseline = (): void => {
+        if (durable?.hash !== deletion.expectedHash) return;
+        const latest = idx.files[deletion.key];
+        if (!latest || latest.hash === deletion.expectedHash) idx.files[deletion.key] = durable;
+      };
       try {
         fs.readFileSync(deletion.fullPath);
-        continue; // 같은 경로가 이미 재생성됨 — hash가 같아도 stale 삭제를 적용하지 않는다
+        preserveDurableBaseline(); // 같은 경로가 이미 재생성됨 — stale 삭제를 취소한다
+        continue;
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") continue;
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          preserveDurableBaseline(); // 권한·I/O 불명은 확인된 삭제가 아니다
+          continue;
+        }
       }
       try {
         fs.readdirSync(deletion.rootDir);
         delete idx.files[deletion.key]; // root는 읽히고 source만 없음 — 확인된 삭제
       } catch {
-        /* root 부재·권한 실패는 삭제로 오판하지 않는다 */
+        preserveDurableBaseline(); // root 부재·권한 실패는 삭제로 오판하지 않는다
       }
     }
 
@@ -734,18 +1108,60 @@ export function saveIndex(
       try {
         currentHash = sha(fs.readFileSync(guard.fullPath, "utf8"));
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-          try {
-            fs.readdirSync(guard.rootDir);
-            delete idx.files[guard.key]; // source root를 읽었는데 파일만 없음 — 확인된 삭제
-          } catch {
-            preserveDurableWinner(); // 미마운트·권한 실패 — 삭제로 오판하지 않는다
-          }
-        } else preserveDurableWinner();
-        continue;
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          preserveDurableWinner();
+          continue;
+        }
+        // path 삭제→same-byte 재생성 중 transient ENOENT를 확정 삭제로 승격하지 않는다.
+        // 같은 lock 안에서 한 번 더 읽고, 두 번 모두 ENOENT이며 root가 읽힐 때만 삭제한다.
+        try {
+          currentHash = sha(fs.readFileSync(guard.fullPath, "utf8"));
+        } catch (retryError) {
+          if ((retryError as NodeJS.ErrnoException).code === "ENOENT") {
+            // 두 번째 read가 ENOENT인데 즉시 stat이 성공하면 identity tuple이 우연히 같아도
+            // delete/recreate ABA 가능성이 있다. 그 관측 자체를 revision conflict로 닫는다.
+            try {
+              fs.statSync(guard.fullPath);
+              throw new IndexSourceRevisionError(
+                `색인 저장 직전에 노트 revision이 변경되어 이번 결과를 저장하지 않았어요: ${guard.key}`,
+              );
+            } catch (probeError) {
+              if (probeError instanceof IndexSourceRevisionError) throw probeError;
+              if ((probeError as NodeJS.ErrnoException).code !== "ENOENT") {
+                preserveDurableWinner();
+                throw new IndexSourceRevisionError(
+                  `색인 저장 직전에 노트 revision을 확인할 수 없어 이번 결과를 저장하지 않았어요: ${guard.key}`,
+                );
+              }
+            }
+            try {
+              fs.readdirSync(guard.rootDir);
+            } catch {
+              preserveDurableWinner();
+              continue;
+            }
+            // root는 읽히고 source가 실제로 없다. post-rename 재생성도 잡도록 deletion intent로 전환한다.
+            const durable = diskAtSave && indexesCompatible(idx, diskAtSave)
+              ? diskAtSave.files[guard.key]
+              : undefined;
+            effectiveDeletions.push({
+              key: guard.key,
+              expectedHash: durable?.hash ?? guard.hash,
+              fullPath: guard.fullPath,
+              rootDir: guard.rootDir,
+            });
+            delete idx.files[guard.key];
+          } else preserveDurableWinner();
+          continue;
+        }
       }
       if (currentHash !== guard.hash && idx.files[guard.key]?.hash !== currentHash) delete idx.files[guard.key];
     }
+
+    // Legacy/손상 generation을 대체하는 clean rebuild는 initial scan 뒤 root가 unmount·rename·
+    // 교체된 경우 빈 valid v5를 publish하면 안 된다. 벡터 temp를 만들기 전에 빠르게 확인하고,
+    // 아래 commit point 직전에도 같은 identity/readability guard를 반복한다.
+    assertSourceRootsStillAvailable();
 
     // specs/023 FR-1·2 — 디스크 인코딩: 벡터를 사이드카로 분리(JSON은 slot 참조만).
     // 순서가 원자성의 핵심: (1) 사이드카를 temp+rename으로 durable화(아직 미참조),
@@ -764,6 +1180,7 @@ export function saveIndex(
       };
     }
     let vectorFile: string | undefined;
+    let vectorDigest: string | undefined;
     if (vectors.length > 0) {
       const dims = idx.dims ?? vectors[0].length;
       if (!Number.isInteger(dims) || dims <= 0) {
@@ -782,50 +1199,93 @@ export function saveIndex(
       idx.dims = dims; // 사이드카 헤더와 JSON dims 스탬프 일치(리뷰 경미-1)
       const gen = `${Date.now().toString(36)}-${process.pid}-${sidecarGenCounter++}`;
       vectorFile = `${path.basename(INDEX_PATH)}.vec-${gen}`;
-      const scTmp = `${sidecarAbs(vectorFile)}.tmp-${process.pid}`;
-      pendingSidecarTemp = scTmp;
-      fs.writeFileSync(scTmp, buildSidecar(vectors, idx.dims));
-      fs.renameSync(scTmp, sidecarAbs(vectorFile));
-      pendingSidecarTemp = "";
+      const sidecar = buildSidecar(vectors, idx.dims);
+      vectorDigest = digestBytes(sidecar);
       uncommittedSidecar = sidecarAbs(vectorFile);
+      pendingSidecarTemp = writeFsyncedTemp(uncommittedSidecar, sidecar);
+      commitFsyncedTemp(pendingSidecarTemp, uncommittedSidecar);
+      pendingSidecarTemp = "";
     }
     // temp 이름에 pid를 붙여, 락 경합의 극단(동시 stale 강제 해제)에서도 서로의 temp를
     // 밟지 않는다(021 self-review 결함 5 관례).
     // 직렬화는 {...idx} 스프레드 — 화이트리스트로 최상위 필드를 나열하면 미래 additive
     // 필드(예: 024 bindings)가 저장에서 조용히 탈락한다(리뷰 경미-2). LOAD_STAT은
     // Symbol 키라 JSON.stringify가 자동 제외.
-    const tmp = `${INDEX_PATH}.tmp-${process.pid}`;
-    pendingJsonTemp = tmp;
-    fs.writeFileSync(tmp, JSON.stringify({ ...idx, vectorFile, files: filesOut }));
+    const diskIndex = {
+      ...indexPayloadWithoutDigest(idx),
+      vectorFile,
+      vectorDigest,
+      files: filesOut,
+    } as unknown as BrainIndex;
+    const serializedIndex = serializeIndexWithDigest(diskIndex);
+    pendingJsonTemp = writeFsyncedTemp(INDEX_PATH, serializedIndex.json);
 
-    // 직렬화가 오래 걸리는 동안 source가 바뀔 수 있으므로 JSON temp까지 준비한 뒤 같은 lock
-    // 안에서 guarded entry를 다시 확인한다. 이 확인과 바로 다음 rename 사이의 외부 writer
-    // race까지 없앨 수는 없지만, lock 안 commit 경계를 이 두 동작으로 최소화한다.
-    for (const guard of sourceGuards) {
-      if (idx.files[guard.key]?.hash !== guard.hash) continue;
-      let currentHash: string;
+    // JSON temp까지 준비한 뒤 hash와 source identity를 다시 확인한다. rename 직후에도 같은
+    // helper를 실행하므로 이 검사 다음의 외부 ABA는 이전 generation으로 rollback된다.
+    assertGuardedSourcesStillMatch();
+    // 최초 deletion 확인 뒤 temp 직렬화 사이에 같은 path가 재생성되는 ABA도 이전 generation을
+    // 덮지 않는다. candidate에 key가 없을 때만 확인하며, force 삭제는 명시 정책이므로 제외한다.
+    for (const deletion of effectiveDeletions) {
+      if ("force" in deletion || idx.files[deletion.key]) continue;
+      let confirmedMissing = false;
       try {
-        currentHash = sha(fs.readFileSync(guard.fullPath, "utf8"));
-      } catch {
-        throw new IndexSourceRevisionError("색인 저장 직전에 노트 revision을 다시 확인할 수 없어 저장하지 않았어요.");
+        fs.readFileSync(deletion.fullPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") confirmedMissing = true;
+        else {
+          throw new IndexSourceRevisionError(
+            "색인 저장 직전에 삭제된 노트의 상태를 다시 확인할 수 없어 기존 generation을 보존했어요.",
+          );
+        }
       }
-      if (currentHash !== guard.hash) {
-        throw new IndexSourceRevisionError("색인 저장 중 노트 revision이 변경되어 stale 색인을 저장하지 않았어요.");
+      if (!confirmedMissing) {
+        throw new IndexSourceRevisionError(
+          "색인 저장 직전에 삭제된 노트가 다시 생성되어 stale 삭제를 저장하지 않았어요.",
+        );
+      }
+      try {
+        fs.readdirSync(deletion.rootDir);
+      } catch {
+        throw new IndexSourceRevisionError(
+          "색인 저장 직전에 canonical 노트 폴더를 다시 확인할 수 없어 기존 generation을 보존했어요.",
+        );
       }
     }
-    fs.renameSync(tmp, INDEX_PATH); // 단일 커밋점
-    pendingJsonTemp = "";
-    jsonCommitted = true;
-    uncommittedSidecar = "";
+    assertSourceRootsStillAvailable();
+    try {
+      previousJsonBytes = fs.readFileSync(INDEX_PATH);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      previousJsonBytes = null;
+    }
+    commitFsyncedTemp(pendingJsonTemp, INDEX_PATH, () => {
+      // rename 뒤 directory fsync가 실패해도 JSON은 이미 새 sidecar를 참조한다. catch가
+      // 참조 sidecar를 지워 generation을 깨뜨리지 않도록 즉시 commit point를 기록한다.
+      pendingJsonTemp = "";
+      jsonCommitted = true;
+      try {
+        assertSourceRootsStillAvailable();
+        assertGuardedSourcesStillMatch();
+        assertDeletedSourcesStillMissing();
+      } catch (error) {
+        rollbackCommittedJson();
+        throw error;
+      }
+      uncommittedSidecar = "";
+    }); // 단일 커밋점
     idx.vectorFile = vectorFile; // 인메모리 객체도 최신 참조 유지(캐시 정합)
+    idx.vectorDigest = vectorDigest;
+    idx.indexDigest = serializedIndex.digest;
     gcSidecars(vectorFile ?? null);
-    migrationPending = false; // v4→v5 전환분이 영속됨(specs/023 FR-4)
+    fullRebuildPending = false;
+
     // 방금 저장한 내용을 캐시에 반영 → 자기 저장 직후 조회가 디스크를 다시 읽지 않는다.
     try {
       const stat = fs.statSync(INDEX_PATH);
       cachedIndex = idx;
-      cachedStat = { mtimeMs: stat.mtimeMs, size: stat.size };
+      cachedStat = indexFingerprint(stat);
       setLoadStat(idx, cachedStat);
+      setLoadBindings(idx);
     } catch {
       cachedIndex = null;
       cachedStat = null;
@@ -836,11 +1296,11 @@ export function saveIndex(
         if (!artifact) continue;
         try { fs.rmSync(artifact, { force: true }); } catch { /* 원래 실패를 보존 */ }
       }
-      // 호출자가 cached object 자체를 수정해 넘겼을 수 있다. 실패한 candidate가 후속 조회에
-      // 보이지 않도록 durable JSON에서 다시 읽게 한다.
-      cachedIndex = null;
-      cachedStat = null;
     }
+    // 실패가 JSON rename 전이든 후의 directory fsync든, 후속 조회는 durable disk를 다시
+    // 검증해야 한다. 실패한 candidate object를 cache success처럼 재사용하지 않는다.
+    cachedIndex = null;
+    cachedStat = null;
     if (error instanceof IndexVectorIntegrityError || error instanceof IndexSourceRevisionError) throw error;
     throw indexStorageError();
   } finally {
@@ -852,31 +1312,53 @@ export function saveIndex(
  *  saveIndex의 merge를 타면 낡은 벡터가 되살아나므로 반드시 이 경로를 쓴다. */
 function resetIndex(): void {
   acquireLock();
+  let tmp = "";
   try {
     const empty: BrainIndex = { version: INDEX_VERSION, embeddingModel: EMB_MODEL, files: {} };
-    const tmp = `${INDEX_PATH}.tmp-${process.pid}`;
-    fs.writeFileSync(tmp, JSON.stringify(empty));
-    fs.renameSync(tmp, INDEX_PATH);
+    const serialized = serializeIndexWithDigest(empty);
+    tmp = writeFsyncedTemp(INDEX_PATH, serialized.json);
+    commitFsyncedTemp(tmp, INDEX_PATH);
+    tmp = "";
+    empty.indexDigest = serialized.digest;
     gcSidecars(null); // 빈 색인 — 잔존 사이드카 정리(직전 1개 유예, specs/023)
+    fullRebuildPending = false;
     try {
       const stat = fs.statSync(INDEX_PATH);
       cachedIndex = empty;
-      cachedStat = { mtimeMs: stat.mtimeMs, size: stat.size };
+      cachedStat = indexFingerprint(stat);
       setLoadStat(empty, cachedStat);
     } catch {
       cachedIndex = null;
       cachedStat = null;
     }
   } catch {
+    if (tmp) try { fs.rmSync(tmp, { force: true }); } catch { /* 원래 오류 보존 */ }
     throw indexStorageError();
   } finally {
     releaseLock();
   }
 }
 
+/** 모델/차원 전환용 clean rebuild를 메모리에서만 시작한다. 기존 durable generation은
+ * canonical 전체 scan·embedding·최종 guard가 끝난 한 번의 save 전까지 byte-for-byte 보존한다. */
+function beginInMemoryCleanRebuild(): void {
+  const empty: BrainIndex = { version: INDEX_VERSION, embeddingModel: EMB_MODEL, files: {} };
+  try {
+    const stat = fs.statSync(INDEX_PATH);
+    const fingerprint = indexFingerprint(stat);
+    cachedStat = fingerprint;
+    setLoadStat(empty, fingerprint);
+  } catch {
+    cachedStat = null;
+  }
+  cachedIndex = empty;
+  fullRebuildPending = true;
+}
+
 // specs/019 AC-10 테스트를 위해 export.
 // rootEntries — 호출자가 이미 readdir한 결과(specs/020 FR-2: 대상/부재 판정과 스캔이
-// 같은 결과를 쓰도록). 하위 디렉토리의 readdir 실패는 여전히 조용히 건너뛴다(020 알려진 한계).
+// 같은 결과를 쓰도록). root 부재는 호출자가 판정하지만, 하위 디렉터리 scan 실패는
+// 불완전한 결과로 prune/clean-rebuild하지 않도록 fail-closed로 전파한다.
 export function listMarkdown(dir: string, isRoot = true, rootEntries?: fs.Dirent[]): string[] {
   const out: string[] = [];
   let entries: fs.Dirent[];
@@ -886,7 +1368,8 @@ export function listMarkdown(dir: string, isRoot = true, rootEntries?: fs.Dirent
     try {
       entries = fs.readdirSync(dir, { withFileTypes: true });
     } catch {
-      return out;
+      if (isRoot) return out;
+      throw new Error("Markdown 하위 폴더 스캔에 실패했습니다.");
     }
   }
   for (const e of entries) {
@@ -972,10 +1455,12 @@ function isFloat32Finite(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && Number.isFinite(Math.fround(value));
 }
 
+class EmbeddingResponseIntegrityError extends Error {}
+
 function validateEmbeddingResponse(payload: unknown, expectedRows: number): number[][] {
   const data = (payload as { data?: unknown } | null)?.data;
   if (!Array.isArray(data) || data.length !== expectedRows) {
-    throw new Error(`임베딩 응답의 행 수가 입력 수(${expectedRows})와 같지 않아요.`);
+    throw new EmbeddingResponseIntegrityError(`임베딩 응답의 행 수가 입력 수(${expectedRows})와 같지 않아요.`);
   }
 
   const ordered = new Array<number[]>(expectedRows);
@@ -985,35 +1470,40 @@ function validateEmbeddingResponse(payload: unknown, expectedRows: number): numb
     const row = rawRow as { index?: unknown; embedding?: unknown } | null;
     const index = row?.index;
     if (!Number.isInteger(index) || (index as number) < 0 || (index as number) >= expectedRows) {
-      throw new Error(`임베딩 응답의 index가 0..${expectedRows - 1} 범위를 벗어났어요.`);
+      throw new EmbeddingResponseIntegrityError(`임베딩 응답의 index가 0..${expectedRows - 1} 범위를 벗어났어요.`);
     }
     if (seen.has(index as number)) {
-      throw new Error("임베딩 응답의 index가 중복됐어요.");
+      throw new EmbeddingResponseIntegrityError("임베딩 응답의 index가 중복됐어요.");
     }
     seen.add(index as number);
 
     const vector = row?.embedding;
     if (!Array.isArray(vector) || vector.length === 0) {
-      throw new Error("임베딩 응답의 embedding이 비어 있어요.");
+      throw new EmbeddingResponseIntegrityError("임베딩 응답의 embedding이 비어 있어요.");
     }
     if (!vector.every(isFloat32Finite)) {
-      throw new Error("임베딩 응답의 embedding은 모두 Float32로 표현 가능한 유한한 숫자여야 해요.");
+      throw new EmbeddingResponseIntegrityError("임베딩 응답의 embedding은 모두 Float32로 표현 가능한 유한한 숫자여야 해요.");
     }
     if (dimensions === undefined) dimensions = vector.length;
     else if (vector.length !== dimensions) {
-      throw new Error("임베딩 응답의 행마다 embedding 차원이 달라요.");
+      throw new EmbeddingResponseIntegrityError("임베딩 응답의 행마다 embedding 차원이 달라요.");
     }
     ordered[index as number] = vector as number[];
   }
 
   for (let index = 0; index < expectedRows; index++) {
-    if (!seen.has(index)) throw new Error(`임베딩 응답의 index ${index}가 누락됐어요.`);
+    if (!seen.has(index)) throw new EmbeddingResponseIntegrityError(`임베딩 응답의 index ${index}가 누락됐어요.`);
   }
   return ordered;
 }
 
 async function embed(texts: string[]): Promise<number[][]> {
   if (!texts.length) return [];
+  if (!embeddingEndpointIsSafe(EMB_URL)) {
+    throw new Error(
+      "임베딩 URL 설정이 안전하지 않아요. 자격증명·query·fragment·제어문자 없는 http(s) base URL을 사용해 주세요.",
+    );
+  }
   if (!EMB_KEY) {
     throw new Error(
       "임베딩 키(EMBEDDINGS_KEY)가 설정되지 않았어요 — .env에 EMBEDDINGS_KEY를 넣고(Ollama 직결은 " +
@@ -1031,7 +1521,11 @@ async function embed(texts: string[]): Promise<number[][]> {
         body: JSON.stringify({ model: EMB_MODEL, input: texts }),
         signal: AbortSignal.timeout(timeoutMs), // 행 방지: 요청 타임아웃 후 재시도
       });
-      if (!res.ok) throw new Error(`embeddings HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      // Provider body는 URL·token을 되비출 수 있어 오류 경계 밖으로 전달하지 않는다.
+      if (!res.ok) {
+        try { await res.body?.cancel(); } catch { /* 원래 HTTP 실패 보존 */ }
+        throw new Error("embedding provider request failed");
+      }
       const payload: unknown = await res.json();
       return validateEmbeddingResponse(payload, texts.length); // provider 행 순서와 무관하게 index 순서로 반환
     } catch (e) {
@@ -1039,7 +1533,8 @@ async function embed(texts: string[]): Promise<number[][]> {
       if (i < attempts - 1) await new Promise((r) => setTimeout(r, 1500 * (i + 1))); // 백오프
     }
   }
-  throw lastErr;
+  if (lastErr instanceof EmbeddingResponseIntegrityError) throw lastErr;
+  throw new Error("임베딩 서비스 요청에 실패했어요. EMBEDDINGS_URL 설정과 엔진 상태를 확인해 주세요.");
 }
 
 function cosine(a: number[], b: number[]): number {
@@ -1071,9 +1566,17 @@ let indexingInFlight: Promise<BrainIndex> | null = null;
 
 function ensureIndexed(): Promise<BrainIndex> {
   if (indexingInFlight) return indexingInFlight;
-  indexingInFlight = doEnsureIndexed().finally(() => {
-    indexingInFlight = null;
-  });
+  indexingInFlight = doEnsureIndexed()
+    .catch((error) => {
+      if (fullRebuildPending) {
+        cachedIndex = null;
+        cachedStat = null;
+      }
+      throw error;
+    })
+    .finally(() => {
+      indexingInFlight = null;
+    });
   return indexingInFlight;
 }
 
@@ -1111,6 +1614,8 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
   // 경로에서는 일괄 생성하지 않고, 지킬 색인 키가 없는 라벨(첫 실행)만 부트스트랩 생성한다.
   const scanned = new Set<string>();
   const missing: { label: string; dir: string }[] = [];
+  const rebuildingUntrustedGeneration = fullRebuildPending;
+  const cleanRebuildRootGuards: SourceRootGuard[] = [];
   const readDirOrNull = (dir: string): fs.Dirent[] | null => {
     try {
       return fs.readdirSync(dir, { withFileTypes: true });
@@ -1119,11 +1624,18 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
     }
   };
 
-  const pending: { key: string; fullPath: string; folder: string; hash: string; chunks: string[]; linksOut: string[] }[] = [];
+  const pending: { key: string; fullPath: string; folder: string; hash: string; chunks: string[]; linksOut: string[]; identity: IndexFingerprint }[] = [];
+  let sourceReadFailures = 0;
   for (const f of FOLDERS) {
     let rootEntries = readDirOrNull(f.dir);
-    if (rootEntries === null && !Object.values(idx.files).some((fe) => fe.folder === f.label)) {
-      // 첫 실행 부트스트랩(기존 ensureDirs 동작 보존) — 보존할 색인이 없을 때만 생성
+    if (
+      rootEntries === null
+      && !fullRebuildPending
+      && !Object.values(idx.files).some((fe) => fe.folder === f.label)
+    ) {
+      // 신뢰 가능한 pristine 첫 실행에서만 bootstrap한다. 검증 불가능한 legacy/손상
+      // generation의 clean rebuild는 configured root가 실제로 존재하고 readable해야 하며,
+      // absent root를 빈 폴더로 만들어 unavailable 상태를 정상으로 바꾸면 안 된다.
       try {
         fs.mkdirSync(f.dir, { recursive: true });
       } catch {
@@ -1136,28 +1648,73 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
       continue; // 부재 라벨 — 스캔도 프루닝도 하지 않는다(보존)
     }
     scanned.add(f.label);
+    if (rebuildingUntrustedGeneration) {
+      try {
+        const stat = fs.statSync(f.dir);
+        if (!stat.isDirectory()) throw new Error("canonical root is not a directory");
+        cleanRebuildRootGuards.push({ rootDir: f.dir, dev: stat.dev, ino: stat.ino });
+      } catch {
+        throw new Error(
+          "검증할 수 없는 색인을 재생성하려면 모든 노트 폴더와 Markdown 정본을 읽을 수 있어야 해요. 저장장치·마운트·권한을 확인해 주세요.",
+        );
+      }
+    }
     for (const full of listMarkdown(f.dir, true, rootEntries)) {
       const key = `${f.label}/${path.relative(f.dir, full)}`;
       seen.add(key);
       let text: string;
+      let sourceIdentity: IndexFingerprint;
       try {
         text = fs.readFileSync(full, "utf8");
+        sourceIdentity = indexFingerprint(fs.statSync(full));
       } catch (e) {
-        // dangling 심링크·권한 문제 파일 하나가 색인 전체(검색·캡처)를 크래시시키지 않게
-        // 건너뛴다(self-review 결함 4). 기존 엔트리는 seen 처리돼 보존된다.
-        process.stderr.write(`[localmind-brain] 읽기 실패로 건너뜀: ${key} (${(e as Error).message})\n`);
+        // source I/O가 불완전한 상태에서 다른 파일 변경만 새 generation으로 publish하지 않는다.
+        // canonical 경로와 원본 오류는 stderr에 노출하지 않고 scan 뒤 fail closed한다.
+        process.stderr.write("[localmind-brain] canonical Markdown을 읽지 못해 이번 색인을 저장하지 않아요.\n");
+        sourceReadFailures++;
         continue;
       }
       const h = sha(text);
-      if (idx.files[key]?.hash === h) continue; // 변경 없음
-      pending.push({ key, fullPath: full, folder: f.label, hash: h, chunks: chunkText(text), linksOut: extractLinks(text) });
+      const chunks = chunkText(text);
+      const linksOut = extractLinks(text);
+      // index/vector digest는 writer가 봉인한 파생 bytes만 인증한다. canonical Markdown에서
+      // 결정적으로 생성되는 path/text/link 의미까지 같아야 진짜 unchanged다.
+      if (fileEntryMatchesCanonical(key, idx.files[key], f.label, h, chunks, linksOut)) continue;
+      pending.push({ key, fullPath: full, folder: f.label, hash: h, chunks, linksOut, identity: sourceIdentity });
     }
   }
-  const sourceGuards: SourceGuard[] = pending.map(({ key, fullPath, folder, hash }) => ({
+  if (sourceReadFailures > 0) {
+    throw new Error("canonical Markdown 일부를 읽지 못해 partial generation 저장을 중단했어요.");
+  }
+  if (fullRebuildPending && missing.length > 0) {
+    throw new Error(
+      "검증할 수 없는 색인을 재생성하려면 모든 노트 폴더와 Markdown 정본을 읽을 수 있어야 해요. 저장장치·마운트·권한을 확인해 주세요.",
+    );
+  }
+  // 장수 프로세스의 idx는 이전 load에서 digest/finite/layout 검증을 통과한 trusted cache다.
+  // canonical scan 직후 sidecar 유실·절단을 O(1)로 확인해 진행 저장 전 one-shot repair 권한을 준다.
+  const sidecarMissing = (() => {
+    if (idx.vectorFile === undefined) return false;
+    try {
+      const st = fs.statSync(sidecarAbs(idx.vectorFile));
+      if (idx.dims === undefined) return false;
+      let chunks = 0;
+      for (const fe of Object.values(idx.files)) chunks += fe.chunks.length;
+      return st.size !== SIDECAR_HEADER + chunks * idx.dims * 4;
+    } catch {
+      return true;
+    }
+  })();
+  const invalidDiskReplacementAuthorization = {};
+  if (rebuildingUntrustedGeneration || sidecarMissing) {
+    invalidDiskReplacementAuthorizations.add(invalidDiskReplacementAuthorization);
+  }
+  const sourceGuards: SourceGuard[] = pending.map(({ key, fullPath, folder, hash, identity }) => ({
     key,
     fullPath,
     rootDir: FOLDER_BY_LABEL.get(folder)!.dir,
     hash,
+    identity,
   }));
 
   if (pending.length) {
@@ -1233,8 +1790,8 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
         // 마지막 저장 후 BRAIN_SAVE_INTERVAL초(기본 10, 0=매 배치) 경과 시에만 저장한다.
         // lastSaveAt은 워커 간 공유지만 saveIndex가 락으로 직렬화되고 내용이 같은 idx라
         // 경합은 "저장이 조금 더/덜" 수준 — 정합성 무관.
-        if (SAVE_INTERVAL_MS === 0 || Date.now() - lastSaveAt >= SAVE_INTERVAL_MS) {
-          saveIndex(idx, sourceGuards); // 완료된 파일만 반영해 진행 저장
+        if (!rebuildingUntrustedGeneration && (SAVE_INTERVAL_MS === 0 || Date.now() - lastSaveAt >= SAVE_INTERVAL_MS)) {
+          saveIndex(idx, sourceGuards, [], invalidDiskReplacementAuthorization, cleanRebuildRootGuards); // 완료된 파일만 반영해 진행 저장
           lastSaveAt = Date.now();
         }
       }
@@ -1250,7 +1807,9 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
       // 파일 전량을 저장한다(유실 상한이 스로틀로 나빠지지 않게). 성공 경로에서는
       // 저장하지 않는다 — 말미(프루닝 후) 저장이 전량 기록하므로 여기서도 저장하면
       // 성공할 때마다 색인 전량 쓰기가 1회 낭비된다.
-      if (!completed && progressDirty) saveIndex(idx, sourceGuards);
+      if (!completed && progressDirty && !rebuildingUntrustedGeneration) {
+        saveIndex(idx, sourceGuards, [], invalidDiskReplacementAuthorization, cleanRebuildRootGuards);
+      }
     }
   }
 
@@ -1389,35 +1948,24 @@ async function doEnsureIndexed(): Promise<BrainIndex> {
   // 스로틀로 놓친 최종 커밋 포함) 또는 삭제 1건 이상. embeddingModel/dims 스탬프-only
   // 변화는 세지 않는다(FR-2 — dims는 pending에 종속, 무-op 재세팅은 저장 트리거 아님).
   // 색인 파일이 아직 없으면(첫 실행) 저장한다 — 파일 생성 자체가 변경이고, 013 AC-8
-  // (빈 vault 재색인도 모델 스탬프를 기록)의 기존 계약을 유지한다. v4→v5 마이그레이션
-  // (specs/023 FR-4)도 디스크 포맷 변경이므로 dirty다(스탬프-only와 다름).
+  // (빈 vault 재색인도 모델 스탬프를 기록)의 기존 계약을 유지한다. 검증할 수 없는 legacy
+  // generation은 loadIndex에서 빈 상태가 되어 canonical Markdown을 pending으로 만든다.
   // 사이드카 유실 수복(specs/023 — codex 교차 리뷰 차단 결함): 캐시를 쥔 장수 프로세스는
   // 사이드카가 지워져도 loadIndex가 캐시를 반환해 자가 치유를 못 본다 — 여기서 참조
   // 사이드카의 존재를 확인하고, 없으면 저장으로 수복한다(메모리에 벡터가 있으므로
   // 재임베딩 0건 — 다음 프로세스의 전량 재임베딩을 막는다).
-  const sidecarMissing = (() => {
-    if (idx.vectorFile === undefined) return false;
-    try {
-      const st = fs.statSync(sidecarAbs(idx.vectorFile));
-      if (idx.dims === undefined) return false;
-      // O(1) 크기 대조 — truncate 부분 손상도 in-place 수복(전량 읽기 없이, 리뷰 잔여 HOLE-D).
-      // clean 실행에서 인메모리 files == 디스크 files이므로 기대 크기 산식이 성립한다
-      // (변경이 있었다면 pending·deleted로 이미 dirty).
-      let chunks = 0;
-      for (const fe of Object.values(idx.files)) chunks += fe.chunks.length;
-      return st.size !== SIDECAR_HEADER + chunks * idx.dims * 4;
-    } catch {
-      return true; // 부재
-    }
-  })();
+  // sidecarMissing은 canonical scan 직후 계산했다. 진행 저장도 repair capability를
+  // 사용해야 하므로 말미에서 다시 계산하지 않는다.
   const dirty =
+    rebuildingUntrustedGeneration ||
     pending.length > 0 ||
     deletedCount > 0 ||
     bindingsChanged || // specs/024 — 바인딩 첫 기록·수락 갱신은 색인 데이터 변경(스탬프-only와 다름)
-    migrationPending ||
     sidecarMissing ||
     !fs.existsSync(INDEX_PATH);
-  if (dirty) saveIndex(idx, sourceGuards, deletionIntents);
+  if (dirty) {
+    saveIndex(idx, sourceGuards, deletionIntents, invalidDiskReplacementAuthorization, cleanRebuildRootGuards);
+  }
   return idx;
 }
 
@@ -1483,18 +2031,87 @@ export async function searchNotes(
   return out;
 }
 
+type SourceRevisionStatus =
+  | "match"
+  | "confirmed_missing"
+  | "revision_changed"
+  | "derived_mismatch"
+  | "root_unavailable"
+  | "io_error";
+
+function canonicalRootAvailable(dir: string): boolean {
+  try {
+    fs.readdirSync(dir);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function indexedSourceRevisionStatus(key: string, entry: FileEntry): SourceRevisionStatus {
+  const folder = FOLDER_BY_LABEL.get(entry.folder);
+  const prefix = `${entry.folder}/`;
+  if (!folder || !key.startsWith(prefix)) return "io_error";
+  const relativeSource = key.slice(prefix.length);
+  if (!relativeSource || path.isAbsolute(relativeSource)) return "io_error";
+
+  let root: string;
+  try {
+    root = fs.realpathSync(folder.dir);
+  } catch {
+    return "root_unavailable";
+  }
+
+  let source: string;
+  try {
+    source = fs.realpathSync(path.resolve(folder.dir, relativeSource));
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR")
+      return canonicalRootAvailable(folder.dir) ? "confirmed_missing" : "root_unavailable";
+    return "io_error";
+  }
+
+  try {
+    const within = path.relative(root, source);
+    if (within === ".." || within.startsWith(`..${path.sep}`) || path.isAbsolute(within)) return "io_error";
+    const canonicalText = fs.readFileSync(source, "utf8");
+    const canonicalHash = sha(canonicalText);
+    if (canonicalHash !== entry.hash) return "revision_changed";
+    return fileEntryMatchesCanonical(
+      key,
+      entry,
+      entry.folder,
+      canonicalHash,
+      chunkText(canonicalText),
+      extractLinks(canonicalText),
+    ) ? "match" : "derived_mismatch";
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR")
+      return canonicalRootAvailable(folder.dir) ? "confirmed_missing" : "root_unavailable";
+    return "io_error";
+  }
+}
+
 /** 로깅 없는 내부 검색 — askBrain이 경유한다. 위임 호출까지 기록하면 ask 1회가
  *  레코드 2건이 되어 리포트 빈도가 2배 왜곡된다(004 self-review D-1). */
 async function searchNotesInternal(query: string, limit: number, folder?: string): Promise<NoteHit[]> {
   let idx = await ensureIndexed();
   const [qv] = await embed([query]);
+  // query embedding 중 mount/root가 사라진 경우 candidate가 0개여도 "관련 노트 없음"으로
+  // 축약하지 않는다. folder 검색은 해당 canonical root만, 전체 검색은 모든 root를 확인한다.
+  const rootsToCheck = folder ? FOLDERS.filter((f) => f.label === folder) : FOLDERS;
+  if (rootsToCheck.some((f) => !canonicalRootAvailable(f.dir))) {
+    throw new Error("검색 정본 확인에 실패해 결과를 반환하지 않아요. 노트 폴더의 권한과 저장장치 상태를 확인해 주세요.");
+  }
   // 차원 불일치 = 같은 모델명으로 다른 모델이 라우팅됐다는 뜻 — NaN 코사인으로 조용히
   // 쓰레기 결과를 내는 대신 전체 재색인한다(013 FR-5, AC-7).
   if (idx.dims !== undefined && qv.length !== idx.dims) {
     process.stderr.write(
       `[localmind-brain] 임베딩 차원이 인덱스(${idx.dims})와 달라(${qv.length}) 노트를 처음부터 다시 색인합니다.\n`,
     );
-    resetIndex();
+    beginInMemoryCleanRebuild();
     idx = await ensureIndexed();
     if (idx.dims !== undefined && qv.length !== idx.dims) {
       throw new Error(
@@ -1503,13 +2120,35 @@ async function searchNotesInternal(query: string, limit: number, folder?: string
       );
     }
   }
-  const hits: NoteHit[] = [];
-  for (const fe of Object.values(idx.files)) {
+  const candidates: Array<NoteHit & { sourceKey: string; sourceEntry: FileEntry }> = [];
+  for (const [key, fe] of Object.entries(idx.files)) {
+    if (!FOLDER_BY_LABEL.has(fe.folder)) continue; // durable orphan은 보존하되 검색 표면에서는 제외
     if (folder && fe.folder !== folder) continue; // 스코프 필터
-    for (const c of fe.chunks) hits.push({ path: c.path, text: c.text, score: cosine(qv, c.vector) });
+    for (const c of fe.chunks) {
+      candidates.push({ path: c.path, text: c.text, score: cosine(qv, c.vector), sourceKey: key, sourceEntry: fe });
+    }
   }
-  hits.sort((a, b) => b.score - a.score);
-  return hits.slice(0, limit);
+  candidates.sort((a, b) => b.score - a.score);
+
+  // source hash 확인과 반환 사이의 외부 writer 창을 검색 경계까지 늦춘다. 색인은 파생물이므로
+  // 정본 Markdown과 다른 candidate는 거짓 결과보다 제외가 낫다. 같은 파일의 여러 chunk는
+  // 요청 안에서 한 번만 읽고, stale 상위 후보 뒤의 유효 후보로 limit를 채운다.
+  const sourceStatuses = new Map<string, SourceRevisionStatus>();
+  const hits: NoteHit[] = [];
+  for (const candidate of candidates) {
+    let status = sourceStatuses.get(candidate.sourceKey);
+    if (status === undefined) {
+      status = indexedSourceRevisionStatus(candidate.sourceKey, candidate.sourceEntry);
+      sourceStatuses.set(candidate.sourceKey, status);
+    }
+    if (status === "root_unavailable" || status === "io_error" || status === "derived_mismatch") {
+      throw new Error("검색 정본 확인에 실패해 결과를 반환하지 않아요. 노트 폴더의 권한과 저장장치 상태를 확인해 주세요.");
+    }
+    if (status === "confirmed_missing" || status === "revision_changed") continue;
+    hits.push({ path: candidate.path, text: candidate.text, score: candidate.score });
+    if (hits.length >= limit) break;
+  }
+  return hits;
 }
 
 // ── specs/041 — 검색 품질 평가 전용 internal compatibility surface ─────────────────
@@ -1794,15 +2433,18 @@ export function removeFromIndex(key: string): void {
 
 /** NOTES_DIR의 모든 폴더를 감시하고 .md 파일 변경 시 증분 reindex를 트리거한다.
  *  stdout에는 아무것도 쓰지 않는다(MCP 프로토콜 전용). 모든 로그는 stderr. */
-export function watchNotes(): { close(): void } {
+export function watchNotes(): { ready: Promise<void>; close(): Promise<void> } {
   const debounceMap = new Map<string, ReturnType<typeof setTimeout>>();
+  const activeCallbacks = new Set<Promise<void>>();
   const DEBOUNCE_MS = Number(process.env.WATCH_DEBOUNCE_MS ?? 500);
-  const watchers: fs.FSWatcher[] = [];
+  const watchers: Array<{ watcher: fs.FSWatcher; closed: boolean }> = [];
+  let closingRequested = false;
 
   for (const f of FOLDERS) {
     if (!fs.existsSync(f.dir)) continue;
     try {
       const watcher = fs.watch(f.dir, { recursive: true }, (_event, filename) => {
+        if (closingRequested) return;
         if (!filename) return;
         const rel = path.normalize(filename); // 플랫폼 구분자 통일
         if (!rel.toLowerCase().endsWith(".md")) return;
@@ -1813,38 +2455,73 @@ export function watchNotes(): { close(): void } {
         const existing = debounceMap.get(key);
         if (existing) clearTimeout(existing);
 
-        const timer = setTimeout(async () => {
+        const timer = setTimeout(() => {
           debounceMap.delete(key);
-          if (fs.existsSync(fullPath)) {
-            process.stderr.write(`[localmind-watcher] reindexing: ${key}\n`);
-            try {
+          if (closingRequested) return;
+          const active = (async () => {
+            if (fs.existsSync(fullPath)) {
+              process.stderr.write(`[localmind-watcher] reindexing: ${key}\n`);
               await ensureIndexed();
               process.stderr.write(`[localmind-watcher] done: ${key}\n`);
-            } catch (e) {
-              process.stderr.write(`[localmind-watcher] error: ${(e as Error).message}\n`);
+            } else {
+              process.stderr.write(`[localmind-watcher] removing: ${key}\n`);
+              removeFromIndex(key);
             }
-          } else {
-            process.stderr.write(`[localmind-watcher] removing: ${key}\n`);
-            removeFromIndex(key);
-          }
+          })().catch((e) => {
+            process.stderr.write(`[localmind-watcher] error while updating: ${key}\n`);
+          });
+          activeCallbacks.add(active);
+          void active.then(
+            () => activeCallbacks.delete(active),
+            () => activeCallbacks.delete(active),
+          );
         }, DEBOUNCE_MS);
 
         debounceMap.set(key, timer);
       });
-      watchers.push(watcher);
-    } catch (e) {
-      process.stderr.write(`[localmind-watcher] failed to watch ${f.dir}: ${(e as Error).message}\n`);
+      const state = { watcher, closed: false };
+      watcher.once("close", () => { state.closed = true; });
+      watchers.push(state);
+    } catch {
+      process.stderr.write(`[localmind-watcher] failed to watch label: ${f.label}\n`);
     }
   }
 
-  process.stderr.write(`[localmind-watcher] watching: ${FOLDERS.map((f) => f.dir).join(", ")}\n`);
+  process.stderr.write(`[localmind-watcher] watching: ${FOLDERS.map((f) => f.label).join(", ")}\n`);
 
+  const ready = Promise.resolve(); // fs.watch() 등록은 동기적으로 완료된 뒤 반환된다.
+  let closePromise: Promise<void> | null = null;
   return {
+    ready,
     close() {
+      if (closePromise) return closePromise;
+      closingRequested = true;
       for (const timer of debounceMap.values()) clearTimeout(timer);
       debounceMap.clear();
-      for (const w of watchers) w.close();
-      process.stderr.write("[localmind-watcher] stopped\n");
+      const closing = watchers.map((state) => new Promise<void>((resolve) => {
+        const { watcher } = state;
+        if (state.closed) {
+          resolve();
+          return;
+        }
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          watcher.off("close", finish);
+          resolve();
+        };
+        watcher.once("close", finish);
+        try {
+          watcher.close();
+        } catch {
+          finish();
+        }
+      }));
+      closePromise = Promise.all([...closing, ...activeCallbacks]).then(() => {
+        process.stderr.write("[localmind-watcher] stopped\n");
+      });
+      return closePromise;
     },
   };
 }

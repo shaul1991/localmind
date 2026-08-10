@@ -32,7 +32,7 @@
 ## 절대 변경 금지
 
 - index v5 JSON·binary sidecar wire format, 헤더, 세대/GC, atomic commit, lock protocol
-- v4→v5 무재임베딩 정책과 손상 자가치유 정책
+- v4/무-digest v5 authenticated clean-rebuild 정책과 손상 자가치유 정책
 - 검색 embedding/scoring/filter/sort/limit 및 결과 필드·순서
 - scan, fallback prune, orphan prune, rebind preserve/adopt 정책
 - capture 파일명·frontmatter·태그·validation·trash/delete 동작
@@ -50,9 +50,9 @@
   읽는다. 기존 agent path resolver와 persona runtime의 call-time env 소유권은 옮기거나 snapshot하지
   않는다. 모든 소비 경로의 `process.env`를 구현 직전 다시 대조한다.
 - IndexStore만 hydrated cache, cached stat/load snapshot, migration/heal flags, file lock,
-  disk merge, JSON/sidecar hydration·commit·GC를 소유한다.
+  load-baseline three-way disk merge, JSON/sidecar tentative commit·post-commit rollback·GC를 소유한다.
 - Indexer만 indexingInFlight, scan/seen/dirty, prune/rebind requests, last summary와 watcher가
-  촉발하는 재색인 실행을 소유한다.
+  촉발하는 재색인, watcher close-state·active callback drain을 소유한다.
 - Capture만 tag vocabulary TTL cache를 소유한다.
 - RAG verifier만 검증 사용량 판단을 소유한다.
 - QueryEventSink만 log directory-ready와 append I/O를 소유한다. `QueryEventReader`는 FolderConfig의
@@ -78,14 +78,22 @@
 3. spec AC-1~16을 기존 테스트에 매핑하라. 없는 특성 테스트만 추가한다. 특히 다음은 반드시
    결정적으로 재현한다.
    - import 뒤 env 변경 시 direct Brain snapshot/getter, 기본/persona RAG, curator, scanner agent/skill path matrix
-   - v4 정상·손상 load/save, embedding call 0
+   - digest-valid v5 정상 load/save의 embedding call 0, v4·무-digest·손상 generation의
+     readable canonical Markdown 기반 재임베딩, digest-valid forged chunk/`folder`/`linksOut` 및
+     stale reload-merge generation의 canonical 의미·source revision 대조, 미등록 durable orphan의
+     보존과 검색 제외, 개별 Markdown read·recursive scan 실패의
+     partial publish 억제, legacy/model/dimension clean rebuild와 JSON rename 순간 canonical
+     root/source identity 소실의 이전 generation rollback
    - v5 sidecar 누락·header 손상·JSON parse 직후 세대 교체
-   - 두 자식 프로세스의 서로 다른 update가 최종 합집합으로 병합됨
-   - watcher+직접 호출 single-flight 실행 1회
+   - 두 자식 프로세스의 서로 다른 update 합집합과 same-label binding three-way conflict
+   - guarded source의 연속 transient ENOENT/recreate에서 저장 거부와 durable entry 보존
+   - watcher+직접 호출 single-flight 실행 1회, active callback drain, pre-closed watcher close 유한 종료,
+     startup/error stderr의 canonical absolute root 비노출
    - missing/unreadable/fallback label 보존, 등록 label prune 차단
    - rebind 기본 preserve와 명시 adopt
    - 동시각·동명 capture collision과 validation/tag cache
-   - watcher create/update/delete, 명시 delete의 상대경로 trash
+   - watcher create/update/delete, 명시 delete의 상대경로 trash, unchanged-disk 및 actual JSON rename
+     delete/recreate ABA, guarded source same-byte identity ABA에서 canonical source와 이전 generation 보존
    - empty/corrupt/orphan/missing `indexLabelReport`, 모든 mutation call 0
    - search/RAG snapshot과 041 search/ask/capture event matrix
    - unchanged save 억제와 dirty/migration/heal save
@@ -125,7 +133,9 @@ timeout, fallback은 수정하지 않는다.
 - 샌드박스 소켓 권한 등 환경 때문에 실패하면 코드 실패와 구분해 정확한 명령·오류를 보고하고,
   가능한 비소켓 단위 테스트는 끝까지 실행한다.
 - export manifest diff, import graph, state-owner 검사 결과를 남긴다.
-- 사본 v4/v5 fixture에서 embedding calls=0과 index/sidecar 유효성을 증명한다.
+- 사본 fixture에서 digest-valid v5는 embedding calls=0과 index/sidecar 유효성을 증명하고,
+  v4·무-digest·손상 generation은 canonical Markdown을 실제 재임베딩하며 scan 실패 시 기존
+  generation bytes를 보존하는지 증명한다.
 - 고정 adapter로 search hit, RAG prompt/result, 041 event, MCP/API snapshot diff=0을 증명한다.
 
 ## Live-Verify Facts
@@ -164,7 +174,7 @@ timeout, fallback은 수정하지 않는다.
 - 변경한 책임 경계와 facade 호환 방식
 - AC별 테스트/실증 근거 및 전체 명령 결과
 - export/import/state ownership 검사 결과
-- 무재임베딩·무데이터마이그레이션 증거
+- v5 무데이터마이그레이션·legacy authenticated clean-rebuild 증거
 - 독립 self-review finding과 수정 라운드, 잔여 위험
 - commit SHA, push 상태, CI 결과(또는 환경 차단 사유)
 ```

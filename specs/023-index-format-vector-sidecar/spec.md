@@ -51,8 +51,10 @@ IndexedChunk(in memory): { path, text, vector: number[] }  (불변)
 - **FR-2 (2파일 원자적 정합)** *(goal: O1, Constraints)* — 저장은 락 안에서 다음 순서로
   한다: (1) reload-merge(디스크가 로드 시점 이후 바뀌었으면 디스크 JSON+사이드카를 읽어
   병합, 013/021 기제 계승), (2) 신규 generation 사이드카를 temp에 쓰고 rename으로 durable화
-  (아직 어떤 JSON도 참조 안 함), (3) `vectorFile`가 그 사이드카를 가리키는 JSON을 temp+rename
-  으로 **원자적 교체 = 단일 커밋점**, (4) 커밋 성공 후 오래된 generation 사이드카를 GC하되
+  (아직 어떤 JSON도 참조 안 함), (3) `vectorFile`가 그 사이드카를 가리키는 JSON을 temp+rename으로
+  교체한 직후 같은 lock에서 canonical root·guarded source identity·deletion intent를 다시 검증한다.
+  drift가 있으면 이전 JSON bytes로 atomic rollback하고 신규 sidecar를 제거하며, 검증 성공만
+  **단일 커밋 성공점**으로 인정한다. (4) 커밋 성공 후 오래된 generation 사이드카를 GC하되
   **직전 1세대는 유예한다(keep=2)** — `loadIndex`는 성능상 락을 잡지 않으므로(v4에선 벡터가
   JSON 한 파일에 있어 단일 read로 원자적이었다), 사이드카 분리는 reader에게 "JSON을 읽고
   사이드카를 읽는 사이에 writer가 GC하는" 2-read 경합을 새로 도입한다. keep=2 유예 +
@@ -66,11 +68,23 @@ IndexedChunk(in memory): { path, text, vector: number[] }  (불변)
   손상), 영향 파일 항목을 색인에서 제거해 다음 스캔에서 재임베딩되게 하고 사유를 평이한
   한국어로 1회 안내한다(`notifyReindexOnce` 관례). 사이드카 전량 유실이면 전량 재임베딩으로
   귀결(전량 재빌드와 동치, 데이터 유실 없음).
-- **FR-4 (무재임베딩 v4→v5 마이그레이션)** *(goal: O2)* — v4 색인(인라인 `vector` 보유)을
-  처음 로드하면, **임베딩 호출 없이** 인라인 벡터를 재사용해 v5 인메모리로 변환한다. 다음
-  저장(재색인·capture·removeFromIndex의 정상 경로)에서 v5(JSON slot + 사이드카)로
-  영속화한다. v4가 손상돼 파싱·변환 불가면 기존 관례(전량 재빌드, 재임베딩)로 폴백하고
-  사유를 안내한다.
+- **FR-4 (인증 가능한 v4→v5 마이그레이션)** *(goal: O2, Phase 2 durability 개정)* — v4와
+  `indexDigest` 없는 legacy v5는 정상 JSON이어도 derived payload의 무결성을 증명할 수 없다.
+  기존 chunk/vector를 폐기하고 readable canonical Markdown 전체에서 clean reindex한다. 모든
+  canonical root와 Markdown을 읽을 수 있을 때만 digest가 있는 v5로 저장하며, unavailable이면
+  기존 bytes를 승격·덮어쓰지 않고 명시적으로 실패한다. digest-valid v5도 writer bytes만
+  인증할 뿐 canonical 의미를 인증하지 않으므로, 매 scan과 검색 반환 직전에 file hash뿐 아니라
+  canonical root label에서 파생한 `folder`, `chunkText(canonicalBytes)`의 chunk 수·path·text와
+  canonical link 목록을 대조한다. 불일치는 canonical bytes에서 재임베딩하고 반환 직전 불일치는
+  fail closed한다. reload-merge도 **현재 등록된 folder**의 새 항목이나 disk winner를 채택하기 전에
+  canonical source status가 정확히 `match`인지(label/key·revision·chunk·link 의미 포함) 검증하고,
+  changed/missing/unavailable/forged entry면 기존 disk bytes를 재봉인하지 않고 저장 전체를 중단한다.
+  현재 등록에서 빠진 durable orphan은 자기 `folder/` key prefix가
+  맞을 때 기존 prune 계약대로 보존하되 registered-folder 검색 표면에서는 제외한다. 개별 Markdown read가
+  하나라도 실패하면 다른 파일의 변경만 담은 partial generation도 publish하지 않는다.
+  legacy/model/dimension clean rebuild는 전체
+  scan·embedding·root/source guard가 끝날 때까지 기존 generation을 지우거나 progress/failure save하지
+  않고 메모리에서만 구성한다.
 - **FR-5 (버전 하위호환·롤백·위생)** *(goal: Constraints)* — v5는 `INDEX_VERSION`을 올린다.
   구버전 코드가 v5를 만나는 경우(롤백)를 포함해 다른 버전은 기존 관례대로 재빌드로 자가
   치유하며 데이터 유실이 없다. `saveIndex`의 교차버전·교차모델 병합 스킵 가드는 유지한다.
@@ -108,9 +122,16 @@ IndexedChunk(in memory): { path, text, vector: number[] }  (불변)
 - **AC-7 (FR-5 다중 프로세스 무유실)** Given 두 프로세스가 v5 색인을 로드한 뒤 각자 다른
   파일을 색인·저장하면, Then 최종 색인(JSON+사이드카)에 두 파일의 벡터가 모두 복원
   가능하게 존재한다(013 AC-11의 사이드카판).
-- **AC-8 (FR-4 무재임베딩)** Given v4 JSON(인라인 벡터 `[1,0,0,0]`, `version:4`)을 심어두고,
-  When 재색인하면, Then 임베딩 호출이 0건(`calls()==0`)이고 결과가 v5(청크에 `slot`,
-  `vectorFile`·사이드카 존재)이며 검색이 정상 동작한다.
+- **AC-8 (FR-4 authenticated clean rebuild)** Given canonical Markdown hash는 맞지만 v4 chunk
+  text/vector를 손상시킨 fixture를 심어두고, When 재색인하면, Then 임베딩 호출이 발생하고
+  (`calls()>0`) 결과 chunk·검색 hit가 canonical Markdown과 일치하며 digest가 있는 v5가 된다.
+  두 digest를 올바르게 재계산한 v5 forged chunk·`folder`·`linksOut`도 같은 canonical 재생성
+  경로를 거친다. stale writer가 digest-valid forged 동시 generation을 reload-merge하려는 fixture는
+  non-zero이고 forged disk bytes를 새 digest로 재봉인하지 않는다. registered 동시 entry의 source가
+  revision-changed·confirmed-missing인 fixture도 기존 generation을 보존하며, 미등록 durable orphan은
+  보존하되 검색 hit에서 제외한다. canonical root 또는 개별 Markdown을
+  읽을 수 없거나 embedding/progress/actual JSON rename 경계에서 root identity가 사라지는 대조
+  fixture도 non-zero이고 기존 index bytes가 불변이다.
 - **AC-9 (FR-4 손상 폴백)** Given v4 JSON이 파싱 불가로 손상돼 있으면, When 재색인하면,
   Then 기존 관례대로 전량 재빌드(재임베딩 발생, `calls()>0`)되고 최종 포맷이 v5다.
 

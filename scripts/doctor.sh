@@ -25,6 +25,7 @@ have() { command -v "$1" >/dev/null 2>&1; }
 http() { curl -fsS -m 2 "$1" >/dev/null 2>&1; } # 2초 타임아웃, 무응답이면 실패
 public_http_url() {
   [ -n "${1:-}" ] && have node || return 1
+  has_control_chars "$1" && return 1
   printf '%s' "$1" | node -e '
     const fs = require("fs");
     const raw = fs.readFileSync(0, "utf8");

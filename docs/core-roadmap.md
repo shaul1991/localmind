@@ -33,7 +33,8 @@ status: active — 2026-08-09 사용자 승인
 ## Phase 0 — 정본 정합과 기준선
 
 - 북극성 여정, Phase 범위, 종료 게이트를 저장소 정본으로 고정한다.
-- 일곱 Phase는 일곱 커밋, 하나의 feature branch, 하나의 Draft PR로 제출한다.
+- 각 Phase는 독립 `[verified]` 커밋으로 유지한다. Phase 0·1은 선행 PR로 병합했고,
+  Phase 2~6은 후속 feature branch와 Draft PR에서 순서대로 제출한다.
 - **종료:** 범위·커밋 구조·공통 검증이 재현 가능하게 문서화된다.
 
 ## Phase 1 — 첫 유용 결과의 신뢰성

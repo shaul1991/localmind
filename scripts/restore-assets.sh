@@ -132,18 +132,45 @@ restore_asset() { # <자산명> <복원 대상 경로> <override 0|1>
   REFLECTED_ANY=1
 }
 
+path_has_symlink_component() { # $HOME 아래 path 자신 또는 ancestor가 symlink면 성공(unsafe)
+  local cursor="$1" parent
+  case "$cursor" in
+    "$HOME"/*)
+      while [ "$cursor" != "$HOME" ]; do
+        [ -L "$cursor" ] && return 0
+        parent="$(dirname "$cursor")"
+        [ "$parent" = "$cursor" ] && break
+        cursor="$parent"
+      done
+      ;;
+    *) [ -L "$cursor" ] && return 0 ;; # HOME 밖의 명시 경로는 leaf identity만 보호
+  esac
+  return 1
+}
+
 merge_query_logs() { # FR-4 — 백업 repo의 query-log.*.jsonl → 로컬 로그에 dedupe 병합
   local files=() f
   for f in "$BACKUP_DIR"/query-log.*.jsonl; do [ -f "$f" ] && files+=("$f"); done
   [ "${#files[@]}" -eq 0 ] && return 0
-  local local_log="${QUERY_LOG:-$HOME/.localmind/query-log.jsonl}"
-  mkdir -p "$(dirname "$local_log")"; [ -f "$local_log" ] || : > "$local_log"
+  local local_log="${QUERY_LOG:-$HOME/.localmind/query-log.jsonl}" parent tmp cutoff
+  parent="$(dirname "$local_log")"
+  if path_has_symlink_component "$local_log" || ! mkdir -p "$parent" || { [ -e "$local_log" ] && [ ! -f "$local_log" ]; }; then
+    warn "쿼리 로그 병합 대상을 준비하지 못했어요 — 기존 로그를 변경하지 않았습니다."
+    FAIL=1; return 1
+  fi
+  if [ ! -f "$local_log" ] && ! ( umask 077; : > "$local_log" ); then
+    warn "쿼리 로그 병합 대상을 만들지 못했어요 — 기존 로그를 변경하지 않았습니다."
+    FAIL=1; return 1
+  fi
   # 보존 기간(004 FR-6)은 **백업 유래에만** 적용 — 로컬 라인은 기간과 무관하게 유지
   # (restore가 query-log-clean을 암묵 수행하지 않는다). ISO ts는 사전순 비교 가능.
-  local cutoff
   cutoff="$(date -u -v-30d +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%S)"
-  local tmp; tmp="$(mktemp)"
-  awk -v cutoff="$cutoff" -v localfile="$local_log" '
+  tmp="$(mktemp "$parent/.query-log-merge.XXXXXX")" || {
+    warn "쿼리 로그 병합 임시 파일을 만들지 못했어요 — 기존 로그를 변경하지 않았습니다."
+    FAIL=1; return 1
+  }
+  chmod 600 "$tmp" 2>/dev/null || true
+  if ! awk -v cutoff="$cutoff" -v localfile="$local_log" '
     FILENAME == localfile { if (!seen[$0]++) print; next }
     {
       if (seen[$0]++) next
@@ -152,8 +179,11 @@ merge_query_logs() { # FR-4 — 백업 repo의 query-log.*.jsonl → 로컬 로�
       if (ts != "" && ts < cutoff) next    # 파싱 불가 라인은 유지(유실 방지 우선)
       print
     }
-  ' "$local_log" "${files[@]}" > "$tmp"
-  cat "$tmp" > "$local_log"; rm -f "$tmp"
+  ' "$local_log" "${files[@]}" > "$tmp" || ! mv -f "$tmp" "$local_log"; then
+    rm -f "$tmp"
+    warn "쿼리 로그 병합본을 반영하지 못했어요 — 기존 로그를 확인해 주세요."
+    FAIL=1; return 1
+  fi
   ok "쿼리 로그 병합 완료(${#files[@]}개 기기 파일, 중복 제거)"
 }
 
