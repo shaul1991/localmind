@@ -541,6 +541,33 @@ assert "Markdown 정본이 byte-equal" cmp -s "$NOTE" "$RESTORED/canonical.md"
 assert "명시한 BRAIN_INDEX에 색인 생성" test -f "$STATE_DIR/index.json"
 assert "fresh recover clone의 origin이 bare backup remote" test "$(git -C "$RESTORED" remote get-url origin)" = "$REMOTE_REPO"
 assert "fresh clone은 source host marker를 물려받지 않음" test ! -e "$RESTORED/.localmind-brain-id"
+
+# 기존 설치 하위호환: EMBEDDINGS_KEY 없이 LITELLM_MASTER_KEY만 남은 .env도 같은
+# canonical reindex 경로로 복구되어야 한다. child argv·stdout/stderr에는 key를 노출하지 않는다.
+LEGACY_RESTORED="$HOME_DIR/legacy-restored-brain"
+LEGACY_STATE="$HOME_DIR/legacy-state"
+LEGACY_ENV="$HOME_DIR/recover-legacy.env"
+mkdir -p "$LEGACY_STATE"
+cat > "$LEGACY_ENV" <<EOF
+EMBEDDINGS_URL=$BASE/v1
+EMBEDDINGS_MODEL=fixture-model
+LITELLM_MASTER_KEY=$SECRET
+NOTES_DIR=canonical=$LEGACY_RESTORED
+BRAIN_INDEX=$LEGACY_STATE/index.json
+EOF
+chmod 600 "$LEGACY_ENV"
+set +e
+LEGACY_OUT="$(PATH="$TMP/bin:$PATH" HOME="$HOME_DIR" BACKUP_DIR="$LEGACY_RESTORED" RESTORE_REPO="$REMOTE_REPO" \
+  LOCALMIND_ENV_FILE="$LEGACY_ENV" QUERY_LOG="$LEGACY_STATE/query-log.jsonl" EMBED_RETRIES=1 \
+  NODE_OPTIONS="$NODE_PRELOAD" DOCKER_LOG="$DOCKER_LOG" EMBEDDINGS_URL= EMBEDDINGS_MODEL= EMBEDDINGS_KEY= \
+  LITELLM_MASTER_KEY= NOTES_DIR= BRAIN_INDEX= bash "$RECOVER" </dev/null 2>&1)"
+LEGACY_RC=$?
+set -e
+assert "legacy LITELLM_MASTER_KEY-only clean-room recover 성공" test "$LEGACY_RC" -eq 0
+assert "legacy-key recover가 복구 완료를 출력" grep -q "복구 완료" <<< "$LEGACY_OUT"
+assert "legacy-key recover가 명시한 BRAIN_INDEX에 색인 생성" test -f "$LEGACY_STATE/index.json"
+assert_secret_absent "legacy embedding secret을 출력하지 않음" "$LEGACY_OUT"
+
 set +e
 RESTORED_FINGERPRINT="$(HOME="$HOME_DIR" NOTES_DIR="canonical=$RESTORED" BRAIN_INDEX="$STATE_DIR/index.json" \
   QUERY_LOG="$STATE_DIR/identity-query-log.jsonl" NODE_OPTIONS= \

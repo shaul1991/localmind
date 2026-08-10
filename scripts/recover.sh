@@ -229,6 +229,11 @@ say "$(b '[4/6] 임베딩 엔진 확인 (노트 검색용)')"
 RECOVER_EMB_URL="${EMBEDDINGS_URL:-$(read_env_val EMBEDDINGS_URL "$ENV_FILE")}"; RECOVER_EMB_URL="${RECOVER_EMB_URL:-http://localhost:11434/v1}"
 RECOVER_EMB_MODEL="${EMBEDDINGS_MODEL:-$(read_env_val EMBEDDINGS_MODEL "$ENV_FILE")}"; RECOVER_EMB_MODEL="${RECOVER_EMB_MODEL:-text-embedding-3-small}"
 RECOVER_EMB_KEY="${EMBEDDINGS_KEY:-$(read_env_val EMBEDDINGS_KEY "$ENV_FILE")}"
+if [ -z "$RECOVER_EMB_KEY" ]; then
+  # EMBEDDINGS_KEY가 정본이지만 기존 설치의 LITELLM_MASTER_KEY-only .env는 계속 복구한다.
+  # 값은 canonical child 변수로 옮긴 뒤 legacy 이름 자체는 reindex child 전에 제거한다.
+  RECOVER_EMB_KEY="${LITELLM_MASTER_KEY:-$(read_env_val LITELLM_MASTER_KEY "$ENV_FILE")}"
+fi
 RECOVER_NOTES_DIR="${NOTES_DIR:-$(read_env_val NOTES_DIR "$ENV_FILE")}"; RECOVER_NOTES_DIR="${RECOVER_NOTES_DIR:-$BACKUP_DIR}"
 RECOVER_BRAIN_INDEX="${BRAIN_INDEX:-$(read_env_val BRAIN_INDEX "$ENV_FILE")}"
 if ! public_http_url "$RECOVER_EMB_URL"; then
