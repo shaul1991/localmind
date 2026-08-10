@@ -70,6 +70,7 @@ status: active — 2026-08-09 사용자 승인
 ## Phase 5 — 이식성·운영·보안
 
 - macOS/Linux, Node 20·22·24, local stdio/remote HTTP 계약을 고정한다.
+- Ubuntu·macOS × Node 20·22·24의 6-cell CI에서 같은 전체 Node/shell gate를 실행한다.
 - self-host 문서는 Tailscale을 쉬운 기본 예시로 추천하되 WireGuard·ZeroTier도 허용한다.
 - CI-green merged SHA, 비권한 실행, protocol health, rollback을 검증한다.
 - **종료:** clean host install/recover와 운영 negative suite가 지원 행렬에서 성공한다.

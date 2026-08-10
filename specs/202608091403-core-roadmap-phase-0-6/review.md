@@ -16,8 +16,8 @@ isolation만 좁게 완성한다.
 | 1 | `9fad6d2` | 원본 `43b7d58`과 tree SHA 동일; setup 54, MCP 9, Node 247, CI Node 20/22/24 | 통과 |
 | 2 | `cf31d79` | frozen v9 Node 312/312, shell 23/23, Bash 57/57, 양축 `COMMIT_ALLOWED` | 통과 |
 | 3 | `4e45d82` | frozen v1 Node 318/318, shell 23/23, Bash 57/57, 양축 `COMMIT_ALLOWED` | 통과 |
-| 4 | candidate | brief precision·same-folder supersession·active-only stale·multi-root scope | 구현·검증 |
-| 5 | 대기 | portability/ops/security | 대기 |
+| 4 | `a146e49` | frozen v4 Node 323/323, shell 23/23, Bash 57/57, 양축 `COMMIT_ALLOWED` | 통과 |
+| 5 | candidate | macOS/Linux × Node 20·22·24 CI support matrix | 구현·검증 |
 | 6 | 대기 | evidence/cadence | 대기 |
 
 ## 최종 검증

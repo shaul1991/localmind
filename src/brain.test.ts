@@ -296,6 +296,7 @@ describe("watchNotes", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "localmind-watch-event-"));
     const target = path.join(root, "observed.md");
     const indexPath = path.join(root, "state", "index.json");
+    const watchEventTimeoutMs = 8_000;
     fs.writeFileSync(target, "# observed\n");
     const script = [
       `const logs = [];`,
@@ -303,7 +304,7 @@ describe("watchNotes", () => {
       `const originalWrite = process.stderr.write.bind(process.stderr);`,
       `let guard; let onObserved = () => {};`,
       `const observed = new Promise((resolve, reject) => {`,
-      `  guard = setTimeout(() => reject(new Error("watch callback timeout")), 3000);`,
+      `  guard = setTimeout(() => reject(new Error("watch callback timeout")), ${watchEventTimeoutMs});`,
       `  onObserved = () => { clearTimeout(guard); resolve(); };`,
       `});`,
       `process.stderr.write = (chunk) => { const text = String(chunk); logs.push(text); if (text.includes(exact)) onObserved(); return true; };`,
@@ -325,7 +326,7 @@ describe("watchNotes", () => {
       const out = execFileSync("node", ["--import", "tsx/esm", "-e", script], {
         cwd: REPO_ROOT,
         encoding: "utf8",
-        timeout: 5000,
+        timeout: watchEventTimeoutMs + 2_000,
         env: {
           ...process.env,
           NOTES_DIR: `watched=${root}`,

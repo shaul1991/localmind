@@ -91,6 +91,7 @@ NOTES_DIR=~/my-notes                        # 내 .md 노트 폴더(쉼표로 �
 - 🔌 [MCP로 붙이기](docs/mcp.md) — Cursor/Claude Desktop/Cline 연동 + 도구 4종
 - 💾 [백업 · 복구](docs/backup.md) — 내 노트를 git repo로, 새 기기 한 줄 복구
 - 🏠 [홈서버(옵션)](docs/home-server.md) — 원격 MCP로 여러 기기에서 한 두뇌 쓰기
+- ✅ [지원 행렬](docs/support-matrix.md) — macOS·Linux × Node 20·22·24 및 운영 gate
 - 📐 [Product Vision](docs/product-vision.md) — 이 프로젝트가 지향하는 것("살아있는 why 저장소")
 - 🩺 [문제 해결](docs/troubleshooting.md) — 잘 안 될 때 증상별 해결
 

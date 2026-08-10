@@ -4,7 +4,7 @@
 - [x] Phase 1 — setup·capture·embedding 무결성 TDD 및 커밋
 - [x] Phase 2 — canonical durability/concurrency/recovery gate 및 `[verified]` 커밋 `cf31d79`
 - [x] Phase 3 — 검색 품질 회귀 게이트 TDD 및 `[verified]` 커밋 `4e45d82`
-- [ ] Phase 4 — brief·decision lifecycle TDD 및 커밋
+- [x] Phase 4 — brief·decision lifecycle TDD 및 `[verified]` 커밋 `a146e49`
 - [ ] Phase 5 — 이식성·운영·보안 계약 검증 및 커밋
 - [ ] Phase 6 — evidence-gated living memory TDD 및 커밋
 - [x] Phase 0·1 선행 PR의 CI·리뷰 표면 확인 및 사람 승인 rebase-merge
