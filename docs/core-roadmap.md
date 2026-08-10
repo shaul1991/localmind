@@ -56,6 +56,7 @@ status: active — 2026-08-09 사용자 승인
 
 - 기존 공개 합성 corpus와 production retrieval 경로를 일급 회귀 명령으로 연결한다.
 - 품질, no-match, 출처, 지연, 재현 manifest를 함께 보고한다.
+- v1은 positive relevance 회귀를 차단하고 latency는 비차단 관측으로 남긴다. relevance threshold가 없는 no-match 오탐은 수치로 드러내고 후속 개선한다.
 - 개선 순서는 chunk/metadata → hybrid → 제한적 rerank → 마지막에 저장 엔진 검토다.
 - **종료:** 같은 버전·fixture의 결과가 결정적으로 재현되고 CI가 기준선 회귀를 차단한다.
 

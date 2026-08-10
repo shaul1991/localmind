@@ -2,12 +2,11 @@
 
 ## 현재 판정
 
-**Phase 2 범위 동결 — 최종 closure gate 진행 중** — v7 리뷰에서 Phase 2 명세를 직접 위반하고
-deterministic fixture로 재현된 production 7건·test adequacy 2건은 모두 RED→GREEN으로 닫았다.
-Phase 2 완료는 프로그램 전체의 무결점 선언이 아니다. 최신 candidate는 아래의 고정된 Phase 2
-불변식·통합 gate·동일 fingerprint 독립 검토만 통과하면 정확히 하나의 `[verified]` 커밋으로 닫고
-Phase 3으로 이동한다. 새 기능, 실환경 확대, 장기 stress, 검색 품질 및 구조 개선 제안은 이 Phase를
-재개방하지 않고 잔여 위험 또는 Phase 3~6 backlog로 이월한다.
+**Phase 2 완료, Phase 3 closure gate 진행 중** — Phase 2는 frozen v9 `43db1928…7bb2`의
+동일 START/END fingerprint와 독립 양축 `COMMIT_ALLOWED`를 확인한 뒤 `[verified]` commit
+`cf31d79`로 닫았다. Phase 3는 공개 합성 corpus와 production retrieval을 잇는 첫 non-regression
+gate만 완성한다. 실제 provider·개인 corpus·hybrid/rerank/threshold는 잔여 위험이며 이번 Phase를
+재개방하지 않는다.
 
 ## Phase 커밋
 
@@ -15,8 +14,8 @@ Phase 3으로 이동한다. 새 기능, 실환경 확대, 장기 stress, 검색 
 |---|---|---|---|
 | 0 | `b26e3d5` | 원본 `022555e`와 tree SHA 동일; Node 215, shell/typecheck/build 성공 | 통과 |
 | 1 | `9fad6d2` | 원본 `43b7d58`과 tree SHA 동일; setup 54, MCP 9, Node 247, CI Node 20/22/24 | 통과 |
-| 2 | updated-main candidate | 명세 직접 blocker RED→GREEN 완료; Node 312/312·shell 23/23 및 정적 gate GREEN, 최종 frozen·범위 제한 독립 검토 대기 | 종료 gate |
-| 3 | 대기 | retrieval-quality | 대기 |
+| 2 | `cf31d79` | frozen v9 Node 312/312, shell 23/23, Bash 57/57, 양축 `COMMIT_ALLOWED` | 통과 |
+| 3 | candidate | 공개 corpus·production retrieval·metric/provenance; Node 318/318, targeted 6/6, shell 23/23 | 종료 gate |
 | 4 | 대기 | brief/lifecycle/scope | 대기 |
 | 5 | 대기 | portability/ops/security | 대기 |
 | 6 | 대기 | evidence/cadence | 대기 |
@@ -85,9 +84,9 @@ Phase 3으로 이동한다. 새 기능, 실환경 확대, 장기 stress, 검색 
 ### 전체 gate
 
 - 폐기한 v7은 frozen Node 303/303·shell 23/23·typecheck·build·Bash·diff·credential·docs·process-leak gate가 green이었지만, 독립 리뷰 blocker로 bytes가 바뀌어 승인에 재사용하지 않는다.
-- 현재 live GREEN: Node 312/312·52 suites, shell 23/23, setup readiness·recover clean-room 포함, typecheck·build, macOS `/bin/bash` 3.2 syntax 47개, `git diff --check HEAD` 성공.
-- 이전 35-entry candidate의 credential high-confidence finding 0, docs hygiene finding 0. 최종 문서 변경 뒤 새 manifest/fingerprint에서 다시 실행한다.
-- 수정된 문서 포함 v8 candidate의 dependency-complete frozen snapshot·full gate·process-leak scan: **대기**.
+- 최종 v9 `43db1928…7bb2`: frozen Node 312/312·52 suites, shell 23/23, Bash 57/57, typecheck·build·diff·credential·docs·dependency 4,305·process-leak 모두 GREEN, `overall_ok=true`.
+- SPEC/SECURITY/CONCURRENCY와 QUALITY/TEST-ADEQUACY/DOCS 재검토는 모두 START=END=`43db1928…7bb2`, blocker 0, `COMMIT_ALLOWED`였다.
+- reviewed 35개 staged blob의 path/mode/SHA-256을 manifest와 대조한 뒤 parent `9fad6d2` 위에 commit `cf31d79`를 생성했고 worktree clean을 확인했다.
 
 ### 독립 리뷰와 해결
 
@@ -102,7 +101,7 @@ Phase 3으로 이동한다. 새 기능, 실환경 확대, 장기 stress, 검색 
   `BLOCKERS: 8`, `BLOCKED`였다. QUALITY/TEST-ADEQUACY/DOCS 리뷰는 binding-conflict·forged-link
   회귀 공백 2건과 END 누락으로 `BLOCKERS: 3`, `BLOCKED`였다. START=MID는 일치했으나 END가 없어
   protocol만으로도 commit 불가이며, 해당 fingerprint의 gate·verdict는 재사용하지 않는다.
-- 최종 문서 포함 후보는 시작·중간·종료 fingerprint가 동일한 독립 양축 검토에서 **고정된 Phase 2 불변식**의 deterministic 위반이 0이어야 commit한다. 검토 중 발견한 후속 기능·실환경 확대·장기 stress·리팩터링 제안은 non-blocking 잔여 위험으로 분류하며 Phase 2 범위를 다시 열지 않는다. 최종 verdict는 external evidence와 `[verified]` commit 절차에 보존하고 verdict 뒤 candidate bytes를 바꾸지 않는다.
+- 최종 문서 포함 v9는 독립 양축 검토에서 고정된 Phase 2 불변식의 deterministic 위반 0을 확인했다. 범위 밖 제안은 non-blocking 잔여 위험으로 유지했고 verdict 뒤 candidate bytes를 바꾸지 않은 채 commit했다.
 
 ### 잔여 위험
 
@@ -110,3 +109,13 @@ Phase 3으로 이동한다. 새 기능, 실환경 확대, 장기 stress, 검색 
 - Markdown이 정본이며 JSON/vector/query report는 재생성 가능한 파생물이라는 계약을 유지한다.
 - 실제 provider latency/장기 다중 writer stress, 검색 relevance baseline, folder-label helper의 단일 모듈 추출, 운영 telemetry 확대는 각각 Phase 3~6에서 점진적으로 다룬다. 이 항목들은 현재 Phase 2 closure blocker가 아니다.
 - 종료 규칙: 고정 회귀와 전체 gate가 GREEN이고 최신 fingerprint 독립 검토가 명시된 Phase 2 위반을 재현하지 못하면 Phase 2를 완료한다. 이후 발견은 새 Phase 또는 별도 작은 TDD slice로 계산한다.
+
+## Phase 3 증거
+
+- 공개 CC0 synthetic corpus 5문서·positive 4/no-match 1 질의를 `retrievalEvaluationPort`의 production chunk/embed/index/save/reload/search 경로로 실행한다.
+- missing CLI RED를 `eval:retrieval` report/manifest GREEN으로 닫았다. strict no-match baseline은 exit 1과 deterministic violation을 남긴다.
+- duplicate chunk가 relevant recall을 2로 부풀리던 RED를 query별 고유 document 집계로 GREEN했다.
+- forged relevance·unknown returned document는 corpus 정본 검증에서 거부하고 document path traversal·symlink는 indexing 전에 차단한다.
+- report는 품질 metric·ranked sources·query drain과 비차단 p50/p95 timing을 기록한다. corpus/document/baseline/source/runtime manifest는 temp root와 무관하게 재현된다.
+- live gate: targeted 6/6, 전체 Node 318/318·52 suites, shell 23/23, typecheck·build·diff GREEN.
+- 잔여 위험: production relevance threshold가 없어 no-match FPR은 현재 1.0이다. baseline은 이를 숨기지 않으며 실제 provider/개인 corpus/hybrid/rerank/threshold는 후속 단계로 이월한다.

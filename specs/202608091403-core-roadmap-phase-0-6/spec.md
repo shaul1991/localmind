@@ -55,6 +55,7 @@
 - 공개 합성 corpus를 production retrieval 경로로 실행하는 일급 명령이 있다.
 - 품질·no-match·출처·지연·manifest가 machine-readable report로 나온다.
 - CI가 기준선보다 나쁜 회귀를 차단한다.
+- latency는 host variance 때문에 v1에서 비차단 관측값이며, relevance threshold가 없는 현재 no-match FPR은 숨기지 않고 baseline·잔여 위험으로 기록한다.
 
 ### Phase 4 — brief와 decision lifecycle
 - brief는 선택·이유·전제·검증 시점을 구분하고 중복·대체된 결정을 정리한다.

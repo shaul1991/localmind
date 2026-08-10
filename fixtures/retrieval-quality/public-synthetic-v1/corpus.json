@@ -1,0 +1,21 @@
+{
+  "schema": "localmind.retrieval-corpus.v1",
+  "id": "public-synthetic-v1",
+  "license": "CC0-1.0",
+  "description": "개인 노트·자격 증명 없이 LocalMind 검색 회귀를 재현하는 공개 합성 corpus",
+  "k": 5,
+  "documents": [
+    { "id": "sync-conflict", "path": "notes/sync-conflict.md" },
+    { "id": "backup-recovery", "path": "notes/backup-recovery.md" },
+    { "id": "privacy-logging", "path": "notes/privacy-logging.md" },
+    { "id": "remote-mcp", "path": "notes/remote-mcp.md" },
+    { "id": "cooking-pasta", "path": "notes/cooking-pasta.md" }
+  ],
+  "queries": [
+    { "id": "q-sync", "text": "오프라인 동기화 충돌을 안전하게 병합하는 방법", "relevant": ["sync-conflict"] },
+    { "id": "q-backup", "text": "암호화 백업 스냅샷에서 노트를 복원하는 방법", "relevant": ["backup-recovery"] },
+    { "id": "q-privacy", "text": "로그에서 자격 증명과 비밀 값을 마스킹하는 방법", "relevant": ["privacy-logging"] },
+    { "id": "q-remote", "text": "Tailscale로 원격 MCP HTTP 서버에 연결하는 방법", "relevant": ["remote-mcp"] },
+    { "id": "q-no-match", "text": "천체 사진의 별 궤적 노출 시간을 계산하는 방법", "relevant": [] }
+  ]
+}

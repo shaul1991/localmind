@@ -16,6 +16,7 @@
     "remote-check": "tsx scripts/remote-check.ts",
     "reindex": "tsx scripts/reindex.ts",
     "query-report": "tsx scripts/query-report.ts",
+    "eval:retrieval": "tsx scripts/evaluate-retrieval.ts",
     "brain-report": "tsx scripts/brain-report.ts",
     "test": "node --import tsx/esm --test src/*.test.ts scripts/*.test.mjs"
   },
