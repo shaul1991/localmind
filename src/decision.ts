@@ -20,12 +20,25 @@ export interface DecisionInput {
   choice: string;
   why: string;
   assumptions?: AssumptionInput[];
+  /** 같은 notes folder 안에서 이 결정을 대체하는 canonical note path. */
+  supersedes?: string[];
 }
 
 export interface Decision {
   choice: string;
   why: string;
   assumptions: Assumption[];
+  supersedes?: string[];
+  capturedAt?: string;
+}
+
+/** canonical decision reference의 folder label. 안전하지 않으면 null. */
+export function decisionReferenceFolder(reference: string): string | null {
+  if (!reference || reference.length > 1024 || /[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069\ufeff\\]/u.test(reference)) return null;
+  if (reference.startsWith("/") || !reference.endsWith(".md")) return null;
+  const parts = reference.split("/");
+  if (parts.length < 2 || parts.some((part) => !part || part === "." || part === "..")) return null;
+  return /^[\p{L}\p{N}._-]+$/u.test(parts[0]) ? parts[0] : null;
 }
 
 /** 결정 입력 검증 — 문제 없으면 null, 있으면 평이한 한국어 안내(AC-3).
@@ -34,9 +47,23 @@ export function validateDecisionInput(input: {
   choice?: string;
   why?: string;
   assumptions?: Array<{ fact?: string; volatility?: string }>;
+  supersedes?: string[];
 }): string | null {
   if (!input.choice?.trim() || !input.why?.trim()) {
     return "결정 캡처에는 choice(무엇을 골랐나)와 why(왜 골랐나)가 모두 필요해요. 두 값을 함께 보내주세요.";
+  }
+  if (input.supersedes !== undefined) {
+    if (!Array.isArray(input.supersedes) || input.supersedes.length > 32) {
+      return "supersedes는 최대 32개의 canonical note path 배열이어야 해요.";
+    }
+    const seen = new Set<string>();
+    for (const [i, reference] of input.supersedes.entries()) {
+      if (typeof reference !== "string" || decisionReferenceFolder(reference) === null) {
+        return `supersedes[${i}]는 folder/relative-note.md 형식의 안전한 canonical path여야 해요.`;
+      }
+      if (seen.has(reference)) return `supersedes[${i}]가 중복됐어요. 같은 결정을 한 번만 지정해 주세요.`;
+      seen.add(reference);
+    }
   }
   for (const [i, a] of (input.assumptions ?? []).entries()) {
     if (!a.fact?.trim()) {
@@ -55,6 +82,7 @@ export function buildDecisionFrontmatterLines(input: DecisionInput, capturedIso:
     choice: input.choice,
     why: input.why,
     assumptions: (input.assumptions ?? []).map((a) => ({ ...a, last_verified: capturedIso })),
+    ...(input.supersedes?.length ? { supersedes: [...input.supersedes] } : {}),
   };
   // yaml.stringify로 안전 직렬화(인용·개행 이스케이프) — 마지막 개행만 제거해 라인 배열로.
   const block = stringifyYaml({ type: "decision", decision }).trimEnd();
@@ -73,6 +101,15 @@ export function parseNoteDecision(noteText: string): Decision | null {
     const d = fm.decision;
     if (!d || typeof d.choice !== "string" || typeof d.why !== "string") return null;
     const assumptions = Array.isArray(d.assumptions) ? d.assumptions : [];
+    const rawSupersedes: unknown[] = Array.isArray(d.supersedes) ? d.supersedes : [];
+    const supersedes = [...new Set(rawSupersedes.filter((value): value is string =>
+      typeof value === "string" && decisionReferenceFolder(value) !== null))];
+    const capturedAtValue = fm.date instanceof Date
+      ? fm.date.getTime()
+      : typeof fm.date === "string"
+        ? Date.parse(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(fm.date) ? `${fm.date}Z` : fm.date)
+        : Number.NaN;
+    const capturedAt = Number.isFinite(capturedAtValue) ? new Date(capturedAtValue).toISOString() : undefined;
     return {
       choice: d.choice,
       why: d.why,
@@ -83,6 +120,8 @@ export function parseNoteDecision(noteText: string): Decision | null {
           volatility: a.volatility === "high" ? ("high" as const) : ("low" as const),
           last_verified: String(a.last_verified ?? ""),
         })),
+      ...(supersedes.length ? { supersedes } : {}),
+      ...(capturedAt ? { capturedAt } : {}),
     };
   } catch {
     return null;
@@ -163,4 +202,95 @@ export function staleSignalLine(notePath: string, stale: StaleAssumption[]): str
 export function staleThresholdDays(envValue: string | undefined): number {
   const n = Number(envValue);
   return Number.isInteger(n) && n > 0 ? n : 30;
+}
+
+export interface ScopedDecision {
+  path: string;
+  decision: Decision;
+}
+
+export interface DecisionSupersessionResolution {
+  active: ScopedDecision[];
+  supersededPaths: string[];
+  cyclePaths: string[];
+  ignoredCrossScopeReferences: number;
+  ignoredMissingReferences: number;
+  ignoredNonCausalReferences: number;
+}
+
+/**
+ * 현재 관련 hit 안에서 supersession을 해석한다. 같은 folder의 존재하는 canonical path만
+ * 결정을 숨길 수 있다. cycle/cross-folder/missing 참조는 fail-safe로 무시한다.
+ */
+export function resolveDecisionSupersession(rows: readonly ScopedDecision[]): DecisionSupersessionResolution {
+  const byPath = new Map<string, ScopedDecision>();
+  for (const row of rows) if (!byPath.has(row.path)) byPath.set(row.path, row);
+
+  const edges = new Map<string, Set<string>>();
+  let ignoredCrossScopeReferences = 0;
+  let ignoredMissingReferences = 0;
+  let ignoredNonCausalReferences = 0;
+  for (const row of byPath.values()) {
+    const sourceFolder = decisionReferenceFolder(row.path);
+    const targets = new Set<string>();
+    for (const target of row.decision.supersedes ?? []) {
+      if (!sourceFolder || decisionReferenceFolder(target) !== sourceFolder) {
+        ignoredCrossScopeReferences++;
+        continue;
+      }
+      if (!byPath.has(target)) {
+        ignoredMissingReferences++;
+        continue;
+      }
+      const sourceTime = row.decision.capturedAt ? Date.parse(row.decision.capturedAt) : Number.NaN;
+      const targetTime = byPath.get(target)?.decision.capturedAt
+        ? Date.parse(byPath.get(target)!.decision.capturedAt!)
+        : Number.NaN;
+      if (!Number.isFinite(sourceTime) || !Number.isFinite(targetTime) || sourceTime < targetTime) {
+        ignoredNonCausalReferences++;
+        continue;
+      }
+      targets.add(target);
+    }
+    edges.set(row.path, targets);
+  }
+
+  const reaches = (from: string, wanted: string): boolean => {
+    const pending = [from];
+    const seen = new Set<string>();
+    while (pending.length) {
+      const current = pending.pop()!;
+      if (current === wanted) return true;
+      if (seen.has(current)) continue;
+      seen.add(current);
+      for (const next of edges.get(current) ?? []) pending.push(next);
+    }
+    return false;
+  };
+
+  const superseded = new Set<string>();
+  const cyclePaths = new Set<string>();
+  for (const [source, targets] of edges) {
+    for (const target of targets) {
+      if (reaches(target, source)) {
+        cyclePaths.add(source);
+        cyclePaths.add(target);
+      }
+    }
+  }
+  for (const [source, targets] of edges) {
+    if (cyclePaths.has(source)) continue;
+    for (const target of targets) {
+      if (!cyclePaths.has(target)) superseded.add(target);
+    }
+  }
+
+  return {
+    active: [...byPath.values()].filter((row) => !superseded.has(row.path)),
+    supersededPaths: [...superseded],
+    cyclePaths: [...cyclePaths],
+    ignoredCrossScopeReferences,
+    ignoredMissingReferences,
+    ignoredNonCausalReferences,
+  };
 }

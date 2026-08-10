@@ -2,11 +2,11 @@
 
 ## 현재 판정
 
-**Phase 2 완료, Phase 3 closure gate 진행 중** — Phase 2는 frozen v9 `43db1928…7bb2`의
-동일 START/END fingerprint와 독립 양축 `COMMIT_ALLOWED`를 확인한 뒤 `[verified]` commit
-`cf31d79`로 닫았다. Phase 3는 공개 합성 corpus와 production retrieval을 잇는 첫 non-regression
-gate만 완성한다. 실제 provider·개인 corpus·hybrid/rerank/threshold는 잔여 위험이며 이번 Phase를
-재개방하지 않는다.
+**Phase 3 완료, Phase 4 구현·검증 중** — Phase 2는 `[verified]` commit `cf31d79`,
+Phase 3는 frozen v1 `4889f214…cdd3`의 동일 START/END fingerprint와 독립 양축
+`COMMIT_ALLOWED`를 확인한 뒤 `[verified]` commit `4e45d82`로 닫았다. Phase 4는 기존
+living-memory 위에 same-folder supersession, active-only stale-on-contact, multi-root brief scope
+isolation만 좁게 완성한다.
 
 ## Phase 커밋
 
@@ -15,8 +15,8 @@ gate만 완성한다. 실제 provider·개인 corpus·hybrid/rerank/threshold는
 | 0 | `b26e3d5` | 원본 `022555e`와 tree SHA 동일; Node 215, shell/typecheck/build 성공 | 통과 |
 | 1 | `9fad6d2` | 원본 `43b7d58`과 tree SHA 동일; setup 54, MCP 9, Node 247, CI Node 20/22/24 | 통과 |
 | 2 | `cf31d79` | frozen v9 Node 312/312, shell 23/23, Bash 57/57, 양축 `COMMIT_ALLOWED` | 통과 |
-| 3 | candidate | 공개 corpus·production retrieval·metric/provenance; Node 318/318, targeted 6/6, shell 23/23 | 종료 gate |
-| 4 | 대기 | brief/lifecycle/scope | 대기 |
+| 3 | `4e45d82` | frozen v1 Node 318/318, shell 23/23, Bash 57/57, 양축 `COMMIT_ALLOWED` | 통과 |
+| 4 | candidate | brief precision·same-folder supersession·active-only stale·multi-root scope | 구현·검증 |
 | 5 | 대기 | portability/ops/security | 대기 |
 | 6 | 대기 | evidence/cadence | 대기 |
 
@@ -118,4 +118,6 @@ gate만 완성한다. 실제 provider·개인 corpus·hybrid/rerank/threshold는
 - forged relevance·unknown returned document는 corpus 정본 검증에서 거부하고 document path traversal·symlink는 indexing 전에 차단한다.
 - report는 품질 metric·ranked sources·query drain과 비차단 p50/p95 timing을 기록한다. corpus/document/baseline/source/runtime manifest는 temp root와 무관하게 재현된다.
 - live gate: targeted 6/6, 전체 Node 318/318·52 suites, shell 23/23, typecheck·build·diff GREEN.
+- 최종 frozen v1 `4889f214…cdd3`: Node 318/318, shell 23/23, Bash 57/57, dependency 4,305, docs·credential·process leak 0, `overall_ok=true`.
+- 독립 SPEC/SECURITY와 QUALITY/TEST-ADEQUACY/DOCS 검토는 모두 START=END, blocker 0, `COMMIT_ALLOWED`였다. reviewed 22개 staged blob을 검증해 parent `cf31d79` 위에 commit `4e45d82`를 만들고 clean tree를 확인했다.
 - 잔여 위험: production relevance threshold가 없어 no-match FPR은 현재 1.0이다. baseline은 이를 숨기지 않으며 실제 provider/개인 corpus/hybrid/rerank/threshold는 후속 단계로 이월한다.

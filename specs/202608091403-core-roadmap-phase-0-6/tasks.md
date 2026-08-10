@@ -3,7 +3,7 @@
 - [x] Phase 0 — 기준선·로드맵 정본 고정 및 커밋
 - [x] Phase 1 — setup·capture·embedding 무결성 TDD 및 커밋
 - [x] Phase 2 — canonical durability/concurrency/recovery gate 및 `[verified]` 커밋 `cf31d79`
-- [ ] Phase 3 — 검색 품질 회귀 게이트 TDD 및 커밋
+- [x] Phase 3 — 검색 품질 회귀 게이트 TDD 및 `[verified]` 커밋 `4e45d82`
 - [ ] Phase 4 — brief·decision lifecycle TDD 및 커밋
 - [ ] Phase 5 — 이식성·운영·보안 계약 검증 및 커밋
 - [ ] Phase 6 — evidence-gated living memory TDD 및 커밋
